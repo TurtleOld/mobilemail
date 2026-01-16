@@ -133,7 +133,7 @@ class JmapClient(
             val accountJson = accountsJson.getJSONObject(key)
             accounts[key] = JmapAccount(
                 id = accountJson.getString("id"),
-                name = accountJson.optString("name", '"),
+                name = accountJson.optString("name", ""),
                 isPersonal = accountJson.optBoolean("isPersonal", true),
                 isReadOnly = accountJson.optBoolean("isReadOnly", false),
                 accountCapabilities = null
@@ -422,7 +422,7 @@ class JmapClient(
             throw Exception("JMAP request failed: ${response.code} ${response.message}")
         }
 
-        val responseBody = response.body?.string() ?: "{}'
+        val responseBody = response.body?.string() ?: "{}"
         return JSONObject(responseBody)
     }
 }
