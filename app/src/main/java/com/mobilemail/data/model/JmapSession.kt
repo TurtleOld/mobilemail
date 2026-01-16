@@ -3,36 +3,36 @@ package com.mobilemail.data.model
 import com.google.gson.annotations.SerializedName
 
 data class JmapSession(
-    @SerializedName('apiUrl')
+    @SerializedName("apiUrl")
     val apiUrl: String,
-    @SerializedName('downloadUrl')
+    @SerializedName("downloadUrl")
     val downloadUrl: String,
-    @SerializedName('uploadUrl')
+    @SerializedName("uploadUrl")
     val uploadUrl: String,
-    @SerializedName('eventSourceUrl')
+    @SerializedName("eventSourceUrl")
     val eventSourceUrl: String? = null,
-    @SerializedName('accounts')
+    @SerializedName("accounts")
     val accounts: Map<String, JmapAccount>,
-    @SerializedName('primaryAccounts')
+    @SerializedName("primaryAccounts")
     val primaryAccounts: PrimaryAccounts? = null,
-    @SerializedName('capabilities')
+    @SerializedName("capabilities")
     val capabilities: Map<String, Any>? = null
 )
 
 data class JmapAccount(
-    @SerializedName('id')
+    @SerializedName("id")
     val id: String,
-    @SerializedName('name')
+    @SerializedName("name")
     val name: String,
-    @SerializedName('isPersonal')
+    @SerializedName("isPersonal")
     val isPersonal: Boolean,
-    @SerializedName('isReadOnly')
+    @SerializedName("isReadOnly")
     val isReadOnly: Boolean,
-    @SerializedName('accountCapabilities')
+    @SerializedName("accountCapabilities")
     val accountCapabilities: Map<String, Any>? = null
 )
 
 data class PrimaryAccounts(
-    @SerializedName('mail')
+    @SerializedName("mail")
     val mail: String? = null
 )

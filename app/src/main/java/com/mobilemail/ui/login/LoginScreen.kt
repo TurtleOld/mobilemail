@@ -50,7 +50,7 @@ fun LoginScreen(
                 .fillMaxWidth()
                 .padding(bottom = 16.dp),
             singleLine = true,
-            placeholder = { Text('http://stalwart:8080') }
+            placeholder = { Text("http://stalwart:8080") }
         )
 
         OutlinedTextField(

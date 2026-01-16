@@ -3,22 +3,22 @@ package com.mobilemail.data.model
 import com.google.gson.annotations.SerializedName
 
 data class JmapMailbox(
-    @SerializedName('id')
+    @SerializedName("id")
     val id: String,
-    @SerializedName('name')
+    @SerializedName("name")
     val name: String,
-    @SerializedName('parentId')
+    @SerializedName("parentId")
     val parentId: String? = null,
-    @SerializedName('role')
+    @SerializedName("role")
     val role: String? = null,
-    @SerializedName('sortOrder')
+    @SerializedName("sortOrder")
     val sortOrder: Int? = null,
-    @SerializedName('totalEmails')
+    @SerializedName("totalEmails")
     val totalEmails: Int? = null,
-    @SerializedName('unreadEmails')
+    @SerializedName("unreadEmails")
     val unreadEmails: Int? = null,
-    @SerializedName('totalThreads')
+    @SerializedName("totalThreads")
     val totalThreads: Int? = null,
-    @SerializedName('unreadThreads')
+    @SerializedName("unreadThreads")
     val unreadThreads: Int? = null
 )

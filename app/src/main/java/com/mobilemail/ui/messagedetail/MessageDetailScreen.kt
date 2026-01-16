@@ -27,10 +27,10 @@ fun MessageDetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text('Письмо') },
+                title = { Text("Письмо") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = 'Назад')
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
                     }
                 }
             )
@@ -60,7 +60,7 @@ fun MessageDetailScreen(
                         .padding(padding),
                     contentAlignment = androidx.compose.ui.Alignment.Center
                 ) {
-                    Text(uiState.error ?: 'Письмо не найдено')
+                    Text(uiState.error ?: "Письмо не найдено")
                 }
             }
         }
@@ -72,7 +72,7 @@ fun MessageContent(
     message: com.mobilemail.data.model.MessageDetail,
     modifier: Modifier = Modifier
 ) {
-    val dateFormat = SimpleDateFormat('dd.MM.yyyy HH:mm', Locale.getDefault())
+    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     val scrollState = rememberScrollState()
 
     Column(
@@ -92,7 +92,7 @@ fun MessageContent(
             modifier = Modifier.padding(bottom = 8.dp)
         ) {
             Text(
-                text = 'От: ',
+                text = "От: ",
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.Bold
             )
@@ -107,12 +107,12 @@ fun MessageContent(
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
                 Text(
-                    text = 'Кому: ',
+                    text = "Кому: ",
                     style = MaterialTheme.typography.bodyMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = message.to.joinToString(', ') { it.name ?: it.email },
+                    text = message.to.joinToString(", ") { it.name ?: it.email },
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -133,7 +133,7 @@ fun MessageContent(
                     WebView(context).apply {
                         webViewClient = WebViewClient()
                         settings.javaScriptEnabled = true
-                        loadDataWithBaseURL(null, html, 'text/html', 'UTF-8', null)
+                        loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
                     }
                 },
                 modifier = Modifier
@@ -148,7 +148,7 @@ fun MessageContent(
             )
         } ?: run {
             Text(
-                text = 'Письмо не содержит текста',
+                text = "Письмо не содержит текста",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

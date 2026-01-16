@@ -9,11 +9,11 @@ class MessagesViewModelFactory(
     private val password: String,
     private val accountId: String
 ) : ViewModelProvider.Factory {
-    @Suppress('UNCHECKED_CAST')
+    @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(MessagesViewModel::class.java)) {
             return MessagesViewModel(server, email, password, accountId) as T
         }
-        throw IllegalArgumentException('Unknown ViewModel class')
+        throw IllegalArgumentException("Unknown ViewModel class")
     }
 }

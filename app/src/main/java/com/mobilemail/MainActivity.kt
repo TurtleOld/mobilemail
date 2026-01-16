@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import com.mobilemail.ui.theme.MobileMailTheme
@@ -31,25 +32,25 @@ class MainActivity : ComponentActivity() {
 
                     NavHost(
                         navController = navController,
-                        startDestination = 'login'
+                        startDestination = "login"
                     ) {
-                        composable('login') {
+                        composable("login") {
                             val viewModel: LoginViewModel = viewModel()
                             LoginScreen(
                                 viewModel = viewModel,
                                 onLoginSuccess = { server, email, password, accountId ->
-                                    navController.navigate('messages/$server/$email/$password/$accountId') {
-                                        popUpTo('login') { inclusive = true }
+                                    navController.navigate("messages/$server/$email/$password/$accountId") {
+                                        popUpTo("login") { inclusive = true }
                                     }
                                 }
                             )
                         }
 
-                        composable('messages/{server}/{email}/{password}/{accountId}') { backStackEntry ->
-                            val server = backStackEntry.arguments?.getString('server') ?: return@composable
-                            val email = backStackEntry.arguments?.getString('email') ?: return@composable
-                            val password = backStackEntry.arguments?.getString('password') ?: return@composable
-                            val accountId = backStackEntry.arguments?.getString('accountId') ?: return@composable
+                        composable("messages/{server}/{email}/{password}/{accountId}") { backStackEntry ->
+                            val server = backStackEntry.arguments?.getString("server") ?: return@composable
+                            val email = backStackEntry.arguments?.getString("email") ?: return@composable
+                            val password = backStackEntry.arguments?.getString("password") ?: return@composable
+                            val accountId = backStackEntry.arguments?.getString("accountId") ?: return@composable
 
                             val viewModel: MessagesViewModel = viewModel(
                                 factory = MessagesViewModelFactory(server, email, password, accountId)
@@ -57,17 +58,17 @@ class MainActivity : ComponentActivity() {
                             MessagesScreen(
                                 viewModel = viewModel,
                                 onMessageClick = { messageId ->
-                                    navController.navigate('message/$server/$email/$password/$accountId/$messageId')
+                                    navController.navigate("message/$server/$email/$password/$accountId/$messageId")
                                 }
                             )
                         }
 
-                        composable('message/{server}/{email}/{password}/{accountId}/{messageId}') { backStackEntry ->
-                            val server = backStackEntry.arguments?.getString('server') ?: return@composable
-                            val email = backStackEntry.arguments?.getString('email') ?: return@composable
-                            val password = backStackEntry.arguments?.getString('password') ?: return@composable
-                            val accountId = backStackEntry.arguments?.getString('accountId') ?: return@composable
-                            val messageId = backStackEntry.arguments?.getString('messageId') ?: return@composable
+                        composable("message/{server}/{email}/{password}/{accountId}/{messageId}") { backStackEntry ->
+                            val server = backStackEntry.arguments?.getString("server") ?: return@composable
+                            val email = backStackEntry.arguments?.getString("email") ?: return@composable
+                            val password = backStackEntry.arguments?.getString("password") ?: return@composable
+                            val accountId = backStackEntry.arguments?.getString("accountId") ?: return@composable
+                            val messageId = backStackEntry.arguments?.getString("messageId") ?: return@composable
 
                             val viewModel: MessageDetailViewModel = viewModel(
                                 factory = MessageDetailViewModelFactory(server, email, password, accountId, messageId)

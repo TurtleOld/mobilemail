@@ -44,7 +44,7 @@ class MessageDetailViewModel(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: 'Ошибка загрузки письма'
+                    error = e.message ?: "Ошибка загрузки письма"
                 )
             }
         }

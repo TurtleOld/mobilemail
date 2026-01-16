@@ -41,12 +41,12 @@ class MailRepository(
             
             mailboxes.map { mailbox ->
                 val role = when (mailbox.role) {
-                    'inbox' -> FolderRole.INBOX
-                    'sent' -> FolderRole.SENT
-                    'drafts' -> FolderRole.DRAFTS
-                    'trash' -> FolderRole.TRASH
-                    'spam', 'junk' -> FolderRole.SPAM
-                    'archive' -> FolderRole.ARCHIVE
+                    "inbox" -> FolderRole.INBOX
+                    "sent" -> FolderRole.SENT
+                    "drafts" -> FolderRole.DRAFTS
+                    "trash" -> FolderRole.TRASH
+                    "spam", "junk" -> FolderRole.SPAM
+                    "archive" -> FolderRole.ARCHIVE
                     else -> FolderRole.CUSTOM
                 }
                 
@@ -83,25 +83,25 @@ class MailRepository(
                 ids = queryResult.ids,
                 accountId = accountId,
                 properties = listOf(
-                    'id', 'threadId', 'from', 'subject',
-                    'receivedAt', 'preview', 'hasAttachment',
-                    'size', 'keywords'
+                    "id", "threadId", "from", "subject",
+                    "receivedAt", "preview", "hasAttachment",
+                    "size", "keywords"
                 )
             )
             
             emails.map { email ->
                 val from = email.from?.firstOrNull() 
-                    ?: EmailAddress(email = 'unknown')
-                val isUnread = email.keywords?.get('$seen') != true
-                val isStarred = email.keywords?.get('$flagged') == true
-                val isImportant = email.keywords?.get('$important') == true
+                    ?: EmailAddress(email = "unknown")
+                val isUnread = email.keywords?.get("$seen") != true
+                val isStarred = email.keywords?.get("$flagged") == true
+                val isImportant = email.keywords?.get("$important") == true
                 
                 MessageListItem(
                     id = email.id,
                     threadId = email.threadId,
                     from = from,
-                    subject = email.subject ?: '(без темы)',
-                    snippet = email.preview ?: '',
+                    subject = email.subject ?: "(без темы)",
+                    snippet = email.preview ?: "",
                     date = try {
                         Date.from(Instant.parse(email.receivedAt))
                     } catch (e: Exception) {
@@ -133,10 +133,10 @@ class MailRepository(
                 ids = listOf(messageId),
                 accountId = accountId,
                 properties = listOf(
-                    'id', 'threadId', 'from', 'to', 'cc', 'bcc',
-                    'subject', 'receivedAt', 'bodyStructure',
-                    'bodyValues', 'textBody', 'htmlBody',
-                    'keywords'
+                    "id", "threadId", "from", "to", "cc", "bcc",
+                    "subject", "receivedAt", "bodyStructure",
+                    "bodyValues", "textBody", "htmlBody",
+                    "keywords"
                 )
             )
             
@@ -144,7 +144,7 @@ class MailRepository(
             
             val email = emails[0]
             val from = email.from?.firstOrNull() 
-                ?: EmailAddress(email = 'unknown')
+                ?: EmailAddress(email = "unknown")
             
             var textBody: String? = null
             var htmlBody: String? = null
@@ -161,9 +161,9 @@ class MailRepository(
             if (textBody == null && htmlBody == null) {
                 email.bodyValues?.values?.firstOrNull()?.let {
                     val content = it.value.trim()
-                    val looksLikeHtml = content.startsWith('<') && 
-                        (content.contains('<html') || content.contains('<body') || 
-                         content.contains('<div') || content.contains('<p'))
+                    val looksLikeHtml = content.startsWith("<") && 
+                        (content.contains("<html") || content.contains("<body") || 
+                         content.contains("<div") || content.contains("<p"))
                     
                     if (looksLikeHtml) {
                         htmlBody = it.value
@@ -173,9 +173,9 @@ class MailRepository(
                 }
             }
             
-            val isUnread = email.keywords?.get('$seen') != true
-            val isStarred = email.keywords?.get('$flagged') == true
-            val isImportant = email.keywords?.get('$important') == true
+            val isUnread = email.keywords?.get("$seen") != true
+            val isStarred = email.keywords?.get("$flagged") == true
+            val isImportant = email.keywords?.get("$important") == true
             
             MessageDetail(
                 id = email.id,
@@ -184,7 +184,7 @@ class MailRepository(
                 to = email.to?.map { EmailAddress(it.name, it.email) } ?: emptyList(),
                 cc = email.cc?.map { EmailAddress(it.name, it.email) },
                 bcc = email.bcc?.map { EmailAddress(it.name, it.email) },
-                subject = email.subject ?: '(без темы)',
+                subject = email.subject ?: "(без темы)",
                 date = try {
                     Date.from(Instant.parse(email.receivedAt))
                 } catch (e: Exception) {

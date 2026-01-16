@@ -29,10 +29,10 @@ fun MessagesScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(uiState.selectedFolder?.name ?: 'Почта') },
+                title = { Text(uiState.selectedFolder?.name ?: "Почта") },
                 actions = {
                     IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = 'Обновить')
+                        Icon(Icons.Default.Refresh, contentDescription = "Обновить")
                     }
                 }
             )
@@ -142,7 +142,7 @@ fun MessagesList(
             modifier = modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Text('Нет писем')
+            Text("Нет писем")
         }
     } else {
         LazyColumn(
@@ -164,7 +164,7 @@ fun MessageItem(
     message: MessageListItem,
     onClick: () -> Unit
 ) {
-    val dateFormat = SimpleDateFormat('dd.MM.yyyy HH:mm', Locale.getDefault())
+    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     
     Card(
         modifier = Modifier
@@ -218,7 +218,7 @@ fun MessageItem(
             if (message.flags.hasAttachments) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = '📎',
+                    text = "📎",
                     style = MaterialTheme.typography.bodySmall
                 )
             }

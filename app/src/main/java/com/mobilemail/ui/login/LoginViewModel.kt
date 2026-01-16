@@ -10,9 +10,9 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 data class LoginUiState(
-    val server: String = '',
-    val login: String = '',
-    val password: String = '',
+    val server: String = "",
+    val login: String = "",
+    val password: String = "",
     val isLoading: Boolean = false,
     val error: String? = null,
     val account: Account? = null
@@ -37,7 +37,7 @@ class LoginViewModel : ViewModel() {
     fun login(onSuccess: (Account) -> Unit) {
         val state = _uiState.value
         if (state.server.isBlank() || state.login.isBlank() || state.password.isBlank()) {
-            _uiState.value = state.copy(error = 'Заполните все поля')
+            _uiState.value = state.copy(error = "Заполните все поля")
             return
         }
 
@@ -65,13 +65,13 @@ class LoginViewModel : ViewModel() {
                 } else {
                     _uiState.value = state.copy(
                         isLoading = false,
-                        error = 'Неверные учетные данные'
+                        error = "Неверные учетные данные"
                     )
                 }
             } catch (e: Exception) {
                 _uiState.value = state.copy(
                     isLoading = false,
-                    error = e.message ?: 'Ошибка соединения'
+                    error = e.message ?: "Ошибка соединения"
                 )
             }
         }

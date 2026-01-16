@@ -51,7 +51,7 @@ class MessagesViewModel(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: 'Ошибка загрузки папок'
+                    error = e.message ?: "Ошибка загрузки папок"
                 )
             }
         }
@@ -77,7 +77,7 @@ class MessagesViewModel(
             } catch (e: Exception) {
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
-                    error = e.message ?: 'Ошибка загрузки писем'
+                    error = e.message ?: "Ошибка загрузки писем"
                 )
             }
         }
