@@ -25,23 +25,27 @@ class MessageDetailViewModel(
     private val _uiState = MutableStateFlow(MessageDetailUiState())
     val uiState: StateFlow<MessageDetailUiState> = _uiState
 
-    private val jmapClient = JmapClient(server, email, password, accountId)
+    private val jmapClient = JmapClient.getOrCreate(server, email, password, accountId)
     private val repository = MailRepository(jmapClient)
 
     init {
+        android.util.Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=$accountId")
         loadMessage()
     }
 
     private fun loadMessage() {
         viewModelScope.launch {
+            android.util.Log.d("MessageDetailViewModel", "Начало загрузки письма: messageId=$messageId")
             _uiState.value = _uiState.value.copy(isLoading = true)
             try {
                 val message = repository.getMessage(messageId)
+                android.util.Log.d("MessageDetailViewModel", "Письмо получено: ${if (message != null) "успешно" else "null"}")
                 _uiState.value = _uiState.value.copy(
                     message = message,
                     isLoading = false
                 )
             } catch (e: Exception) {
+                android.util.Log.e("MessageDetailViewModel", "Ошибка загрузки письма", e)
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     error = e.message ?: "Ошибка загрузки письма"

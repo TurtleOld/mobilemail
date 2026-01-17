@@ -17,6 +17,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageDetailScreen(
     viewModel: MessageDetailViewModel,
@@ -103,6 +104,13 @@ fun MessageContent(
         }
 
         if (message.to.isNotEmpty()) {
+            androidx.compose.runtime.LaunchedEffect(message.to) {
+                android.util.Log.d("MessageDetailScreen", "Отображение поля 'Кому': size=${message.to.size}")
+                message.to.forEachIndexed { index, addr ->
+                    android.util.Log.d("MessageDetailScreen", "  [$index] name='${addr.name}', email='${addr.email}'")
+                }
+            }
+            
             Row(
                 modifier = Modifier.padding(bottom = 8.dp)
             ) {
@@ -112,7 +120,15 @@ fun MessageContent(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = message.to.joinToString(", ") { it.name ?: it.email },
+                    text = message.to.joinToString(", ") { addr ->
+                        val displayText = when {
+                            !addr.name.isNullOrBlank() -> addr.name!!
+                            addr.email.isNotBlank() -> addr.email
+                            else -> "(без адреса)"
+                        }
+                        android.util.Log.d("MessageDetailScreen", "Отображение адреса: name='${addr.name}', email='${addr.email}', display='$displayText'")
+                        displayText
+                    },
                     style = MaterialTheme.typography.bodyMedium
                 )
             }
@@ -128,17 +144,36 @@ fun MessageContent(
         Divider(modifier = Modifier.padding(vertical = 8.dp))
 
         message.body.html?.let { html ->
+            // Добавляем мета-тег viewport для адаптации под мобильные устройства
+            val adaptedHtml = if (html.contains("<head>", ignoreCase = true)) {
+                html.replace("<head>", "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\">", ignoreCase = true)
+            } else if (html.contains("<html>", ignoreCase = true)) {
+                html.replace("<html>", "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"></head>", ignoreCase = true)
+            } else {
+                "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"><style>body { margin: 0; padding: 8px; word-wrap: break-word; } img { max-width: 100%; height: auto; }</style></head><body>$html</body></html>"
+            }
+            
             AndroidView(
                 factory = { context ->
                     WebView(context).apply {
                         webViewClient = WebViewClient()
-                        settings.javaScriptEnabled = true
-                        loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+                        settings.apply {
+                            javaScriptEnabled = true
+                            // Настройки для адаптации под мобильные устройства
+                            useWideViewPort = true
+                            loadWithOverviewMode = true
+                            builtInZoomControls = true
+                            displayZoomControls = false
+                            setSupportZoom(true)
+                            // Разрешаем масштабирование
+                            textZoom = 100
+                        }
+                        loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
                     }
                 },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(400.dp)
+                    .heightIn(min = 200.dp, max = 2000.dp)
             )
         } ?: message.body.text?.let { text ->
             Text(

@@ -6,9 +6,11 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -19,44 +21,64 @@ import com.mobilemail.data.model.MessageListItem
 import java.text.SimpleDateFormat
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessagesScreen(
     viewModel: MessagesViewModel,
     onMessageClick: (String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+    
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        android.util.Log.d("MessagesScreen", "MessagesScreen создан")
+    }
+    
+    androidx.compose.runtime.LaunchedEffect(uiState.messages.size, uiState.isLoading, uiState.selectedFolder?.id) {
+        android.util.Log.d("MessagesScreen", "Состояние изменилось: messages=${uiState.messages.size}, isLoading=${uiState.isLoading}, folder=${uiState.selectedFolder?.name}")
+    }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(uiState.selectedFolder?.name ?: "Почта") },
-                actions = {
-                    IconButton(onClick = { viewModel.refresh() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Обновить")
-                    }
-                }
-            )
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet {
+                FoldersList(
+                    folders = uiState.folders,
+                    selectedFolder = uiState.selectedFolder,
+                    onFolderSelected = { folder ->
+                        viewModel.selectFolder(folder)
+                        scope.launch { drawerState.close() }
+                    },
+                    modifier = Modifier.fillMaxHeight()
+                )
+            }
         }
-    ) { padding ->
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            FoldersList(
-                folders = uiState.folders,
-                selectedFolder = uiState.selectedFolder,
-                onFolderSelected = viewModel::selectFolder,
-                modifier = Modifier
-                    .width(200.dp)
-                    .fillMaxHeight()
-            )
-
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = { Text(uiState.selectedFolder?.name ?: "Почта") },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "Меню")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.refresh() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                        }
+                    }
+                )
+            }
+        ) { padding ->
             MessagesList(
                 messages = uiState.messages,
                 isLoading = uiState.isLoading,
                 onMessageClick = onMessageClick,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
             )
         }
     }
@@ -70,7 +92,7 @@ fun FoldersList(
     modifier: Modifier = Modifier
 ) {
     LazyColumn(
-        modifier = modifier.padding(8.dp),
+        modifier = modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         items(folders) { folder ->
@@ -83,6 +105,7 @@ fun FoldersList(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderItem(
     folder: com.mobilemail.data.model.Folder,
@@ -130,30 +153,35 @@ fun MessagesList(
     onMessageClick: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    if (isLoading) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator()
-        }
-    } else if (messages.isEmpty()) {
-        Box(
-            modifier = modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("Нет писем")
-        }
-    } else {
-        LazyColumn(
-            modifier = modifier.padding(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            items(messages) { message ->
-                MessageItem(
-                    message = message,
-                    onClick = { onMessageClick(message.id) }
-                )
+    androidx.compose.runtime.LaunchedEffect(messages.size, isLoading) {
+        android.util.Log.d("MessagesScreen", "MessagesList: messages=${messages.size}, isLoading=$isLoading")
+    }
+    
+    Box(
+        modifier = modifier.fillMaxSize()
+    ) {
+        if (isLoading) {
+            CircularProgressIndicator(
+                modifier = Modifier.align(Alignment.Center)
+            )
+        } else if (messages.isEmpty()) {
+            Text(
+                text = "Нет писем",
+                modifier = Modifier.align(Alignment.Center)
+            )
+        } else {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                items(messages) { message ->
+                    MessageItem(
+                        message = message,
+                        onClick = { onMessageClick(message.id) }
+                    )
+                }
             }
         }
     }
