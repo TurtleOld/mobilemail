@@ -1,12 +1,16 @@
 package com.mobilemail.ui.login
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.JmapClient
 import com.mobilemail.data.model.Account
+import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.repository.MailRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 data class LoginUiState(
@@ -18,9 +22,19 @@ data class LoginUiState(
     val account: Account? = null
 )
 
-class LoginViewModel : ViewModel() {
+class LoginViewModel(application: Application) : AndroidViewModel(application) {
+    private val preferencesManager = PreferencesManager(application)
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState
+
+    init {
+        viewModelScope.launch {
+            val savedServer = preferencesManager.getServerUrl()
+            if (!savedServer.isNullOrBlank()) {
+                _uiState.value = _uiState.value.copy(server = savedServer)
+            }
+        }
+    }
 
     fun updateServer(server: String) {
         _uiState.value = _uiState.value.copy(server = server)
@@ -46,7 +60,11 @@ class LoginViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 val normalizedServer = state.server.trimEnd('/')
-                val jmapClient = JmapClient(
+                Log.d("LoginViewModel", "Попытка входа: сервер=$normalizedServer, email=${state.login}")
+                
+                preferencesManager.saveServerUrl(normalizedServer)
+                
+                val jmapClient = JmapClient.getOrCreate(
                     baseUrl = normalizedServer,
                     email = state.login,
                     password = state.password,
@@ -57,21 +75,35 @@ class LoginViewModel : ViewModel() {
                 val account = repository.getAccount()
 
                 if (account != null) {
+                    Log.d("LoginViewModel", "Вход успешен, account: ${account.id}")
                     _uiState.value = state.copy(
                         isLoading = false,
                         account = account
                     )
                     onSuccess(account)
                 } else {
+                    Log.w("LoginViewModel", "Не удалось получить аккаунт")
                     _uiState.value = state.copy(
                         isLoading = false,
-                        error = "Неверные учетные данные"
+                        error = "Неверные учетные данные или сервер недоступен"
                     )
                 }
             } catch (e: Exception) {
+                Log.e("LoginViewModel", "Ошибка входа", e)
+                val errorMessage = when {
+                    e.message?.contains("connect", ignoreCase = true) == true -> 
+                        "Не удалось подключиться к серверу. Проверьте адрес и доступность сервера."
+                    e.message?.contains("401") == true || e.message?.contains("403") == true ->
+                        "Неверные учетные данные"
+                    e.message?.contains("404") == true ->
+                        "Сервер не найден. Проверьте адрес сервера."
+                    e.message?.contains("timeout", ignoreCase = true) == true ->
+                        "Превышено время ожидания. Проверьте подключение к сети."
+                    else -> e.message ?: "Ошибка соединения: ${e.javaClass.simpleName}"
+                }
                 _uiState.value = state.copy(
                     isLoading = false,
-                    error = e.message ?: "Ошибка соединения"
+                    error = errorMessage
                 )
             }
         }
