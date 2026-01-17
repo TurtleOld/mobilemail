@@ -1,10 +1,13 @@
 package com.mobilemail.data.jmap
 
+import android.util.Log
 import com.mobilemail.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.*
+import okhttp3.ConnectionPool
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Protocol
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -17,10 +20,34 @@ class JmapClient(
     private val password: String,
     private val accountId: String
 ) {
+    companion object {
+        // Статический кэш клиентов для переиспользования
+        private val clientCache = mutableMapOf<String, JmapClient>()
+        private val lock = Any()
+        
+        fun getOrCreate(baseUrl: String, email: String, password: String, accountId: String): JmapClient {
+            val key = "$baseUrl:$email:$accountId"
+            synchronized(lock) {
+                return clientCache.getOrPut(key) {
+                    JmapClient(baseUrl, email, password, accountId)
+                }
+            }
+        }
+        
+        fun clearCache() {
+            synchronized(lock) {
+                clientCache.clear()
+            }
+        }
+    }
+    
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
+        .connectionPool(ConnectionPool(5, 5, TimeUnit.MINUTES))
+        .protocols(listOf(Protocol.HTTP_1_1))
         .build()
 
     private var session: JmapSession? = null
@@ -33,16 +60,39 @@ class JmapClient(
         return "Basic $encoded"
     }
 
+    private fun getEffectiveApiUrl(sessionApiUrl: String): String {
+        try {
+            val baseUri = java.net.URI(baseUrl.trimEnd('/'))
+            val sessionUri = java.net.URI(sessionApiUrl)
+            
+            if (baseUri.host != sessionUri.host || baseUri.port != sessionUri.port) {
+                val normalizedBaseUrl = baseUrl.trimEnd('/')
+                val effectiveUrl = "$normalizedBaseUrl/jmap"
+                Log.d("JmapClient", "Используется baseUrl вместо apiUrl из сессии: $effectiveUrl (сессия: $sessionApiUrl)")
+                return effectiveUrl
+            }
+            return sessionApiUrl
+        } catch (e: Exception) {
+            Log.w("JmapClient", "Ошибка парсинга URL, используем baseUrl", e)
+            val normalizedBaseUrl = baseUrl.trimEnd('/')
+            return "$normalizedBaseUrl/jmap"
+        }
+    }
+
     suspend fun getSession(): JmapSession {
         val cacheKey = "$accountId:${getAuthHeader()}"
         val cached = sessionCache[cacheKey]
         
         if (cached != null && cached.second > System.currentTimeMillis()) {
+            Log.d("JmapClient", "Использование кэшированной сессии")
             return cached.first
         }
 
         val normalizedBaseUrl = baseUrl.trimEnd('/')
         val sessionUrl = "$normalizedBaseUrl/jmap/session"
+        
+        Log.d("JmapClient", "Попытка подключения к: $sessionUrl")
+        Log.d("JmapClient", "Email: $email, AccountId: $accountId")
         
         val request = Request.Builder()
             .url(sessionUrl)
@@ -51,11 +101,38 @@ class JmapClient(
             .get()
             .build()
 
-        val response = withContext(Dispatchers.IO) {
-            client.newCall(request).execute()
+        val (response, responseBody) = withContext(Dispatchers.IO) {
+            var lastException: Exception? = null
+            repeat(3) { attempt ->
+                try {
+                    val resp = client.newCall(request).execute()
+                    val body = resp.body?.string() ?: ""
+                    return@withContext Pair(resp, body)
+                } catch (e: Exception) {
+                    lastException = e
+                    val isEofError = e is java.io.EOFException || 
+                                    e.message?.contains("unexpected end of stream", ignoreCase = true) == true ||
+                                    e.message?.contains("\\n not found", ignoreCase = true) == true
+                    
+                    if (isEofError && attempt < 2) {
+                        Log.w("JmapClient", "Попытка ${attempt + 1}: неожиданное закрытие соединения, повтор через ${(attempt + 1) * 500}ms...")
+                        kotlinx.coroutines.delay((attempt + 1) * 500L)
+                        return@repeat
+                    }
+                    Log.e("JmapClient", "Ошибка подключения к $sessionUrl (попытка ${attempt + 1})", e)
+                    if (attempt == 2) {
+                        throw Exception("Не удалось подключиться к серверу после 3 попыток: ${e.message}", e)
+                    }
+                }
+            }
+            throw Exception("Не удалось подключиться к серверу: ${lastException?.message}", lastException)
         }
         
+        Log.d("JmapClient", "Ответ от /jmap/session: код ${response.code}, успешно: ${response.isSuccessful}")
+        
         if (!response.isSuccessful) {
+            Log.w("JmapClient", "Ошибка получения сессии (код ${response.code}): $responseBody")
+            Log.d("JmapClient", "Попытка discovery через /.well-known/jmap")
             val discoveryUrl = "$normalizedBaseUrl/.well-known/jmap"
             val discoveryRequest = Request.Builder()
                 .url(discoveryUrl)
@@ -64,15 +141,25 @@ class JmapClient(
                 .get()
                 .build()
             
-            val discoveryResponse = withContext(Dispatchers.IO) {
-                client.newCall(discoveryRequest).execute()
+            val (discoveryResponse, discoveryResponseBody) = withContext(Dispatchers.IO) {
+                try {
+                    val resp = client.newCall(discoveryRequest).execute()
+                    val body = resp.body?.string() ?: ""
+                    Pair(resp, body)
+                } catch (e: Exception) {
+                    Log.e("JmapClient", "Ошибка discovery запроса к $discoveryUrl", e)
+                    throw Exception("Не удалось выполнить discovery: ${e.message}", e)
+                }
             }
+            
+            Log.d("JmapClient", "Discovery ответ: код ${discoveryResponse.code}")
             
             if (!discoveryResponse.isSuccessful) {
-                throw Exception("JMAP discovery failed: ${discoveryResponse.code}")
+                Log.e("JmapClient", "Discovery failed (код ${discoveryResponse.code}): $discoveryResponseBody")
+                throw Exception("JMAP discovery failed: код ${discoveryResponse.code}, ответ: $discoveryResponseBody")
             }
             
-            val discoveryJson = JSONObject(discoveryResponse.body?.string() ?: "{}")
+            val discoveryJson = JSONObject(discoveryResponseBody)
             val apiUrl = discoveryJson.optString("apiUrl", "$normalizedBaseUrl/jmap")
             
             val sessionRequestJson = JSONObject().apply {
@@ -95,15 +182,25 @@ class JmapClient(
                 .post(sessionRequestBody)
                 .build()
             
-            val sessionResponse = withContext(Dispatchers.IO) {
-                client.newCall(sessionRequest).execute()
+            val (sessionResponse, sessionResponseBody) = withContext(Dispatchers.IO) {
+                try {
+                    val resp = client.newCall(sessionRequest).execute()
+                    val body = resp.body?.string() ?: ""
+                    Pair(resp, body)
+                } catch (e: Exception) {
+                    Log.e("JmapClient", "Ошибка запроса сессии к $apiUrl", e)
+                    throw Exception("Не удалось получить сессию: ${e.message}", e)
+                }
             }
+            
+            Log.d("JmapClient", "Ответ сессии: код ${sessionResponse.code}")
             
             if (!sessionResponse.isSuccessful) {
-                throw Exception("JMAP session failed: ${sessionResponse.code}")
+                Log.e("JmapClient", "Ошибка получения сессии (код ${sessionResponse.code}): $sessionResponseBody")
+                throw Exception("JMAP session failed: код ${sessionResponse.code}, ответ: $sessionResponseBody")
             }
             
-            val sessionResponseJson = JSONObject(sessionResponse.body?.string() ?: "{}")
+            val sessionResponseJson = JSONObject(sessionResponseBody)
             val methodResponses = sessionResponseJson.getJSONArray("methodResponses")
             val sessionResponseData = methodResponses.getJSONArray(0)
             
@@ -114,31 +211,48 @@ class JmapClient(
             val sessionData = sessionResponseData.getJSONObject(1)
             session = parseSession(sessionData)
         } else {
-            val sessionJson = JSONObject(response.body?.string() ?: "{}")
-            session = parseSession(sessionJson)
+            Log.d("JmapClient", "Получен ответ сессии: ${responseBody.take(500)}...")
+            try {
+                val sessionJson = JSONObject(responseBody)
+                val keys = mutableListOf<String>()
+                sessionJson.keys().forEach { keys.add(it) }
+                Log.d("JmapClient", "JSON ключи: ${keys.joinToString()}")
+                session = parseSession(sessionJson)
+                Log.d("JmapClient", "Сессия успешно получена, API URL: ${session?.apiUrl}")
+            } catch (e: Exception) {
+                Log.e("JmapClient", "Ошибка парсинга сессии. Полный ответ: $responseBody", e)
+                throw e
+            }
         }
 
         session?.let {
             sessionCache[cacheKey] = Pair(it, System.currentTimeMillis() + SESSION_CACHE_TTL)
+            Log.d("JmapClient", "Сессия сохранена в кэш")
         }
 
-        return session ?: throw Exception("Failed to get session")
+        return session ?: throw Exception("Failed to get session: сессия не была создана")
     }
 
     private fun parseSession(json: JSONObject): JmapSession {
-        val accountsJson = json.getJSONObject("accounts")
+        val accountsJson = json.optJSONObject("accounts") ?: JSONObject()
         val accounts = mutableMapOf<String, JmapAccount>()
         
-        accountsJson.keys().forEach { key ->
-            val accountJson = accountsJson.getJSONObject(key)
-            accounts[key] = JmapAccount(
-                id = accountJson.getString("id"),
-                name = accountJson.optString("name", ""),
-                isPersonal = accountJson.optBoolean("isPersonal", true),
-                isReadOnly = accountJson.optBoolean("isReadOnly", false),
-                accountCapabilities = null
-            )
+        accountsJson.keys().forEach { accountId ->
+            val accountJson = accountsJson.optJSONObject(accountId)
+            if (accountJson != null) {
+                accounts[accountId] = JmapAccount(
+                    id = accountId,
+                    name = accountJson.optString("name", accountId),
+                    isPersonal = accountJson.optBoolean("isPersonal", true),
+                    isReadOnly = accountJson.optBoolean("isReadOnly", false),
+                    accountCapabilities = null
+                )
+            } else {
+                Log.w("JmapClient", "Аккаунт $accountId не является объектом, пропускаем")
+            }
         }
+        
+        Log.d("JmapClient", "Распарсено аккаунтов: ${accounts.size}")
 
         val primaryAccountsJson = json.optJSONObject("primaryAccounts")
         val primaryAccounts = primaryAccountsJson?.let {
@@ -161,23 +275,31 @@ class JmapClient(
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull() ?: this.accountId
 
+        val methodCallArray = JSONArray().apply {
+            put("Mailbox/get")
+            put(JSONObject().apply {
+                put("accountId", targetAccountId)
+            })
+            put("0")
+        }
+        
         val requestJson = JSONObject().apply {
-            put("using", JSONArray(listOf(
-                "urn:ietf:params:jmap:core",
-                "urn:ietf:params:jmap:mail"
-            )))
-            put("methodCalls", JSONArray(listOf(
-                JSONArray(listOf(
-                    "Mailbox/get",
-                    JSONObject().apply {
-                        put("accountId", targetAccountId)
-                    },
-                    "0"
-                ))
-            )))
+            put("using", JSONArray().apply {
+                put("urn:ietf:params:jmap:core")
+                put("urn:ietf:params:jmap:mail")
+            })
+            put("methodCalls", JSONArray().apply {
+                put(methodCallArray)
+            })
         }
 
-        val response = makeRequest(session.apiUrl, requestJson)
+        val apiUrl = if (session.apiUrl.startsWith("http://pavlovteam.ru") || session.apiUrl.startsWith("https://pavlovteam.ru")) {
+            val normalizedBaseUrl = baseUrl.trimEnd('/')
+            "$normalizedBaseUrl/jmap"
+        } else {
+            session.apiUrl
+        }
+        val response = makeRequest(apiUrl, requestJson)
         val methodResponses = response.getJSONArray("methodResponses")
         val mailboxResponse = methodResponses.getJSONArray(0)
 
@@ -222,32 +344,44 @@ class JmapClient(
             put("inMailbox", mailboxId)
         }
 
+        val sortArray = JSONArray().apply {
+            put(JSONObject().apply {
+                put("property", "receivedAt")
+                put("isAscending", false)
+            })
+        }
+        
+        val queryParams = JSONObject().apply {
+            put("accountId", targetAccountId)
+            put("filter", filterJson)
+            put("sort", sortArray)
+            put("position", position)
+            put("limit", limit)
+        }
+        
+        val methodCallArray = JSONArray().apply {
+            put("Email/query")
+            put(queryParams)
+            put("0")
+        }
+        
         val requestJson = JSONObject().apply {
-            put("using", JSONArray(listOf(
-                "urn:ietf:params:jmap:core",
-                "urn:ietf:params:jmap:mail"
-            )))
-            put("methodCalls", JSONArray(listOf(
-                JSONArray(listOf(
-                    "Email/query",
-                    JSONObject().apply {
-                        put("accountId", targetAccountId)
-                        put("filter", filterJson)
-                        put("sort", JSONArray(listOf(
-                            JSONObject().apply {
-                                put("property", "receivedAt")
-                                put("isAscending", false)
-                            }
-                        )))
-                        put("position", position)
-                        put("limit", limit)
-                    },
-                    "0"
-                ))
-            )))
+            put("using", JSONArray().apply {
+                put("urn:ietf:params:jmap:core")
+                put("urn:ietf:params:jmap:mail")
+            })
+            put("methodCalls", JSONArray().apply {
+                put(methodCallArray)
+            })
         }
 
-        val response = makeRequest(session.apiUrl, requestJson)
+        val apiUrl = if (session.apiUrl.startsWith("http://pavlovteam.ru") || session.apiUrl.startsWith("https://pavlovteam.ru")) {
+            val normalizedBaseUrl = baseUrl.trimEnd('/')
+            "$normalizedBaseUrl/jmap"
+        } else {
+            session.apiUrl
+        }
+        val response = makeRequest(apiUrl, requestJson)
         val methodResponses = response.getJSONArray("methodResponses")
         val queryResponse = methodResponses.getJSONArray(0)
 
@@ -266,7 +400,11 @@ class JmapClient(
         return EmailQueryResult(
             ids = ids,
             position = queryData.getInt("position"),
-            total = queryData.optInt("total", null).takeIf { it != -1 },
+            total = if (queryData.has("total") && !queryData.isNull("total")) {
+                queryData.getInt("total")
+            } else {
+                null
+            },
             queryState = queryData.optString("queryState", null)
         )
     }
@@ -287,25 +425,46 @@ class JmapClient(
             "textBody", "htmlBody"
         )
 
+        val idsArray = JSONArray().apply {
+            ids.forEach { put(it) }
+        }
+        
+        val propertiesArray = JSONArray().apply {
+            (properties ?: defaultProperties).forEach { put(it) }
+        }
+        
+        val getParams = JSONObject().apply {
+            put("accountId", targetAccountId)
+            put("ids", idsArray)
+            put("properties", propertiesArray)
+            // Запрашиваем содержимое тела письма
+            put("fetchTextBodyValues", true)
+            put("fetchHTMLBodyValues", true)
+        }
+        
+        val methodCallArray = JSONArray().apply {
+            put("Email/get")
+            put(getParams)
+            put("0")
+        }
+        
         val requestJson = JSONObject().apply {
-            put("using", JSONArray(listOf(
-                "urn:ietf:params:jmap:core",
-                "urn:ietf:params:jmap:mail"
-            )))
-            put("methodCalls", JSONArray(listOf(
-                JSONArray(listOf(
-                    "Email/get",
-                    JSONObject().apply {
-                        put("accountId", targetAccountId)
-                        put("ids", JSONArray(ids))
-                        put("properties", JSONArray(properties ?: defaultProperties))
-                    },
-                    "0"
-                ))
-            )))
+            put("using", JSONArray().apply {
+                put("urn:ietf:params:jmap:core")
+                put("urn:ietf:params:jmap:mail")
+            })
+            put("methodCalls", JSONArray().apply {
+                put(methodCallArray)
+            })
         }
 
-        val response = makeRequest(session.apiUrl, requestJson)
+        val apiUrl = if (session.apiUrl.startsWith("http://pavlovteam.ru") || session.apiUrl.startsWith("https://pavlovteam.ru")) {
+            val normalizedBaseUrl = baseUrl.trimEnd('/')
+            "$normalizedBaseUrl/jmap"
+        } else {
+            session.apiUrl
+        }
+        val response = makeRequest(apiUrl, requestJson)
         val methodResponses = response.getJSONArray("methodResponses")
         val getResponse = methodResponses.getJSONArray(0)
 
@@ -315,13 +474,27 @@ class JmapClient(
 
         val emailData = getResponse.getJSONObject(1)
         val list = emailData.getJSONArray("list")
+        Log.d("JmapClient", "Получено писем в ответе: ${list.length()}")
         val emails = mutableListOf<JmapEmail>()
 
         for (i in 0 until list.length()) {
-            val emailJson = list.getJSONObject(i)
-            emails.add(parseEmail(emailJson))
+            try {
+                val emailJson = list.getJSONObject(i)
+                val emailId = emailJson.optString("id", "unknown")
+                val bodyValuesObj = emailJson.optJSONObject("bodyValues")
+                val bodyValuesCount = bodyValuesObj?.let { 
+                    var count = 0
+                    it.keys().forEach { count++ }
+                    count
+                } ?: 0
+                Log.d("JmapClient", "Парсинг письма $emailId: to=${emailJson.optJSONArray("to")?.length() ?: 0}, bodyValues=$bodyValuesCount")
+                emails.add(parseEmail(emailJson))
+            } catch (e: Exception) {
+                Log.e("JmapClient", "Ошибка парсинга письма $i", e)
+            }
         }
 
+        Log.d("JmapClient", "Успешно распарсено писем: ${emails.size}")
         return emails
     }
 
@@ -331,9 +504,14 @@ class JmapClient(
             val addresses = mutableListOf<EmailAddress>()
             for (i in 0 until array.length()) {
                 val addrJson = array.getJSONObject(i)
+                // Обрабатываем строку "null" как null значение
+                val nameValue = addrJson.optString("name", null)
+                val name = if (nameValue == null || nameValue == "null" || nameValue.isBlank()) null else nameValue
+                val emailValue = addrJson.optString("email", null)
+                val email = if (emailValue == null || emailValue == "null" || emailValue.isBlank()) "unknown" else emailValue
                 addresses.add(EmailAddress(
-                    name = addrJson.optString("name", null),
-                    email = addrJson.getString("email")
+                    name = name,
+                    email = email
                 ))
             }
             return addresses
@@ -342,13 +520,13 @@ class JmapClient(
         return JmapEmail(
             id = json.getString("id"),
             threadId = json.getString("threadId"),
-            mailboxIds = json.getJSONObject("mailboxIds").let { obj ->
+            mailboxIds = json.optJSONObject("mailboxIds")?.let { obj ->
                 val map = mutableMapOf<String, Boolean>()
                 obj.keys().forEach { key ->
                     map[key] = obj.getBoolean(key)
                 }
                 map
-            },
+            } ?: emptyMap(),
             keywords = json.optJSONObject("keywords")?.let { obj ->
                 val map = mutableMapOf<String, Boolean>()
                 obj.keys().forEach { key ->
@@ -356,7 +534,7 @@ class JmapClient(
                 }
                 map
             },
-            size = json.getLong("size"),
+            size = json.optLong("size", 0),
             receivedAt = json.getString("receivedAt"),
             hasAttachment = json.optBoolean("hasAttachment", false),
             preview = json.optString("preview", null),
@@ -404,7 +582,12 @@ class JmapClient(
     }
 
     private suspend fun makeRequest(url: String, requestJson: JSONObject): JSONObject {
-        val requestBody = requestJson.toString()
+        var requestBodyString = requestJson.toString()
+        requestBodyString = requestBodyString.replace("\\/", "/")
+        Log.d("JmapClient", "Запрос к: $url")
+        Log.d("JmapClient", "Полное тело запроса: $requestBodyString")
+        
+        val requestBody = requestBodyString
             .toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()
@@ -414,15 +597,25 @@ class JmapClient(
             .post(requestBody)
             .build()
 
-        val response = withContext(Dispatchers.IO) {
-            client.newCall(request).execute()
+        val (response, responseBody) = withContext(Dispatchers.IO) {
+            try {
+                val resp = client.newCall(request).execute()
+                val body = resp.body?.string() ?: "{}"
+                Pair(resp, body)
+            } catch (e: Exception) {
+                Log.e("JmapClient", "Ошибка выполнения запроса к $url", e)
+                throw Exception("Ошибка сети: ${e.message}", e)
+            }
         }
+
+        Log.d("JmapClient", "Ответ: код ${response.code}")
 
         if (!response.isSuccessful) {
-            throw Exception("JMAP request failed: ${response.code} ${response.message}")
+            Log.e("JmapClient", "Ошибка запроса (код ${response.code}): $responseBody")
+            throw Exception("JMAP request failed: код ${response.code}, сообщение: ${response.message}, ответ: ${responseBody.take(200)}")
         }
 
-        val responseBody = response.body?.string() ?: "{}"
+        Log.d("JmapClient", "Успешный ответ: ${responseBody.take(200)}...")
         return JSONObject(responseBody)
     }
 }
