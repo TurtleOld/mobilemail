@@ -1,166 +1,242 @@
 package com.mobilemail.data.repository
 
 import android.util.Log
+import com.mobilemail.data.common.Result
+import com.mobilemail.data.common.runCatchingSuspend
 import com.mobilemail.data.jmap.JmapClient
-import com.mobilemail.data.model.*
+import com.mobilemail.data.local.dao.FolderDao
+import com.mobilemail.data.local.dao.MessageDao
+import com.mobilemail.data.model.Account
+import com.mobilemail.data.model.EmailAddress
+import com.mobilemail.data.model.Folder
+import com.mobilemail.data.model.FolderRole
+import com.mobilemail.data.model.MessageBody
+import com.mobilemail.data.model.MessageDetail
+import com.mobilemail.data.model.MessageFlags
+import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.data.repository.Mappers.toFolderEntity
+import com.mobilemail.data.repository.Mappers.toMessageEntity
+import com.mobilemail.data.repository.Mappers.toMessageListItem
+import com.mobilemail.data.repository.Mappers.toMessageListItem as entityToMessageListItem
+import com.mobilemail.data.repository.AttachmentParser.parseAttachments
 import java.time.Instant
 import java.util.Date
 
 class MailRepository(
-    private val jmapClient: JmapClient
+    private val jmapClient: JmapClient,
+    private val messageDao: MessageDao? = null,
+    private val folderDao: FolderDao? = null
 ) {
-    // Кэш полных данных писем для переиспользования
     private val messageCache = mutableMapOf<String, MessageDetail>()
-    suspend fun getAccount(): Account? {
-        return try {
-            Log.d("MailRepository", "Получение аккаунта...")
-            val session = jmapClient.getSession()
-            Log.d("MailRepository", "Сессия получена, аккаунтов: ${session.accounts.size}")
-            
-            val accountId = session.primaryAccounts?.mail 
-                ?: session.accounts.keys.firstOrNull()
-            
-            Log.d("MailRepository", "Выбранный accountId: $accountId")
-            
-            accountId?.let { id ->
-                val account = session.accounts[id]
-                account?.let {
-                    Log.d("MailRepository", "Аккаунт найден: ${it.id}, имя: ${it.name}")
-                    Account(
-                        id = it.id,
-                        email = it.id,
-                        displayName = it.name
-                    )
-                }
-            } ?: run {
-                Log.w("MailRepository", "AccountId не найден в сессии")
-                null
-            }
-        } catch (e: Exception) {
-            Log.e("MailRepository", "Ошибка получения аккаунта", e)
-            null
-        }
-    }
-
-    suspend fun getFolders(): List<Folder> {
-        return try {
-            val session = jmapClient.getSession()
-            val accountId = session.primaryAccounts?.mail 
-                ?: session.accounts.keys.firstOrNull()
-            
-            if (accountId == null) return emptyList()
-            
-            val mailboxes = jmapClient.getMailboxes(accountId)
-            
-            mailboxes.map { mailbox ->
-                val role = when (mailbox.role) {
-                    "inbox" -> FolderRole.INBOX
-                    "sent" -> FolderRole.SENT
-                    "drafts" -> FolderRole.DRAFTS
-                    "trash" -> FolderRole.TRASH
-                    "spam", "junk" -> FolderRole.SPAM
-                    "archive" -> FolderRole.ARCHIVE
-                    else -> FolderRole.CUSTOM
-                }
-                
-                Folder(
-                    id = mailbox.id,
-                    name = mailbox.name,
-                    role = role,
-                    unreadCount = mailbox.unreadEmails ?: 0
+    
+    suspend fun getAccount(): Result<Account> = runCatchingSuspend {
+        Log.d("MailRepository", "Получение аккаунта...")
+        val session = jmapClient.getSession()
+        Log.d("MailRepository", "Сессия получена, аккаунтов: ${session.accounts.size}")
+        
+        val accountId = session.primaryAccounts?.mail 
+            ?: session.accounts.keys.firstOrNull()
+        
+        Log.d("MailRepository", "Выбранный accountId: $accountId")
+        
+        accountId?.let { id ->
+            val account = session.accounts[id]
+            account?.let {
+                Log.d("MailRepository", "Аккаунт найден: ${it.id}, имя: ${it.name}")
+                Account(
+                    id = it.id,
+                    email = it.id,
+                    displayName = it.name
                 )
+            } ?: throw IllegalStateException("AccountId не найден в сессии")
+        } ?: throw IllegalStateException("AccountId не найден в сессии")
+    }.onError { e ->
+        Log.e("MailRepository", "Ошибка получения аккаунта", e)
+    }
+
+    suspend fun getFolders(): Result<List<Folder>> = runCatchingSuspend {
+        Log.d("MailRepository", "Начало загрузки папок")
+        val session = jmapClient.getSession()
+        Log.d("MailRepository", "Сессия получена для getFolders")
+        val accountId = session.primaryAccounts?.mail 
+            ?: session.accounts.keys.firstOrNull()
+        
+        if (accountId == null) {
+            Log.e("MailRepository", "AccountId не найден в сессии")
+            throw IllegalStateException("AccountId не найден")
+        }
+        
+        Log.d("MailRepository", "Запрос папок для accountId: $accountId")
+        val mailboxes = jmapClient.getMailboxes(accountId)
+        Log.d("MailRepository", "Получено папок: ${mailboxes.size}")
+        
+        mailboxes.map { mailbox ->
+            val role = when (mailbox.role) {
+                "inbox" -> FolderRole.INBOX
+                "sent" -> FolderRole.SENT
+                "drafts" -> FolderRole.DRAFTS
+                "trash" -> FolderRole.TRASH
+                "spam", "junk" -> FolderRole.SPAM
+                "archive" -> FolderRole.ARCHIVE
+                else -> FolderRole.CUSTOM
             }
-        } catch (e: Exception) {
-            emptyList()
+            
+            Folder(
+                id = mailbox.id,
+                name = mailbox.name,
+                role = role,
+                unreadCount = mailbox.unreadEmails ?: 0
+            )
         }
     }
 
-    suspend fun getMessages(folderId: String, limit: Int = 50): List<MessageListItem> {
-        return try {
-            Log.d("MailRepository", "Загрузка писем для папки: $folderId")
-            val session = jmapClient.getSession()
-            val accountId = session.primaryAccounts?.mail 
-                ?: session.accounts.keys.firstOrNull()
-            
-            if (accountId == null) {
-                Log.w("MailRepository", "AccountId не найден")
-                return emptyList()
-            }
-            
-            Log.d("MailRepository", "Запрос писем для accountId: $accountId, mailboxId: $folderId")
+    suspend fun getMessages(
+        folderId: String, 
+        position: Int = 0,
+        limit: Int = 50
+    ): Result<List<MessageListItem>> = runCatchingSuspend {
+        Log.d("MailRepository", "Загрузка писем для папки: $folderId")
+        val session = jmapClient.getSession()
+        val accountId = session.primaryAccounts?.mail 
+            ?: session.accounts.keys.firstOrNull()
+        
+        if (accountId == null) {
+            throw IllegalStateException("AccountId не найден")
+        }
+        
+        // Сначала пытаемся загрузить из кэша
+        val cachedMessages = messageDao?.getMessagesByFolderPaged(folderId, accountId, limit, position)
+        
+        try {
+            Log.d("MailRepository", "Запрос писем для accountId: $accountId, mailboxId: $folderId, position: $position, limit: $limit")
             val queryResult = jmapClient.queryEmails(
                 mailboxId = folderId,
                 accountId = accountId,
-                position = 0,
+                position = position,
                 limit = limit
             )
             
             Log.d("MailRepository", "Найдено писем: ${queryResult.ids.size}")
             if (queryResult.ids.isEmpty()) {
                 Log.d("MailRepository", "Список писем пуст")
-                return emptyList()
+            // Если есть кэш, возвращаем его
+            cachedMessages?.let { return@runCatchingSuspend it.map { it.toMessageListItem() } }
+                return@runCatchingSuspend emptyList()
             }
-            
-            // Загружаем полные данные для всех писем сразу (включая тело)
-            Log.d("MailRepository", "Загрузка полных данных для всех писем")
-            val emails = jmapClient.getEmails(
-                ids = queryResult.ids,
-                accountId = accountId,
-                properties = listOf(
-                    "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc", "subject",
-                    "receivedAt", "preview", "hasAttachment",
-                    "size", "keywords", "bodyStructure", "bodyValues", "textBody", "htmlBody"
-                )
+        
+        Log.d("MailRepository", "Загрузка полных данных для всех писем")
+        val emails = jmapClient.getEmails(
+            ids = queryResult.ids,
+            accountId = accountId,
+            properties = listOf(
+                "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc", "subject",
+                "receivedAt", "preview", "hasAttachment",
+                "size", "keywords", "bodyStructure", "bodyValues", "textBody", "htmlBody"
             )
+        )
+        
+        Log.d("MailRepository", "Получено писем для обработки: ${emails.size}")
+        
+        emails.forEach { email ->
+            val messageDetail = convertEmailToMessageDetail(email)
+            if (messageDetail != null) {
+                messageCache[email.id] = messageDetail
+            }
+        }
+        
+        val result = emails.map { email ->
+            val from = email.from?.firstOrNull() 
+                ?: EmailAddress(email = "unknown")
             
-            Log.d("MailRepository", "Получено писем для обработки: ${emails.size}")
+            // Проверяем обновленный статус в кэше, если он есть
+            val cachedMessage = messageCache[email.id]
+            val isUnread = if (cachedMessage != null) {
+                // Используем статус из кэша, если он был обновлен локально
+                cachedMessage.flags.unread
+            } else {
+                // Иначе используем статус с сервера
+                email.keywords?.get("\$seen") != true
+            }
             
-            // Кэшируем полные данные писем
-            emails.forEach { email ->
-                val messageDetail = convertEmailToMessageDetail(email)
-                if (messageDetail != null) {
-                    messageCache[email.id] = messageDetail
+            val isStarred = email.keywords?.get("\$flagged") == true
+            val isImportant = email.keywords?.get("\$important") == true
+            
+            // Парсим вложения для точного определения их наличия
+            val hasRealAttachments = if (email.bodyStructure != null) {
+                try {
+                    val bodyStructureJson = when (email.bodyStructure) {
+                        is org.json.JSONObject -> email.bodyStructure
+                        is org.json.JSONArray -> email.bodyStructure
+                        else -> null
+                    }
+                    val parsedAttachments = parseAttachments(bodyStructureJson)
+                    parsedAttachments.isNotEmpty()
+                } catch (e: Exception) {
+                    Log.e("MailRepository", "Ошибка парсинга вложений для списка", e)
+                    email.hasAttachment == true
                 }
+            } else {
+                email.hasAttachment == true
             }
             
-            val result = emails.map { email ->
-                val from = email.from?.firstOrNull() 
-                    ?: EmailAddress(email = "unknown")
-                val isUnread = email.keywords?.get("\$seen") != true
-                val isStarred = email.keywords?.get("\$flagged") == true
-                val isImportant = email.keywords?.get("\$important") == true
-                
-                MessageListItem(
-                    id = email.id,
-                    threadId = email.threadId,
-                    from = from,
-                    subject = email.subject ?: "(без темы)",
-                    snippet = email.preview ?: "",
-                    date = try {
-                        Date.from(Instant.parse(email.receivedAt))
-                    } catch (e: Exception) {
-                        Date()
-                    },
-                    flags = MessageFlags(
-                        unread = isUnread,
-                        starred = isStarred,
-                        important = isImportant,
-                        hasAttachments = email.hasAttachment == true
-                    ),
-                    size = email.size
-                )
+            MessageListItem(
+                id = email.id,
+                threadId = email.threadId,
+                from = from,
+                subject = email.subject ?: "(без темы)",
+                snippet = email.preview ?: "",
+                date = try {
+                    Date.from(Instant.parse(email.receivedAt))
+                } catch (e: Exception) {
+                    Date()
+                },
+                flags = MessageFlags(
+                    unread = isUnread,
+                    starred = isStarred,
+                    important = isImportant,
+                    hasAttachments = hasRealAttachments
+                ),
+                size = email.size
+            )
+        }
+        
+        // Сохраняем в кэш, но сохраняем обновленный статус прочитанности из Room
+        messageDao?.let { dao ->
+            try {
+                val messagesToSave = result.map { messageListItem ->
+                    // Проверяем, есть ли обновленный статус в Room
+                    val existingMessage = dao.getMessageById(messageListItem.id)
+                    val finalIsUnread = existingMessage?.isUnread ?: messageListItem.flags.unread
+                    
+                    // Создаем MessageEntity с сохранением обновленного статуса
+                    messageListItem.toMessageEntity(folderId, accountId).copy(
+                        isUnread = finalIsUnread
+                    )
+                }
+                dao.insertMessages(messagesToSave)
+                Log.d("MailRepository", "Письма сохранены в кэш: ${result.size}")
+            } catch (e: Exception) {
+                Log.e("MailRepository", "Ошибка сохранения писем в кэш", e)
             }
+        }
+        
             Log.d("MailRepository", "Обработано писем: ${result.size}, закэшировано: ${messageCache.size}")
             result
         } catch (e: Exception) {
             Log.e("MailRepository", "Ошибка загрузки писем", e)
-            emptyList()
+            // При ошибке сети пытаемся вернуть кэш
+            if (cachedMessages != null && cachedMessages.isNotEmpty()) {
+                Log.d("MailRepository", "Возвращаем кэшированные письма из-за ошибки сети")
+                return@runCatchingSuspend cachedMessages.map { it.toMessageListItem() }
+            }
+            throw e
         }
+    }.onError { e ->
+        Log.e("MailRepository", "Ошибка загрузки писем (onError)", e)
     }
     
     private fun convertEmailToMessageDetail(email: com.mobilemail.data.model.JmapEmail): MessageDetail? {
         return try {
-            // Обрабатываем строку "null" как null
             val fromEmail = email.from?.firstOrNull()
             val from = if (fromEmail != null) {
                 val name = if (fromEmail.name == null || fromEmail.name == "null" || fromEmail.name.isBlank()) null else fromEmail.name
@@ -173,7 +249,6 @@ class MailRepository(
             var textBody: String? = null
             var htmlBody: String? = null
             
-            // Извлекаем тело письма
             email.textBody?.forEach { textPart ->
                 email.bodyValues?.get(textPart.partId)?.let {
                     textBody = it.value
@@ -186,12 +261,11 @@ class MailRepository(
                 }
             }
             
-            // Если не нашли по partId, берем первое доступное значение
             if (textBody == null && htmlBody == null) {
                 email.bodyValues?.values?.firstOrNull()?.let {
                     val content = it.value.trim()
-                    val looksLikeHtml = content.startsWith("<") && 
-                        (content.contains("<html") || content.contains("<body") || 
+                    val looksLikeHtml = content.startsWith("<") &&
+                        (content.contains("<html") || content.contains("<body") ||
                          content.contains("<div") || content.contains("<p"))
                     
                     if (looksLikeHtml) {
@@ -205,6 +279,27 @@ class MailRepository(
             val isUnread = email.keywords?.get("\$seen") != true
             val isStarred = email.keywords?.get("\$flagged") == true
             val isImportant = email.keywords?.get("\$important") == true
+            
+            // Парсим вложения из bodyStructure
+            val attachments = if (email.bodyStructure != null) {
+                try {
+                    val bodyStructureJson = when (email.bodyStructure) {
+                        is org.json.JSONObject -> email.bodyStructure
+                        is org.json.JSONArray -> email.bodyStructure
+                        else -> null
+                    }
+                    if (bodyStructureJson != null) {
+                        parseAttachments(bodyStructureJson)
+                    } else {
+                        emptyList()
+                    }
+                } catch (e: Exception) {
+                    Log.e("MailRepository", "Ошибка парсинга вложений для списка", e)
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
             
             val toList = email.to?.map { 
                 val name = if (it.name == null || it.name == "null" || it.name.isBlank()) null else it.name
@@ -234,175 +329,201 @@ class MailRepository(
                     Date()
                 },
                 body = MessageBody(text = textBody, html = htmlBody),
-                attachments = emptyList(),
+                attachments = attachments,
                 flags = MessageFlags(
                     unread = isUnread,
                     starred = isStarred,
                     important = isImportant,
-                    hasAttachments = email.hasAttachment == true
+                    hasAttachments = email.hasAttachment == true || attachments.isNotEmpty()
                 )
             )
         } catch (e: Exception) {
-            android.util.Log.e("MailRepository", "Ошибка конвертации письма ${email.id}", e)
+            Log.e("MailRepository", "Ошибка конвертации письма ${email.id}", e)
             null
         }
     }
 
-    suspend fun getMessage(messageId: String): MessageDetail? {
-        return try {
-            android.util.Log.d("MailRepository", "Загрузка письма: messageId=$messageId")
-            
-            // Сначала проверяем кэш
-            messageCache[messageId]?.let {
-                android.util.Log.d("MailRepository", "Письмо найдено в кэше")
-                return it
-            }
-            
-            android.util.Log.d("MailRepository", "Письмо не найдено в кэше, загружаем с сервера")
-            val session = jmapClient.getSession()
-            val accountId = session.primaryAccounts?.mail 
-                ?: session.accounts.keys.firstOrNull()
-            
-            android.util.Log.d("MailRepository", "AccountId для загрузки письма: $accountId")
-            if (accountId == null) {
-                android.util.Log.w("MailRepository", "AccountId не найден")
-                return null
-            }
-            
-            android.util.Log.d("MailRepository", "Запрос Email/get для messageId: $messageId")
-            val emails = jmapClient.getEmails(
-                ids = listOf(messageId),
-                accountId = accountId,
-                properties = listOf(
-                    "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
-                    "subject", "receivedAt", "bodyStructure",
-                    "bodyValues", "textBody", "htmlBody",
-                    "keywords", "size", "hasAttachment"
-                )
+    suspend fun getMessage(messageId: String): Result<MessageDetail> = runCatchingSuspend {
+        Log.d("MailRepository", "Загрузка письма: messageId=$messageId")
+        
+        // Сначала проверяем in-memory кэш
+        messageCache[messageId]?.let {
+            Log.d("MailRepository", "Письмо найдено в памяти кэше")
+            return@runCatchingSuspend it
+        }
+        
+        // Проверяем Room для получения обновленного статуса
+        val cachedEntity = messageDao?.getMessageById(messageId)
+        val cachedReadStatus = cachedEntity?.isUnread
+        
+        Log.d("MailRepository", "Письмо не найдено в памяти кэше, проверяем Room. Статус из Room: $cachedReadStatus")
+        
+        val session = jmapClient.getSession()
+        val accountId = session.primaryAccounts?.mail 
+            ?: session.accounts.keys.firstOrNull()
+        
+        Log.d("MailRepository", "AccountId для загрузки письма: $accountId")
+        if (accountId == null) {
+            throw IllegalStateException("AccountId не найден")
+        }
+        
+        Log.d("MailRepository", "Запрос Email/get для messageId: $messageId")
+        val emails = jmapClient.getEmails(
+            ids = listOf(messageId),
+            accountId = accountId,
+            properties = listOf(
+                "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
+                "subject", "receivedAt", "bodyStructure",
+                "bodyValues", "textBody", "htmlBody",
+                "keywords", "size", "hasAttachment"
             )
-            
-            android.util.Log.d("MailRepository", "Получено писем в ответе: ${emails.size}")
-            if (emails.isEmpty()) {
-                android.util.Log.w("MailRepository", "Письмо не найдено в ответе")
-                return null
+        )
+        
+        Log.d("MailRepository", "Получено писем в ответе: ${emails.size}")
+        if (emails.isEmpty()) {
+            throw IllegalStateException("Письмо не найдено в ответе")
+        }
+        
+        val email = emails[0]
+        val fromEmail = email.from?.firstOrNull()
+        val from = if (fromEmail != null) {
+            val name = if (fromEmail.name == null || fromEmail.name == "null" || fromEmail.name.isBlank()) null else fromEmail.name
+            val emailAddr = if (fromEmail.email.isBlank() || fromEmail.email == "null") "unknown" else fromEmail.email
+            EmailAddress(name, emailAddr)
+        } else {
+            EmailAddress(email = "unknown")
+        }
+        
+        Log.d("MailRepository", "Парсинг письма: from=${from.email}, to=${email.to?.size ?: 0}, cc=${email.cc?.size ?: 0}")
+        
+        var textBody: String? = null
+        var htmlBody: String? = null
+        
+        email.textBody?.forEach { textPart ->
+            email.bodyValues?.get(textPart.partId)?.let {
+                textBody = it.value
             }
-            
-            val email = emails[0]
-            // Обрабатываем строку "null" как null
-            val fromEmail = email.from?.firstOrNull()
-            val from = if (fromEmail != null) {
-                val name = if (fromEmail.name == null || fromEmail.name == "null" || fromEmail.name.isBlank()) null else fromEmail.name
-                val emailAddr = if (fromEmail.email.isBlank() || fromEmail.email == "null") "unknown" else fromEmail.email
-                EmailAddress(name, emailAddr)
-            } else {
-                EmailAddress(email = "unknown")
+        }
+        
+        email.htmlBody?.forEach { htmlPart ->
+            email.bodyValues?.get(htmlPart.partId)?.let {
+                htmlBody = it.value
             }
-            
-            android.util.Log.d("MailRepository", "Парсинг письма: from=${from.email}, to=${email.to?.size ?: 0}, cc=${email.cc?.size ?: 0}")
-            android.util.Log.d("MailRepository", "bodyValues keys: ${email.bodyValues?.keys?.joinToString() ?: "null"}")
-            android.util.Log.d("MailRepository", "textBody parts: ${email.textBody?.size ?: 0}, htmlBody parts: ${email.htmlBody?.size ?: 0}")
-            
-            var textBody: String? = null
-            var htmlBody: String? = null
-            
-            // Сначала пытаемся найти тело по partId из textBody/htmlBody
-            email.textBody?.forEach { textPart ->
-                android.util.Log.d("MailRepository", "Проверка textBody partId: ${textPart.partId}")
-                email.bodyValues?.get(textPart.partId)?.let {
-                    textBody = it.value
-                    android.util.Log.d("MailRepository", "Найден textBody для partId: ${textPart.partId}, длина: ${it.value.length}")
-                } ?: run {
-                    android.util.Log.w("MailRepository", "Не найден bodyValue для textBody partId: ${textPart.partId}")
-                }
-            }
-            
-            email.htmlBody?.forEach { htmlPart ->
-                android.util.Log.d("MailRepository", "Проверка htmlBody partId: ${htmlPart.partId}")
-                email.bodyValues?.get(htmlPart.partId)?.let {
+        }
+        
+        if (textBody == null && htmlBody == null) {
+            email.bodyValues?.values?.firstOrNull()?.let {
+                val content = it.value.trim()
+                val looksLikeHtml = content.startsWith("<") &&
+                    (content.contains("<html") || content.contains("<body") ||
+                     content.contains("<div") || content.contains("<p"))
+                
+                if (looksLikeHtml) {
                     htmlBody = it.value
-                    android.util.Log.d("MailRepository", "Найден htmlBody для partId: ${htmlPart.partId}, длина: ${it.value.length}")
-                } ?: run {
-                    android.util.Log.w("MailRepository", "Не найден bodyValue для htmlBody partId: ${htmlPart.partId}")
+                } else {
+                    textBody = it.value
                 }
             }
-            
-            // Если не нашли по partId, берем первое доступное значение
-            if (textBody == null && htmlBody == null) {
-                android.util.Log.d("MailRepository", "Не найдено тело по partId, ищем первое доступное значение")
-                email.bodyValues?.values?.firstOrNull()?.let {
-                    val content = it.value.trim()
-                    val looksLikeHtml = content.startsWith("<") && 
-                        (content.contains("<html") || content.contains("<body") || 
-                         content.contains("<div") || content.contains("<p"))
-                    
-                    if (looksLikeHtml) {
-                        htmlBody = it.value
-                        android.util.Log.d("MailRepository", "Найден htmlBody как первое значение, длина: ${it.value.length}")
-                    } else {
-                        textBody = it.value
-                        android.util.Log.d("MailRepository", "Найден textBody как первое значение, длина: ${it.value.length}")
-                    }
-                } ?: run {
-                    android.util.Log.w("MailRepository", "bodyValues пуст или null")
+        }
+        
+        val isUnread = email.keywords?.get("\$seen") != true
+        val isStarred = email.keywords?.get("\$flagged") == true
+        val isImportant = email.keywords?.get("\$important") == true
+        
+        // Парсим вложения из bodyStructure
+        val attachments = if (email.bodyStructure != null) {
+            try {
+                val bodyStructureJson = when (email.bodyStructure) {
+                    is org.json.JSONObject -> email.bodyStructure
+                    is org.json.JSONArray -> email.bodyStructure
+                    else -> null
                 }
+                
+                if (bodyStructureJson != null) {
+                    parseAttachments(bodyStructureJson)
+                } else {
+                    emptyList()
+                }
+            } catch (e: Exception) {
+                Log.e("MailRepository", "Ошибка парсинга вложений", e)
+                emptyList()
             }
-            
-            android.util.Log.d("MailRepository", "Итоговое тело: textBody=${textBody != null}, htmlBody=${htmlBody != null}")
-            
-            val isUnread = email.keywords?.get("\$seen") != true
-            val isStarred = email.keywords?.get("\$flagged") == true
-            val isImportant = email.keywords?.get("\$important") == true
-            
-            android.util.Log.d("MailRepository", "Исходные данные email.to: ${email.to?.size ?: 0} адресов")
-            email.to?.forEachIndexed { index, addr ->
-                android.util.Log.d("MailRepository", "  Исходный адрес [$index]: name='${addr.name}', email='${addr.email}'")
-            }
-            
-            val toList = email.to?.map { 
-                // Обрабатываем строку "null" как null
+        } else {
+            emptyList()
+        }
+        
+        val toList = email.to?.map { 
+            val name = if (it.name == null || it.name == "null" || it.name.isBlank()) null else it.name
+            val emailAddr = if (it.email.isBlank() || it.email == "null") "unknown" else it.email
+            EmailAddress(name, emailAddr)
+        } ?: emptyList()
+        
+        // Используем статус из Room, если он есть (обновленный локально), иначе с сервера
+        val finalIsUnread = if (cachedReadStatus != null) {
+            Log.d("MailRepository", "Используем статус прочитанности из Room: $cachedReadStatus")
+            cachedReadStatus
+        } else {
+            Log.d("MailRepository", "Используем статус прочитанности с сервера: $isUnread")
+            isUnread
+        }
+        
+        val messageDetail = MessageDetail(
+            id = email.id,
+            threadId = email.threadId,
+            from = from,
+            to = toList,
+            cc = email.cc?.map { 
                 val name = if (it.name == null || it.name == "null" || it.name.isBlank()) null else it.name
                 val emailAddr = if (it.email.isBlank() || it.email == "null") "unknown" else it.email
                 EmailAddress(name, emailAddr)
-            } ?: emptyList()
-            android.util.Log.d("MailRepository", "Создание MessageDetail: to.size=${toList.size}, to=${toList.map { it.email }.joinToString()}")
-            
-            val messageDetail = MessageDetail(
-                id = email.id,
-                threadId = email.threadId,
-                from = from,
-                to = toList,
-                cc = email.cc?.map { 
-                    val name = if (it.name == null || it.name == "null" || it.name.isBlank()) null else it.name
-                    val emailAddr = if (it.email.isBlank() || it.email == "null") "unknown" else it.email
-                    EmailAddress(name, emailAddr)
-                },
-                bcc = email.bcc?.map { 
-                    val name = if (it.name == null || it.name == "null" || it.name.isBlank()) null else it.name
-                    val emailAddr = if (it.email.isBlank() || it.email == "null") "unknown" else it.email
-                    EmailAddress(name, emailAddr)
-                },
-                subject = email.subject ?: "(без темы)",
-                date = try {
-                    Date.from(Instant.parse(email.receivedAt))
-                } catch (e: Exception) {
-                    Date()
-                },
-                body = MessageBody(text = textBody, html = htmlBody),
-                attachments = emptyList(),
-                flags = MessageFlags(
-                    unread = isUnread,
-                    starred = isStarred,
-                    important = isImportant,
-                    hasAttachments = email.hasAttachment == true
-                )
+            },
+            bcc = email.bcc?.map { 
+                val name = if (it.name == null || it.name == "null" || it.name.isBlank()) null else it.name
+                val emailAddr = if (it.email.isBlank() || it.email == "null") "unknown" else it.email
+                EmailAddress(name, emailAddr)
+            },
+            subject = email.subject ?: "(без темы)",
+            date = try {
+                Date.from(Instant.parse(email.receivedAt))
+            } catch (e: Exception) {
+                Date()
+            },
+            body = MessageBody(text = textBody, html = htmlBody),
+            attachments = attachments,
+            flags = MessageFlags(
+                unread = finalIsUnread,
+                starred = isStarred,
+                important = isImportant,
+                hasAttachments = email.hasAttachment == true || attachments.isNotEmpty()
             )
-            
-            // Сохраняем в кэш
-            messageCache[email.id] = messageDetail
-            messageDetail
-        } catch (e: Exception) {
-            android.util.Log.e("MailRepository", "Ошибка загрузки письма messageId=$messageId", e)
-            null
+        )
+        
+        messageCache[email.id] = messageDetail
+        messageDetail
+    }.onError { e ->
+        Log.e("MailRepository", "Ошибка загрузки письма messageId=$messageId", e)
+    }
+    
+    suspend fun updateMessageReadStatus(messageId: String, isUnread: Boolean) {
+        Log.d("MailRepository", "Обновление статуса прочитанности в кэше: messageId=$messageId, isUnread=$isUnread")
+        
+        // Обновляем в памяти кэше
+        messageCache[messageId]?.let { message ->
+            val updatedMessage = message.copy(
+                flags = message.flags.copy(unread = isUnread)
+            )
+            messageCache[messageId] = updatedMessage
+            Log.d("MailRepository", "Статус обновлен в памяти кэше")
+        }
+        
+        // Обновляем в Room
+        messageDao?.let { dao ->
+            try {
+                dao.updateReadStatus(messageId, isUnread)
+                Log.d("MailRepository", "Статус обновлен в Room")
+            } catch (e: Exception) {
+                Log.e("MailRepository", "Ошибка обновления статуса в Room", e)
+            }
         }
     }
 }
