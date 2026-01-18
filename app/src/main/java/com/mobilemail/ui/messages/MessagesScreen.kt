@@ -3,40 +3,58 @@ package com.mobilemail.ui.messages
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import kotlinx.coroutines.launch
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessagesScreen(
     viewModel: MessagesViewModel,
-    onMessageClick: (String) -> Unit
+    onMessageClick: (String) -> Unit,
+    onSearchClick: () -> Unit = {},
+    onLogout: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        android.util.Log.d("MessagesScreen", "MessagesScreen создан")
+    val snackbarHostState = remember { SnackbarHostState() }
+
+    // Логирование состояния
+    LaunchedEffect(uiState.isLoading, uiState.folders.size, uiState.messages.size, uiState.error) {
+        android.util.Log.d("MessagesScreen", "Состояние UI: isLoading=${uiState.isLoading}, folders=${uiState.folders.size}, messages=${uiState.messages.size}, error=${uiState.error?.getUserMessage()}")
     }
-    
-    androidx.compose.runtime.LaunchedEffect(uiState.messages.size, uiState.isLoading, uiState.selectedFolder?.id) {
-        android.util.Log.d("MessagesScreen", "Состояние изменилось: messages=${uiState.messages.size}, isLoading=${uiState.isLoading}, folder=${uiState.selectedFolder?.name}")
+
+    // Обработка ошибок
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let { error ->
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = error.getUserMessage(),
+                    duration = SnackbarDuration.Long
+                )
+                viewModel.clearError()
+            }
+        }
     }
 
     ModalNavigationDrawer(
@@ -54,8 +72,9 @@ fun MessagesScreen(
                 )
             }
         }
-    ) {
+        ) {
         Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
                 TopAppBar(
                     title = { Text(uiState.selectedFolder?.name ?: "Почта") },
@@ -65,8 +84,14 @@ fun MessagesScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = onSearchClick) {
+                            Icon(Icons.Default.Search, contentDescription = "Поиск")
+                        }
                         IconButton(onClick = { viewModel.refresh() }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                        }
+                        IconButton(onClick = onLogout) {
+                            Icon(Icons.Default.ExitToApp, contentDescription = "Выход")
                         }
                     }
                 )
@@ -75,7 +100,10 @@ fun MessagesScreen(
             MessagesList(
                 messages = uiState.messages,
                 isLoading = uiState.isLoading,
+                isLoadingMore = uiState.isLoadingMore,
+                hasMore = uiState.hasMore,
                 onMessageClick = onMessageClick,
+                onLoadMore = { viewModel.loadMoreMessages() },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -95,7 +123,8 @@ fun FoldersList(
         modifier = modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        items(folders) { folder ->
+        items(folders.size) { index ->
+            val folder = folders[index]
             FolderItem(
                 folder = folder,
                 isSelected = folder.id == selectedFolder?.id,
@@ -150,17 +179,20 @@ fun FolderItem(
 fun MessagesList(
     messages: List<MessageListItem>,
     isLoading: Boolean,
+    isLoadingMore: Boolean,
+    hasMore: Boolean,
     onMessageClick: (String) -> Unit,
+    onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    androidx.compose.runtime.LaunchedEffect(messages.size, isLoading) {
+    LaunchedEffect(messages.size, isLoading) {
         android.util.Log.d("MessagesScreen", "MessagesList: messages=${messages.size}, isLoading=$isLoading")
     }
     
     Box(
         modifier = modifier.fillMaxSize()
     ) {
-        if (isLoading) {
+        if (isLoading && messages.isEmpty()) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center)
             )
@@ -176,11 +208,30 @@ fun MessagesList(
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(messages) { message ->
+                items(messages.size) { index ->
+                    val message = messages[index]
                     MessageItem(
                         message = message,
                         onClick = { onMessageClick(message.id) }
                     )
+                    if (index == messages.size - 1 && hasMore && !isLoadingMore) {
+                        LaunchedEffect(Unit) {
+                            onLoadMore()
+                        }
+                    }
+                }
+                
+                if (isLoadingMore) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator()
+                        }
+                    }
                 }
             }
         }
@@ -193,12 +244,21 @@ fun MessageItem(
     onClick: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+    val isUnread = message.flags.unread
     
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = if (isUnread) 4.dp else 2.dp
+        ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isUnread) 
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+            else 
+                MaterialTheme.colorScheme.surface
+        )
     ) {
         Column(
             modifier = Modifier
@@ -207,18 +267,35 @@ fun MessageItem(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = message.from.name ?: message.from.email,
-                    style = MaterialTheme.typography.titleSmall,
+                Row(
                     modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (isUnread) {
+                        Icon(
+                            Icons.Default.Email,
+                            contentDescription = "Непрочитанное",
+                            modifier = Modifier.size(16.dp),
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
+                    Text(
+                        text = message.from.name ?: message.from.email,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Text(
                     text = dateFormat.format(message.date),
                     style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -228,6 +305,7 @@ fun MessageItem(
             Text(
                 text = message.subject,
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -237,6 +315,7 @@ fun MessageItem(
                 Text(
                     text = message.snippet,
                     style = MaterialTheme.typography.bodySmall,
+                    fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
