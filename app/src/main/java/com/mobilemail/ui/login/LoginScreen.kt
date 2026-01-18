@@ -1,15 +1,22 @@
 package com.mobilemail.ui.login
 
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.R
+import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
@@ -17,6 +24,8 @@ fun LoginScreen(
     onLoginSuccess: (String, String, String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(uiState.account) {
         uiState.account?.let { account ->
@@ -28,10 +37,26 @@ fun LoginScreen(
             )
         }
     }
+    
+    LaunchedEffect(uiState.error) {
+        uiState.error?.let { error ->
+            scope.launch {
+                snackbarHostState.showSnackbar(
+                    message = error.getUserMessage(),
+                    duration = SnackbarDuration.Long
+                )
+                viewModel.clearError()
+            }
+        }
+    }
 
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) }
+    ) { padding ->
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .padding(padding)
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
@@ -50,7 +75,7 @@ fun LoginScreen(
                 .fillMaxWidth()
                 .padding(bottom = 16.dp),
             singleLine = true,
-            placeholder = { Text("http://stalwart:8080") }
+            placeholder = { Text("http://example.com:8080") }
         )
 
         OutlinedTextField(
@@ -69,16 +94,36 @@ fun LoginScreen(
             label = { Text(stringResource(R.string.password_hint)) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 24.dp),
+                .padding(bottom = if (uiState.requiresTwoFactor) 16.dp else 24.dp),
             singleLine = true,
             visualTransformation = PasswordVisualTransformation()
         )
 
-        uiState.error?.let { error ->
-            Text(
-                text = error,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(bottom = 16.dp)
+        if (uiState.requiresTwoFactor) {
+            OutlinedTextField(
+                value = uiState.totpCode,
+                onValueChange = { newValue ->
+                    if (newValue.length <= 6 && newValue.all { it.isDigit() }) {
+                        viewModel.updateTotpCode(newValue)
+                    }
+                },
+                label = { Text("Код двухфакторной авторизации") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 24.dp)
+                    .semantics {
+                        contentDescription = "TOTP код двухфакторной авторизации"
+                    },
+                singleLine = true,
+                placeholder = { Text("000000") },
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.NumberPassword,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = { viewModel.login { } }
+                ),
+                visualTransformation = PasswordVisualTransformation()
             )
         }
 
@@ -98,5 +143,6 @@ fun LoginScreen(
                 Text(stringResource(R.string.login_button))
             }
         }
+    }
     }
 }
