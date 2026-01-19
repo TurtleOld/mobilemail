@@ -26,8 +26,18 @@ class CredentialManager(private val context: Context) {
             .apply()
     }
     
+    fun saveTotpCode(email: String, totpCode: String) {
+        encryptedPrefs.edit()
+            .putString("totp_$email", totpCode)
+            .apply()
+    }
+    
     fun getPassword(server: String, email: String): String? {
         return encryptedPrefs.getString("password_$email", null)
+    }
+    
+    fun getTotpCode(email: String): String? {
+        return encryptedPrefs.getString("totp_$email", null)
     }
     
     fun getServer(email: String): String? {
@@ -39,6 +49,7 @@ class CredentialManager(private val context: Context) {
             .remove("server_$email")
             .remove("email_$email")
             .remove("password_$email")
+            .remove("totp_$email")
             .apply()
     }
     

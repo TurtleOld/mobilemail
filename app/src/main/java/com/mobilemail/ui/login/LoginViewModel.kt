@@ -40,14 +40,16 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             val savedSession = preferencesManager.getSavedSession()
             if (savedSession != null) {
                 val savedPassword = credentialManager.getPassword(savedSession.server, savedSession.email)
+                val savedTotpCode = credentialManager.getTotpCode(savedSession.email)
                 if (!savedPassword.isNullOrBlank()) {
                     Log.d("LoginViewModel", "Найдена сохраненная сессия: ${savedSession.email}")
                     _uiState.value = _uiState.value.copy(
                         server = savedSession.server,
-                        login = savedSession.email
+                        login = savedSession.email,
+                        totpCode = savedTotpCode ?: "",
+                        requiresTwoFactor = !savedTotpCode.isNullOrBlank()
                     )
-                    // Автоматический вход
-                    autoLogin(savedSession.server, savedSession.email, savedPassword, savedSession.accountId)
+                    autoLogin(savedSession.server, savedSession.email, savedPassword, savedSession.accountId, savedTotpCode)
                 } else {
                     Log.d("LoginViewModel", "Сохраненная сессия найдена, но пароль отсутствует")
                     _uiState.value = _uiState.value.copy(server = savedSession.server, login = savedSession.email)
@@ -64,7 +66,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun autoLogin(server: String, email: String, password: String, accountId: String) {
+    private fun autoLogin(server: String, email: String, password: String, accountId: String, savedTotpCode: String? = null) {
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
         
         viewModelScope.launch {
@@ -76,18 +78,46 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     password = password,
                     accountId = accountId
                 )
+                
+                if (!savedTotpCode.isNullOrBlank()) {
+                    try {
+                        jmapClient.getSessionWithTotp(savedTotpCode)
+                        jmapClient.setTotpCode(savedTotpCode)
+                    } catch (e: TwoFactorRequiredException) {
+                        Log.w("LoginViewModel", "Сохраненный TOTP код недействителен, требуется новый")
+                        _uiState.value = _uiState.value.copy(
+                            isLoading = false,
+                            requiresTwoFactor = true,
+                            error = AppError.TwoFactorRequired("Требуется новый код двухфакторной авторизации")
+                        )
+                        credentialManager.clearCredentials(email)
+                        credentialManager.saveCredentials(normalizedServer, email, password)
+                        return@launch
+                    }
+                }
 
                 val repository = MailRepository(jmapClient)
                 repository.getAccount().fold(
                     onError = { e ->
                         Log.w("LoginViewModel", "Автовход не удался", e)
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = ErrorMapper.mapException(e)
-                        )
-                        // Очищаем невалидную сессию
-                        preferencesManager.clearSession()
-                        credentialManager.clearCredentials(email)
+                        if (e is TwoFactorRequiredException) {
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                requiresTwoFactor = true,
+                                error = AppError.TwoFactorRequired()
+                            )
+                            if (!savedTotpCode.isNullOrBlank()) {
+                                credentialManager.clearCredentials(email)
+                                credentialManager.saveCredentials(normalizedServer, email, password)
+                            }
+                        } else {
+                            _uiState.value = _uiState.value.copy(
+                                isLoading = false,
+                                error = ErrorMapper.mapException(e)
+                            )
+                            preferencesManager.clearSession()
+                            credentialManager.clearCredentials(email)
+                        }
                     },
                     onSuccess = { account ->
                         Log.d("LoginViewModel", "Автовход успешен")
@@ -99,12 +129,20 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Ошибка автовхода", e)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = ErrorMapper.mapException(e)
-                )
-                preferencesManager.clearSession()
-                credentialManager.clearCredentials(email)
+                if (e is TwoFactorRequiredException) {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        requiresTwoFactor = true,
+                        error = AppError.TwoFactorRequired()
+                    )
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        isLoading = false,
+                        error = ErrorMapper.mapException(e)
+                    )
+                    preferencesManager.clearSession()
+                    credentialManager.clearCredentials(email)
+                }
             }
         }
     }
@@ -207,6 +245,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                         Log.d("LoginViewModel", "Вход успешен, account: ${account.id}")
                         preferencesManager.saveSession(normalizedServer, state.login, account.id)
                         credentialManager.saveCredentials(normalizedServer, state.login, state.password)
+                        if (state.requiresTwoFactor && state.totpCode.isNotBlank()) {
+                            credentialManager.saveTotpCode(state.login, state.totpCode)
+                            Log.d("LoginViewModel", "TOTP код сохранен")
+                        }
                         Log.d("LoginViewModel", "Сессия сохранена")
                         _uiState.value = state.copy(
                             isLoading = false,
