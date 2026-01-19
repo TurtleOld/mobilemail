@@ -68,6 +68,36 @@ app/
 - OkHttp для HTTP запросов
 - JSON для парсинга ответов JMAP
 
+## Документация
+
+Документация генерируется из KDoc комментариев в коде с использованием [Dokka](https://kotlinlang.org/docs/dokka-introduction.html).
+
+```bash
+# Генерация документации
+./gradlew dokkaHtml
+
+# Или через Makefile
+make docs-build
+```
+
+Документация будет сгенерирована в `docs/api/`. Откройте `docs/api/index.html` в браузере для просмотра.
+
+**Онлайн документация:** [https://turtleold.github.io/mobilemail/](https://turtleold.github.io/mobilemail/)
+
+См. [DOCUMENTATION.md](DOCUMENTATION.md) для подробной информации.
+
+## Документация API
+
+Документация API генерируется автоматически из KDoc комментариев и публикуется на [GitHub Pages](https://turtleold.github.io/mobilemail/).
+
+Для локальной генерации:
+
+```bash
+./gradlew dokkaHtml
+```
+
+Документация будет сгенерирована в `docs/api/`.
+
 ## Лицензия
 
 Проект создан для личного использования.
