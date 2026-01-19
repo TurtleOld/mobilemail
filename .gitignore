@@ -17,3 +17,6 @@ local.properties
 *.sh
 
 build/
+
+# Dokka generated documentation
+docs/api/

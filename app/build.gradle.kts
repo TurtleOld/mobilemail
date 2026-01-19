@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("kotlin-parcelize")
     id("com.google.devtools.ksp")
+    id("org.jetbrains.dokka")
 }
 
 android {
@@ -92,4 +93,32 @@ dependencies {
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+tasks.dokkaHtml {
+    outputDirectory.set(file("${project.rootDir}/docs/api"))
+    moduleName.set("MobileMail")
+    
+    dokkaSourceSets {
+        configureEach {
+            includes.from("${project.rootDir}/docs/package.md")
+            
+            sourceLink {
+                localDirectory.set(file("src/main/java"))
+                remoteUrl.set(uri("https://github.com/TurtleOld/mobilemail/tree/main/app/src/main/java").toURL())
+                remoteLineSuffix.set("#L")
+            }
+            
+            documentedVisibilities.set(
+                setOf(
+                    org.jetbrains.dokka.DokkaConfiguration.Visibility.PUBLIC,
+                    org.jetbrains.dokka.DokkaConfiguration.Visibility.PROTECTED
+                )
+            )
+            
+            reportUndocumented.set(true)
+            skipEmptyPackages.set(true)
+            skipDeprecated.set(false)
+        }
+    }
 }
