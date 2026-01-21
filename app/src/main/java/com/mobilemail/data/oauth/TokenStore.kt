@@ -39,6 +39,8 @@ class TokenStore(private val context: Context) {
             System.currentTimeMillis() + (it * 1000L)
         }
         
+        val expiresAtDays = expiresAt?.let { (it - System.currentTimeMillis()) / (1000L * 60 * 60 * 24) }
+        
         encryptedPrefs.edit()
             .putString("access_token_${server}_$email", tokenResponse.accessToken)
             .putString("token_type_${server}_$email", tokenResponse.tokenType)
@@ -46,7 +48,7 @@ class TokenStore(private val context: Context) {
             .putString("refresh_token_${server}_$email", tokenResponse.refreshToken)
             .apply()
         
-        Log.d("TokenStore", "Токены сохранены для $email на $server")
+        Log.d("TokenStore", "Токены сохранены для $email на $server: expires_in=${tokenResponse.expiresIn}s (${expiresAtDays} дней), has_refresh=${tokenResponse.refreshToken != null}")
     }
     
     fun getTokens(server: String, email: String): StoredToken? {
@@ -56,18 +58,28 @@ class TokenStore(private val context: Context) {
         val refreshToken = encryptedPrefs.getString("refresh_token_${server}_$email", null)
         
         return if (accessToken != null) {
-            StoredToken(
+            val token = StoredToken(
                 accessToken = accessToken,
                 tokenType = tokenType ?: "Bearer",
                 expiresAt = expiresAt,
                 refreshToken = refreshToken
             )
+            
+            val expiresAtDays = expiresAt?.let { (it - System.currentTimeMillis()) / (1000L * 60 * 60 * 24) }
+            val isExpired = token.isExpired()
+            Log.d("TokenStore", "Токены загружены для $email на $server: expired=$isExpired, expires_in_days=$expiresAtDays, has_refresh=${refreshToken != null}")
+            
+            token
         } else {
+            Log.d("TokenStore", "Токены не найдены для $email на $server")
             null
         }
     }
     
     fun clearTokens(server: String, email: String) {
+        val hadAccessToken = encryptedPrefs.contains("access_token_${server}_$email")
+        val hadRefreshToken = encryptedPrefs.contains("refresh_token_${server}_$email")
+        
         encryptedPrefs.edit()
             .remove("access_token_${server}_$email")
             .remove("token_type_${server}_$email")
@@ -75,7 +87,7 @@ class TokenStore(private val context: Context) {
             .remove("refresh_token_${server}_$email")
             .apply()
         
-        Log.d("TokenStore", "Токены удалены для $email на $server")
+        Log.d("TokenStore", "Токены удалены для $email на $server: had_access=$hadAccessToken, had_refresh=$hadRefreshToken")
     }
     
     fun clearAllTokens() {

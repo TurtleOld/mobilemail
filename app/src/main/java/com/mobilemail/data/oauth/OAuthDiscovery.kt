@@ -15,7 +15,10 @@ import java.util.concurrent.TimeUnit
  * @param deviceAuthorizationEndpoint URL для запроса device code
  * @param tokenEndpoint URL для получения и обновления токенов
  * @param authorizationEndpoint URL для авторизации (опционально)
+ * @param registrationEndpoint URL для регистрации клиента (опционально)
+ * @param introspectionEndpoint URL для интроспекции токена (опционально)
  * @param grantTypesSupported Список поддерживаемых grant types
+ * @param responseTypesSupported Список поддерживаемых response types (опционально)
  * @param scopesSupported Список поддерживаемых scopes (опционально)
  */
 data class OAuthServerMetadata(
@@ -23,7 +26,10 @@ data class OAuthServerMetadata(
     val deviceAuthorizationEndpoint: String,
     val tokenEndpoint: String,
     val authorizationEndpoint: String?,
+    val registrationEndpoint: String?,
+    val introspectionEndpoint: String?,
     val grantTypesSupported: List<String>,
+    val responseTypesSupported: List<String>?,
     val scopesSupported: List<String>?
 )
 
@@ -81,13 +87,37 @@ class OAuthDiscovery(private val client: OkHttpClient) {
                 val issuer = json.getString("issuer")
                 val deviceAuthorizationEndpoint = json.getString("device_authorization_endpoint")
                 val tokenEndpoint = json.getString("token_endpoint")
-                val authorizationEndpoint = json.optString("authorization_endpoint", null)
+                val authorizationEndpoint = if (json.has("authorization_endpoint") && !json.isNull("authorization_endpoint")) {
+                    val value = json.getString("authorization_endpoint")
+                    if (value.isNotBlank()) value else null
+                } else {
+                    null
+                }
+                val registrationEndpoint = if (json.has("registration_endpoint") && !json.isNull("registration_endpoint")) {
+                    val value = json.getString("registration_endpoint")
+                    if (value.isNotBlank()) value else null
+                } else {
+                    null
+                }
+                val introspectionEndpoint = if (json.has("introspection_endpoint") && !json.isNull("introspection_endpoint")) {
+                    val value = json.getString("introspection_endpoint")
+                    if (value.isNotBlank()) value else null
+                } else {
+                    null
+                }
                 
                 val grantTypesArray = json.optJSONArray("grant_types_supported")
                 val grantTypesSupported = if (grantTypesArray != null) {
                     (0 until grantTypesArray.length()).map { grantTypesArray.getString(it) }
                 } else {
                     emptyList()
+                }
+                
+                val responseTypesArray = json.optJSONArray("response_types_supported")
+                val responseTypesSupported = if (responseTypesArray != null) {
+                    (0 until responseTypesArray.length()).map { responseTypesArray.getString(it) }
+                } else {
+                    null
                 }
                 
                 val scopesArray = json.optJSONArray("scopes_supported")
@@ -104,7 +134,10 @@ class OAuthDiscovery(private val client: OkHttpClient) {
                     deviceAuthorizationEndpoint = deviceAuthorizationEndpoint,
                     tokenEndpoint = tokenEndpoint,
                     authorizationEndpoint = authorizationEndpoint,
+                    registrationEndpoint = registrationEndpoint,
+                    introspectionEndpoint = introspectionEndpoint,
                     grantTypesSupported = grantTypesSupported,
+                    responseTypesSupported = responseTypesSupported,
                     scopesSupported = scopesSupported
                 )
             } catch (e: Exception) {

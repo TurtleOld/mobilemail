@@ -1,18 +1,14 @@
 package com.mobilemail.ui.login
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.R
@@ -31,8 +27,8 @@ fun LoginScreen(
         uiState.account?.let { account ->
             onLoginSuccess(
                 uiState.server,
-                uiState.login,
-                uiState.password,
+                uiState.server,
+                "",
                 account.id
             )
         }
@@ -73,31 +69,55 @@ fun LoginScreen(
             label = { Text(stringResource(R.string.server_hint)) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .padding(bottom = if (uiState.oauthUserCode != null) 16.dp else 24.dp),
             singleLine = true,
-            placeholder = { Text("http://example.com:8080") }
+            placeholder = { Text("https://mail.example.com") }
         )
-
-        OutlinedTextField(
-            value = uiState.login,
-            onValueChange = viewModel::updateLogin,
-            label = { Text(stringResource(R.string.login_hint)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
-            singleLine = true
-        )
-
-        OutlinedTextField(
-            value = uiState.password,
-            onValueChange = viewModel::updatePassword,
-            label = { Text(stringResource(R.string.password_hint)) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = if (uiState.requiresTwoFactor) 16.dp else 24.dp),
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation()
-        )
+        
+        if (uiState.oauthUserCode != null) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                )
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp)
+                ) {
+                    Text(
+                        text = "Код авторизации:",
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                    Text(
+                        text = uiState.oauthUserCode,
+                        style = MaterialTheme.typography.headlineMedium,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                    val context = LocalContext.current
+                    val verificationUri = uiState.oauthVerificationUriComplete ?: uiState.oauthVerificationUri
+                    if (verificationUri != null) {
+                        Button(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_VIEW, Uri.parse(verificationUri))
+                                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Открыть страницу авторизации")
+                        }
+                    }
+                    TextButton(
+                        onClick = { viewModel.cancelOAuthLogin() },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Отменить")
+                    }
+                }
+            }
+        }
 
         if (uiState.requiresTwoFactor) {
             OutlinedTextField(
@@ -128,11 +148,11 @@ fun LoginScreen(
         }
 
         Button(
-            onClick = { viewModel.login { } },
+            onClick = { viewModel.startOAuthLogin { } },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(56.dp),
-            enabled = !uiState.isLoading
+            enabled = !uiState.isLoading && (uiState.oauthUserCode == null)
         ) {
             if (uiState.isLoading) {
                 CircularProgressIndicator(
@@ -140,7 +160,7 @@ fun LoginScreen(
                     color = MaterialTheme.colorScheme.onPrimary
                 )
             } else {
-                Text(stringResource(R.string.login_button))
+                Text("Войти через OAuth")
             }
         }
     }

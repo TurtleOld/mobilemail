@@ -90,22 +90,29 @@ class JmapOAuthClient(
         val stored = tokenStore.getTokens(baseUrl, email)
         
         if (stored != null && stored.isValid()) {
+            Log.d("JmapOAuthClient", "Используется валидный access token")
             return@withLock stored.accessToken
         }
         
         if (stored?.refreshToken != null) {
             try {
-                Log.d("JmapOAuthClient", "Обновление токена через refresh_token")
+                Log.d("JmapOAuthClient", "Access token истёк, обновление через refresh_token")
                 val newToken = tokenRefresh.refreshToken(stored.refreshToken)
                 tokenStore.saveTokens(baseUrl, email, newToken)
+                Log.d("JmapOAuthClient", "Токен успешно обновлён")
                 return@withLock newToken.accessToken
             } catch (e: OAuthException) {
-                Log.w("JmapOAuthClient", "Не удалось обновить токен, требуется повторная авторизация", e)
+                Log.e("JmapOAuthClient", "Не удалось обновить токен через refresh_token: ${e.message}, код: ${e.statusCode}", e)
                 tokenStore.clearTokens(baseUrl, email)
                 throw OAuthTokenExpiredException("Токен истёк и не удалось обновить. Требуется повторная авторизация.")
+            } catch (e: Exception) {
+                Log.e("JmapOAuthClient", "Неожиданная ошибка при обновлении токена", e)
+                tokenStore.clearTokens(baseUrl, email)
+                throw OAuthTokenExpiredException("Ошибка обновления токена: ${e.message}")
             }
         }
         
+        Log.w("JmapOAuthClient", "Токен отсутствует или истёк, refresh token отсутствует")
         throw OAuthTokenExpiredException("Токен отсутствует или истёк. Требуется авторизация.")
     }
     
@@ -182,6 +189,7 @@ class JmapOAuthClient(
         if (!response.isSuccessful) {
             if (response.code == 401 || response.code == 403) {
                 try {
+                    Log.d("JmapOAuthClient", "Session запрос вернул ${response.code}, попытка обновить токен и повторить")
                     val newToken = getAccessToken()
                     val retryRequest = request.newBuilder()
                         .header("Authorization", getAuthHeader(newToken))
@@ -189,13 +197,17 @@ class JmapOAuthClient(
                     val retryResponse = client.newCall(retryRequest).execute()
                     val retryBody = retryResponse.body?.string() ?: ""
                     if (!retryResponse.isSuccessful) {
+                        Log.e("JmapOAuthClient", "Session запрос не удался после обновления токена: код ${retryResponse.code}")
                         throw Exception("JMAP session failed после обновления токена: код ${retryResponse.code}, ответ: ${retryBody.take(200)}")
                     }
+                    Log.d("JmapOAuthClient", "Session запрос успешен после обновления токена")
                     val sessionJson = JSONObject(retryBody)
                     session = parseSession(sessionJson)
                 } catch (e: OAuthTokenExpiredException) {
+                    Log.e("JmapOAuthClient", "Токен истёк и не может быть обновлён для session", e)
                     throw e
                 } catch (e: Exception) {
+                    Log.e("JmapOAuthClient", "Ошибка при повторной попытке session запроса", e)
                     throw Exception("JMAP session failed: код ${response.code}, ответ: ${responseBody.take(200)}")
                 }
             } else {
@@ -567,6 +579,7 @@ class JmapOAuthClient(
         if (!response.isSuccessful) {
             if (response.code == 401 || response.code == 403) {
                 try {
+                    Log.d("JmapOAuthClient", "Получен ${response.code}, попытка обновить токен и повторить запрос")
                     val newToken = getAccessToken()
                     val retryRequest = request.newBuilder()
                         .header("Authorization", getAuthHeader(newToken))
@@ -574,12 +587,16 @@ class JmapOAuthClient(
                     val retryResponse = client.newCall(retryRequest).execute()
                     val retryBody = retryResponse.body?.string() ?: "{}"
                     if (!retryResponse.isSuccessful) {
+                        Log.e("JmapOAuthClient", "Запрос не удался после обновления токена: код ${retryResponse.code}")
                         throw Exception("JMAP request failed после обновления токена: код ${retryResponse.code}, ответ: ${retryBody.take(200)}")
                     }
+                    Log.d("JmapOAuthClient", "Запрос успешен после обновления токена")
                     return JSONObject(retryBody)
                 } catch (e: OAuthTokenExpiredException) {
+                    Log.e("JmapOAuthClient", "Токен истёк и не может быть обновлён", e)
                     throw e
                 } catch (e: Exception) {
+                    Log.e("JmapOAuthClient", "Ошибка при повторной попытке запроса", e)
                     throw Exception("JMAP request failed: код ${response.code}, сообщение: ${response.message}, ответ: ${responseBody.take(200)}")
                 }
             } else {

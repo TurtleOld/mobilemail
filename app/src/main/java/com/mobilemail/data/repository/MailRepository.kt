@@ -23,15 +23,17 @@ import java.time.Instant
 import java.util.Date
 
 class MailRepository(
-    private val jmapClient: JmapClient,
+    private val jmapClient: Any,
     private val messageDao: MessageDao? = null,
     private val folderDao: FolderDao? = null
 ) {
+    @Suppress("UNCHECKED_CAST")
+    private val client = jmapClient as? JmapClient ?: jmapClient as com.mobilemail.data.jmap.JmapOAuthClient
     private val messageCache = mutableMapOf<String, MessageDetail>()
     
     suspend fun getAccount(): Result<Account> = runCatchingSuspend {
         Log.d("MailRepository", "Получение аккаунта...")
-        val session = jmapClient.getSession()
+        val session = client.getSession()
         Log.d("MailRepository", "Сессия получена, аккаунтов: ${session.accounts.size}")
         
         val accountId = session.primaryAccounts?.mail 
@@ -56,7 +58,7 @@ class MailRepository(
 
     suspend fun getFolders(): Result<List<Folder>> = runCatchingSuspend {
         Log.d("MailRepository", "Начало загрузки папок")
-        val session = jmapClient.getSession()
+        val session = client.getSession()
         Log.d("MailRepository", "Сессия получена для getFolders")
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
@@ -67,7 +69,7 @@ class MailRepository(
         }
         
         Log.d("MailRepository", "Запрос папок для accountId: $accountId")
-        val mailboxes = jmapClient.getMailboxes(accountId)
+        val mailboxes = client.getMailboxes(accountId)
         Log.d("MailRepository", "Получено папок: ${mailboxes.size}")
         
         mailboxes.map { mailbox ->
@@ -96,7 +98,7 @@ class MailRepository(
         limit: Int = 50
     ): Result<List<MessageListItem>> = runCatchingSuspend {
         Log.d("MailRepository", "Загрузка писем для папки: $folderId")
-        val session = jmapClient.getSession()
+        val session = client.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
         
@@ -109,7 +111,7 @@ class MailRepository(
         
         try {
             Log.d("MailRepository", "Запрос писем для accountId: $accountId, mailboxId: $folderId, position: $position, limit: $limit")
-            val queryResult = jmapClient.queryEmails(
+            val queryResult = client.queryEmails(
                 mailboxId = folderId,
                 accountId = accountId,
                 position = position,
@@ -125,7 +127,7 @@ class MailRepository(
             }
         
         Log.d("MailRepository", "Загрузка полных данных для всех писем")
-        val emails = jmapClient.getEmails(
+        val emails = client.getEmails(
             ids = queryResult.ids,
             accountId = accountId,
             properties = listOf(
@@ -358,7 +360,7 @@ class MailRepository(
         
         Log.d("MailRepository", "Письмо не найдено в памяти кэше, проверяем Room. Статус из Room: $cachedReadStatus")
         
-        val session = jmapClient.getSession()
+        val session = client.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
         
@@ -368,7 +370,7 @@ class MailRepository(
         }
         
         Log.d("MailRepository", "Запрос Email/get для messageId: $messageId")
-        val emails = jmapClient.getEmails(
+        val emails = client.getEmails(
             ids = listOf(messageId),
             accountId = accountId,
             properties = listOf(

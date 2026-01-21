@@ -10,10 +10,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.room.Room
+import com.mobilemail.data.jmap.JmapClient
+import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.data.local.database.AppDatabase
+import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
-import com.mobilemail.data.security.CredentialManager
 import com.mobilemail.ui.theme.MobileMailTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +47,7 @@ class MainActivity : ComponentActivity() {
         ).build()
     }
     private val preferencesManager by lazy { PreferencesManager(applicationContext) }
-    private val credentialManager by lazy { CredentialManager(applicationContext) }
+    private val tokenStore by lazy { TokenStore(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,17 +60,28 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val navController = rememberNavController()
 
-                    // Проверяем сохранённую сессию при запуске и навигируем
                     LaunchedEffect(Unit) {
                         val savedSession = preferencesManager.getSavedSession()
                         if (savedSession != null) {
-                            val password = credentialManager.getPassword(savedSession.server, savedSession.email)
-                            if (!password.isNullOrBlank()) {
-                                android.util.Log.d("MainActivity", "Найдена сохраненная сессия, автоматический вход")
-                                val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}/${Uri.encode(password)}/${Uri.encode(savedSession.accountId)}"
-                                navController.navigate(route) {
-                                    popUpTo(0) { inclusive = true }
+                            val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
+                            if (tokens != null) {
+                                val hasRefreshToken = tokens.refreshToken != null
+                                val isAccessTokenValid = tokens.isValid()
+                                android.util.Log.d("MainActivity", "Найдена сохраненная OAuth сессия: access_valid=$isAccessTokenValid, has_refresh=$hasRefreshToken")
+                                
+                                if (isAccessTokenValid || hasRefreshToken) {
+                                    android.util.Log.d("MainActivity", "Автоматический вход через OAuth")
+                                    val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}//${Uri.encode(savedSession.accountId)}"
+                                    navController.navigate(route) {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                } else {
+                                    android.util.Log.w("MainActivity", "OAuth токены истекли и нет refresh token, требуется повторная авторизация")
+                                    preferencesManager.clearSession()
+                                    tokenStore.clearTokens(savedSession.server, savedSession.email)
                                 }
+                            } else {
+                                android.util.Log.d("MainActivity", "OAuth токены не найдены")
                             }
                         }
                     }
@@ -88,12 +101,11 @@ class MainActivity : ComponentActivity() {
                             )
                             LoginScreen(
                                 viewModel = viewModel,
-                                onLoginSuccess = { server, email, password, accountId ->
+                                onLoginSuccess = { server, email, _, accountId ->
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
-                                    val encodedPassword = Uri.encode(password)
                                     val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("messages/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId") {
+                                    navController.navigate("messages/$encodedServer/$encodedEmail//$encodedAccountId") {
                                         popUpTo("login") { inclusive = true }
                                     }
                                 }
@@ -110,7 +122,7 @@ class MainActivity : ComponentActivity() {
                             
                             val viewModel: MessagesViewModel = viewModel(
                                 key = "messages_${server}_${email}_${accountId}",
-                                factory = MessagesViewModelFactory(server, email, password, accountId, database)
+                                factory = MessagesViewModelFactory(server, email, password, accountId, database, application)
                             )
                             
                             android.util.Log.d("MainActivity", "MessagesViewModel создан, состояние: isLoading=${viewModel.uiState.value.isLoading}")
@@ -120,24 +132,25 @@ class MainActivity : ComponentActivity() {
                                     android.util.Log.d("MainActivity", "Открытие письма: messageId=$messageId")
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
-                                    val encodedPassword = Uri.encode(password)
                                     val encodedAccountId = Uri.encode(accountId)
                                     val encodedMessageId = Uri.encode(messageId)
                                     android.util.Log.d("MainActivity", "Навигация с encodedMessageId=$encodedMessageId")
-                                    navController.navigate("message/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId/$encodedMessageId")
+                                    navController.navigate("message/$encodedServer/$encodedEmail//$encodedAccountId/$encodedMessageId")
                                 },
                                 onSearchClick = {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
-                                    val encodedPassword = Uri.encode(password)
                                     val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("search/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId")
+                                    navController.navigate("search/$encodedServer/$encodedEmail//$encodedAccountId")
                                 },
                                 onLogout = {
                                     activityScope.launch {
+                                        android.util.Log.d("MainActivity", "Выход из приложения: server=$server, email=$email")
                                         preferencesManager.clearSession()
-                                        credentialManager.clearCredentials(email)
-                                        android.util.Log.d("MainActivity", "Сессия очищена, выход выполнен")
+                                        tokenStore.clearTokens(server, email)
+                                        JmapOAuthClient.clearCache()
+                                        JmapClient.clearCache()
+                                        android.util.Log.d("MainActivity", "Сессия и токены очищены, выход выполнен")
                                         navController.navigate("login") {
                                             popUpTo(0) { inclusive = true }
                                         }
@@ -187,7 +200,7 @@ class MainActivity : ComponentActivity() {
                             val messagesViewModel: MessagesViewModel = viewModel(
                                 parentEntry,
                                 key = "messages_${server}_${email}_${accountId}",
-                                factory = MessagesViewModelFactory(server, email, password, accountId, database)
+                                factory = MessagesViewModelFactory(server, email, password, accountId, database, application)
                             )
                             
                             LaunchedEffect(viewModel, messagesViewModel) {

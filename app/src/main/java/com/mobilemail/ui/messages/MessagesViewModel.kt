@@ -1,8 +1,12 @@
 package com.mobilemail.ui.messages
 
+import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.JmapClient
+import com.mobilemail.data.jmap.JmapOAuthClient
+import com.mobilemail.data.oauth.OAuthDiscovery
+import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.model.Folder
 import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
@@ -31,12 +35,42 @@ class MessagesViewModel(
     private val email: String,
     private val password: String,
     private val accountId: String,
-    private val database: com.mobilemail.data.local.database.AppDatabase? = null
+    private val database: com.mobilemail.data.local.database.AppDatabase? = null,
+    private val application: Application? = null
 ) : ViewModel() {
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState
 
-    private val jmapClient = JmapClient.getOrCreate(server, email, password, accountId)
+    private val jmapClient: Any = if (password.isBlank() && application != null) {
+        val tokenStore = TokenStore(application)
+        val tokens = tokenStore.getTokens(server, email)
+        if (tokens != null && tokens.isValid()) {
+            kotlinx.coroutines.runBlocking {
+                try {
+                    val httpClient = OAuthDiscovery.createClient()
+                    val discovery = OAuthDiscovery(httpClient)
+                    val discoveryUrl = "$server/.well-known/oauth-authorization-server"
+                    val metadata = discovery.discover(discoveryUrl)
+                    JmapOAuthClient.getOrCreate(
+                        baseUrl = server,
+                        email = email,
+                        accountId = accountId,
+                        tokenStore = tokenStore,
+                        metadata = metadata,
+                        clientId = "mail-client"
+                    )
+                } catch (e: Exception) {
+                    android.util.Log.e("MessagesViewModel", "Ошибка создания OAuth клиента", e)
+                    JmapClient.getOrCreate(server, email, "", accountId)
+                }
+            }
+        } else {
+            JmapClient.getOrCreate(server, email, password, accountId)
+        }
+    } else {
+        JmapClient.getOrCreate(server, email, password, accountId)
+    }
+    
     private val repository = MailRepository(
         jmapClient = jmapClient,
         messageDao = database?.messageDao(),

@@ -43,7 +43,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
     private var discovery: OAuthDiscovery? = null
     
     companion object {
-        private const val CLIENT_ID = "mobilemail-client"
+        private const val CLIENT_ID = "mail-client"
     }
     
     fun updateServer(server: String) {
