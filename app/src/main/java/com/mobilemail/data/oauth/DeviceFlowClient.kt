@@ -44,14 +44,14 @@ sealed class DeviceFlowState {
     data class Error(val error: OAuthDeviceFlowError) : DeviceFlowState()
 }
 
-sealed class OAuthDeviceFlowError {
-    data class AuthorizationPending(val message: String = "Ожидание авторизации пользователя") : OAuthDeviceFlowError()
-    data class SlowDown(val message: String = "Слишком частые запросы, замедление") : OAuthDeviceFlowError()
-    data class ExpiredToken(val message: String = "Время ожидания истекло") : OAuthDeviceFlowError()
-    data class AccessDenied(val message: String = "Доступ запрещён") : OAuthDeviceFlowError()
-    data class NetworkError(val message: String, val cause: Throwable? = null) : OAuthDeviceFlowError()
-    data class ServerError(val message: String, val statusCode: Int? = null) : OAuthDeviceFlowError()
-    data class UnknownError(val message: String, val cause: Throwable? = null) : OAuthDeviceFlowError()
+sealed class OAuthDeviceFlowError(open val message: String) {
+    data class AuthorizationPending(override val message: String = "Ожидание авторизации пользователя") : OAuthDeviceFlowError(message)
+    data class SlowDown(override val message: String = "Слишком частые запросы, замедление") : OAuthDeviceFlowError(message)
+    data class ExpiredToken(override val message: String = "Время ожидания истекло") : OAuthDeviceFlowError(message)
+    data class AccessDenied(override val message: String = "Доступ запрещён") : OAuthDeviceFlowError(message)
+    data class NetworkError(override val message: String, val cause: Throwable? = null) : OAuthDeviceFlowError(message)
+    data class ServerError(override val message: String, val statusCode: Int? = null) : OAuthDeviceFlowError(message)
+    data class UnknownError(override val message: String, val cause: Throwable? = null) : OAuthDeviceFlowError(message)
 }
 
 class DeviceFlowClient(

@@ -39,7 +39,7 @@ class JmapOAuthClient(
     private val tokenStore: TokenStore,
     private val metadata: OAuthServerMetadata,
     private val clientId: String
-) {
+) : JmapApi {
     companion object {
         private val clientCache = mutableMapOf<String, JmapOAuthClient>()
         private val lock = Any()
@@ -120,7 +120,7 @@ class JmapOAuthClient(
         return "Bearer $accessToken"
     }
     
-    suspend fun getSession(): JmapSession = sessionMutex.withLock {
+    override suspend fun getSession(): JmapSession = sessionMutex.withLock {
         val accessToken = getAccessToken()
         val cacheKey = "$accountId:$accessToken"
         val cached = sessionCache[cacheKey]
@@ -261,7 +261,7 @@ class JmapOAuthClient(
         return session.apiUrl
     }
     
-    suspend fun getMailboxes(accountId: String? = null): List<JmapMailbox> {
+    override suspend fun getMailboxes(accountId: String? = null): List<JmapMailbox> {
         Log.d("JmapOAuthClient", "getMailboxes вызван для accountId: $accountId")
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -311,7 +311,7 @@ class JmapOAuthClient(
         return mailboxes
     }
     
-    suspend fun queryEmails(
+    override suspend fun queryEmails(
         mailboxId: String? = null,
         accountId: String? = null,
         position: Int = 0,
@@ -385,7 +385,7 @@ class JmapOAuthClient(
         )
     }
     
-    suspend fun getEmails(
+    override suspend fun getEmails(
         ids: List<String>,
         accountId: String? = null,
         properties: List<String>? = null

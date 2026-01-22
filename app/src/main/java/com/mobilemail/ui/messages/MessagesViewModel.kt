@@ -3,6 +3,7 @@ package com.mobilemail.ui.messages
 import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.jmap.JmapClient
 import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.data.oauth.OAuthDiscovery
@@ -41,7 +42,7 @@ class MessagesViewModel(
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState
 
-    private val jmapClient: Any = if (password.isBlank() && application != null) {
+    private val jmapClient: JmapApi = if (password.isBlank() && application != null) {
         val tokenStore = TokenStore(application)
         val tokens = tokenStore.getTokens(server, email)
         if (tokens != null && tokens.isValid()) {
