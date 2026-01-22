@@ -48,6 +48,26 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         private const val CLIENT_ID = "mail-client"
     }
 
+    private fun normalizeServerUrl(rawServer: String): String? {
+        val trimmed = rawServer.trim()
+        if (trimmed.isBlank()) return null
+        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+
+        return try {
+            val uri = java.net.URI(withScheme)
+            val host = uri.host ?: return null
+            val scheme = uri.scheme ?: return null
+            val portPart = if (uri.port > 0) ":${uri.port}" else ""
+            "$scheme://$host$portPart"
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     init {
         viewModelScope.launch {
             val savedSession = preferencesManager.getSavedSession()
@@ -75,7 +95,14 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun autoOAuthLogin(server: String, email: String, accountId: String) {
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-        val normalizedServer = server.trim().trimEnd('/')
+        val normalizedServer = normalizeServerUrl(server)
+        if (normalizedServer == null) {
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                error = AppError.UnknownError("Неверный адрес сервера")
+            )
+            return
+        }
         
         viewModelScope.launch {
             try {
@@ -162,7 +189,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         
         viewModelScope.launch {
             try {
-                val normalizedServer = state.server.trim().trimEnd('/')
+                val normalizedServer = normalizeServerUrl(state.server)
+                    ?: throw IllegalArgumentException("Неверный адрес сервера")
                 
                 val httpClient = OAuthDiscovery.createClient()
                 discovery = OAuthDiscovery(httpClient)
