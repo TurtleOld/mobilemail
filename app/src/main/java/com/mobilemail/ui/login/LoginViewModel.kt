@@ -26,6 +26,8 @@ data class LoginUiState(
     val isLoading: Boolean = false,
     val error: AppError? = null,
     val account: Account? = null,
+    val requiresTwoFactor: Boolean = false,
+    val totpCode: String = "",
     val oauthUserCode: String? = null,
     val oauthVerificationUri: String? = null,
     val oauthVerificationUriComplete: String? = null,
@@ -34,7 +36,6 @@ data class LoginUiState(
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
     private val preferencesManager = PreferencesManager(application)
-    private val credentialManager = CredentialManager(application)
     private val tokenStore = TokenStore(application)
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState
@@ -140,6 +141,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateServer(server: String) {
         _uiState.value = _uiState.value.copy(server = server)
+    }
+
+    fun updateTotpCode(code: String) {
+        _uiState.value = _uiState.value.copy(totpCode = code)
     }
 
     fun clearError() {

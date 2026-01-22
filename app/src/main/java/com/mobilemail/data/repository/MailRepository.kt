@@ -121,8 +121,8 @@ class MailRepository(
             Log.d("MailRepository", "Найдено писем: ${queryResult.ids.size}")
             if (queryResult.ids.isEmpty()) {
                 Log.d("MailRepository", "Список писем пуст")
-            // Если есть кэш, возвращаем его
-            cachedMessages?.let { return@runCatchingSuspend it.map { it.toMessageListItem() } }
+                // Если есть кэш, возвращаем его
+                cachedMessages?.let { return@runCatchingSuspend it.map { it.toMessageListItem() } }
                 return@runCatchingSuspend emptyList()
             }
         
@@ -251,13 +251,13 @@ class MailRepository(
             var textBody: String? = null
             var htmlBody: String? = null
             
-            email.textBody?.forEach { textPart ->
+            email.textBody?.forEach { textPart: com.mobilemail.data.model.BodyPart ->
                 email.bodyValues?.get(textPart.partId)?.let {
                     textBody = it.value
                 }
             }
             
-            email.htmlBody?.forEach { htmlPart ->
+            email.htmlBody?.forEach { htmlPart: com.mobilemail.data.model.BodyPart ->
                 email.bodyValues?.get(htmlPart.partId)?.let {
                     htmlBody = it.value
                 }
@@ -401,13 +401,13 @@ class MailRepository(
         var textBody: String? = null
         var htmlBody: String? = null
         
-        email.textBody?.forEach { textPart ->
+        email.textBody?.forEach { textPart: com.mobilemail.data.model.BodyPart ->
             email.bodyValues?.get(textPart.partId)?.let {
                 textBody = it.value
             }
         }
         
-        email.htmlBody?.forEach { htmlPart ->
+        email.htmlBody?.forEach { htmlPart: com.mobilemail.data.model.BodyPart ->
             email.bodyValues?.get(htmlPart.partId)?.let {
                 htmlBody = it.value
             }

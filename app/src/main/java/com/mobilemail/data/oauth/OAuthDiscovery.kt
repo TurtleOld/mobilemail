@@ -160,7 +160,7 @@ class OAuthDiscovery(private val client: OkHttpClient) {
 }
 
 class OAuthException(
-    message: String,
+    override val message: String,
     val statusCode: Int? = null,
     cause: Throwable? = null
 ) : Exception(message, cause)
