@@ -261,7 +261,7 @@ class JmapOAuthClient(
         return session.apiUrl
     }
     
-    override suspend fun getMailboxes(accountId: String? = null): List<JmapMailbox> {
+    override suspend fun getMailboxes(accountId: String?): List<JmapMailbox> {
         Log.d("JmapOAuthClient", "getMailboxes вызван для accountId: $accountId")
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -312,12 +312,12 @@ class JmapOAuthClient(
     }
     
     override suspend fun queryEmails(
-        mailboxId: String? = null,
-        accountId: String? = null,
-        position: Int = 0,
-        limit: Int = 50,
-        filter: Map<String, Any>? = null,
-        searchText: String? = null
+        mailboxId: String?,
+        accountId: String?,
+        position: Int,
+        limit: Int,
+        filter: Map<String, Any>?,
+        searchText: String?
     ): EmailQueryResult {
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -387,8 +387,8 @@ class JmapOAuthClient(
     
     override suspend fun getEmails(
         ids: List<String>,
-        accountId: String? = null,
-        properties: List<String>? = null
+        accountId: String?,
+        properties: List<String>?
     ): List<JmapEmail> {
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
