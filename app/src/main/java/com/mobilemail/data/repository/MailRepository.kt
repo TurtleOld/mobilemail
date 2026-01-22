@@ -3,7 +3,7 @@ package com.mobilemail.data.repository
 import android.util.Log
 import com.mobilemail.data.common.Result
 import com.mobilemail.data.common.runCatchingSuspend
-import com.mobilemail.data.jmap.JmapClient
+import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.local.dao.FolderDao
 import com.mobilemail.data.local.dao.MessageDao
 import com.mobilemail.data.model.Account
@@ -23,12 +23,11 @@ import java.time.Instant
 import java.util.Date
 
 class MailRepository(
-    private val jmapClient: Any,
+    private val jmapClient: JmapApi,
     private val messageDao: MessageDao? = null,
     private val folderDao: FolderDao? = null
 ) {
-    @Suppress("UNCHECKED_CAST")
-    private val client = jmapClient as? JmapClient ?: jmapClient as com.mobilemail.data.jmap.JmapOAuthClient
+    private val client = jmapClient
     private val messageCache = mutableMapOf<String, MessageDetail>()
     
     suspend fun getAccount(): Result<Account> = runCatchingSuspend {
@@ -205,15 +204,17 @@ class MailRepository(
         // Сохраняем в кэш, но сохраняем обновленный статус прочитанности из Room
         messageDao?.let { dao ->
             try {
-                val messagesToSave = result.map { messageListItem ->
+                val messagesToSave = mutableListOf<com.mobilemail.data.local.entity.MessageEntity>()
+                for (messageListItem in result) {
                     // Проверяем, есть ли обновленный статус в Room
                     val existingMessage = dao.getMessageById(messageListItem.id)
                     val finalIsUnread = existingMessage?.isUnread ?: messageListItem.flags.unread
                     
                     // Создаем MessageEntity с сохранением обновленного статуса
-                    messageListItem.toMessageEntity(folderId, accountId).copy(
+                    val entity = messageListItem.toMessageEntity(folderId, accountId).copy(
                         isUnread = finalIsUnread
                     )
+                    messagesToSave.add(entity)
                 }
                 dao.insertMessages(messagesToSave)
                 Log.d("MailRepository", "Письма сохранены в кэш: ${result.size}")
