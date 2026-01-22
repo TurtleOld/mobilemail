@@ -18,6 +18,7 @@ import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
+import com.mobilemail.data.common.fold
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -45,6 +46,26 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
     companion object {
         private const val CLIENT_ID = "mail-client"
     }
+
+    private fun normalizeServerUrl(rawServer: String): String? {
+        val trimmed = rawServer.trim()
+        if (trimmed.isBlank()) return null
+        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+            trimmed
+        } else {
+            "https://$trimmed"
+        }
+
+        return try {
+            val uri = java.net.URI(withScheme)
+            val host = uri.host ?: return null
+            val scheme = uri.scheme ?: return null
+            val portPart = if (uri.port > 0) ":${uri.port}" else ""
+            "$scheme://$host$portPart"
+        } catch (e: Exception) {
+            null
+        }
+    }
     
     fun updateServer(server: String) {
         _uiState.value = _uiState.value.copy(server = server)
@@ -62,7 +83,8 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
         
         viewModelScope.launch {
             try {
-                val normalizedServer = state.server.trim().trimEnd('/')
+                val normalizedServer = normalizeServerUrl(state.server)
+                    ?: throw IllegalArgumentException("Неверный адрес сервера")
                 
                 val httpClient = OAuthDiscovery.createClient()
                 discovery = OAuthDiscovery(httpClient)
