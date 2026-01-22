@@ -18,6 +18,7 @@ import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
+import com.mobilemail.data.common.fold
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch

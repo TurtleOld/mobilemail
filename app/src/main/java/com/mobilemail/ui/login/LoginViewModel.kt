@@ -35,8 +35,9 @@ data class LoginUiState(
 )
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
-    private val preferencesManager = PreferencesManager(application)
-    private val tokenStore = TokenStore(application)
+    private val app = getApplication<Application>()
+    private val preferencesManager = PreferencesManager(app)
+    private val tokenStore = TokenStore(app)
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState
     
@@ -51,7 +52,6 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val savedSession = preferencesManager.getSavedSession()
             if (savedSession != null) {
-                val tokenStore = TokenStore(application)
                 val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
                 if (tokens != null && tokens.isValid()) {
                     Log.d("LoginViewModel", "Найдена сохраненная OAuth сессия: ${savedSession.email}")
@@ -75,11 +75,10 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun autoOAuthLogin(server: String, email: String, accountId: String) {
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
+        val normalizedServer = server.trim().trimEnd('/')
         
         viewModelScope.launch {
             try {
-                val normalizedServer = server.trim().trimEnd('/')
-                val tokenStore = TokenStore(application)
                 val tokens = tokenStore.getTokens(normalizedServer, email)
                 
                 if (tokens == null) {

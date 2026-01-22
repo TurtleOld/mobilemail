@@ -12,8 +12,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardActions
-import androidx.compose.ui.text.input.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -81,7 +81,8 @@ fun LoginScreen(
             placeholder = { Text("https://mail.example.com") }
         )
         
-        if (uiState.oauthUserCode != null) {
+        val oauthUserCode = uiState.oauthUserCode
+        if (oauthUserCode != null) {
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -98,7 +99,7 @@ fun LoginScreen(
                         style = MaterialTheme.typography.labelMedium
                     )
                     Text(
-                        text = uiState.oauthUserCode,
+                        text = oauthUserCode,
                         style = MaterialTheme.typography.headlineMedium,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )
@@ -147,9 +148,7 @@ fun LoginScreen(
                     keyboardType = KeyboardType.NumberPassword,
                     imeAction = ImeAction.Done
                 ),
-                keyboardActions = KeyboardActions(
-                    onDone = { viewModel.login { } }
-                ),
+                keyboardActions = KeyboardActions(onDone = { }),
                 visualTransformation = PasswordVisualTransformation()
             )
         }
