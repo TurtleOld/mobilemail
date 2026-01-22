@@ -33,9 +33,9 @@ data class LoginUiState(
 )
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
-    private val preferencesManager = PreferencesManager(application)
-    private val credentialManager = CredentialManager(application)
-    private val tokenStore = TokenStore(application)
+    private val preferencesManager = PreferencesManager(getApplication())
+    private val credentialManager = CredentialManager(getApplication())
+    private val tokenStore = TokenStore(getApplication())
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState
     
@@ -78,7 +78,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             try {
                 val normalizedServer = server.trim().trimEnd('/')
-                val tokenStore = TokenStore(application)
+                val tokenStore = TokenStore(getApplication())
                 val tokens = tokenStore.getTokens(normalizedServer, email)
                 
                 if (tokens == null) {

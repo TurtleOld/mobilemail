@@ -91,7 +91,7 @@ fun LoginScreen(
                         style = MaterialTheme.typography.labelMedium
                     )
                     Text(
-                        text = uiState.oauthUserCode,
+                        text = uiState.oauthUserCode ?: "",
                         style = MaterialTheme.typography.headlineMedium,
                         modifier = Modifier.padding(vertical = 8.dp)
                     )

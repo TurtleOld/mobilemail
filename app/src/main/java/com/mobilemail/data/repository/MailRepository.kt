@@ -33,7 +33,11 @@ class MailRepository(
     
     suspend fun getAccount(): Result<Account> = runCatchingSuspend {
         Log.d("MailRepository", "Получение аккаунта...")
-        val session = client.getSession()
+        val session = if (client is com.mobilemail.data.jmap.JmapClient) {
+            client.getSession()
+        } else {
+            (client as com.mobilemail.data.jmap.JmapOAuthClient).getSession()
+        }
         Log.d("MailRepository", "Сессия получена, аккаунтов: ${session.accounts.size}")
         
         val accountId = session.primaryAccounts?.mail 
@@ -58,7 +62,11 @@ class MailRepository(
 
     suspend fun getFolders(): Result<List<Folder>> = runCatchingSuspend {
         Log.d("MailRepository", "Начало загрузки папок")
-        val session = client.getSession()
+        val session = if (client is com.mobilemail.data.jmap.JmapClient) {
+            client.getSession()
+        } else {
+            (client as com.mobilemail.data.jmap.JmapOAuthClient).getSession()
+        }
         Log.d("MailRepository", "Сессия получена для getFolders")
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
@@ -69,7 +77,11 @@ class MailRepository(
         }
         
         Log.d("MailRepository", "Запрос папок для accountId: $accountId")
-        val mailboxes = client.getMailboxes(accountId)
+        val mailboxes = if (client is com.mobilemail.data.jmap.JmapClient) {
+            client.getMailboxes(accountId)
+        } else {
+            (client as com.mobilemail.data.jmap.JmapOAuthClient).getMailboxes(accountId)
+        }
         Log.d("MailRepository", "Получено папок: ${mailboxes.size}")
         
         mailboxes.map { mailbox ->
@@ -360,7 +372,11 @@ class MailRepository(
         
         Log.d("MailRepository", "Письмо не найдено в памяти кэше, проверяем Room. Статус из Room: $cachedReadStatus")
         
-        val session = client.getSession()
+        val session = if (client is com.mobilemail.data.jmap.JmapClient) {
+            client.getSession()
+        } else {
+            (client as com.mobilemail.data.jmap.JmapOAuthClient).getSession()
+        }
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
         
@@ -370,16 +386,29 @@ class MailRepository(
         }
         
         Log.d("MailRepository", "Запрос Email/get для messageId: $messageId")
-        val emails = client.getEmails(
-            ids = listOf(messageId),
-            accountId = accountId,
-            properties = listOf(
-                "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
-                "subject", "receivedAt", "bodyStructure",
-                "bodyValues", "textBody", "htmlBody",
-                "keywords", "size", "hasAttachment"
+        val emails = if (client is com.mobilemail.data.jmap.JmapClient) {
+            client.getEmails(
+                ids = listOf(messageId),
+                accountId = accountId,
+                properties = listOf(
+                    "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
+                    "subject", "receivedAt", "bodyStructure",
+                    "bodyValues", "textBody", "htmlBody",
+                    "keywords", "size", "hasAttachment"
+                )
             )
-        )
+        } else {
+            (client as com.mobilemail.data.jmap.JmapOAuthClient).getEmails(
+                ids = listOf(messageId),
+                accountId = accountId,
+                properties = listOf(
+                    "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
+                    "subject", "receivedAt", "bodyStructure",
+                    "bodyValues", "textBody", "htmlBody",
+                    "keywords", "size", "hasAttachment"
+                )
+            )
+        }
         
         Log.d("MailRepository", "Получено писем в ответе: ${emails.size}")
         if (emails.isEmpty()) {
