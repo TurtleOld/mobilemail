@@ -309,11 +309,11 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
         onSuccess: (Account) -> Unit
     ) {
         try {
-            val email = server
+            val tempEmail = server
             Log.d("LoginViewModel", "Сохранение OAuth токенов: expires_in=${tokenResponse.expiresIn}s, has_refresh=${tokenResponse.refreshToken != null}")
-            tokenStore.saveTokens(server, email, tokenResponse)
+            tokenStore.saveTokens(server, tempEmail, tokenResponse)
             
-            val savedTokens = tokenStore.getTokens(server, email)
+            val savedTokens = tokenStore.getTokens(server, tempEmail)
             if (savedTokens == null) {
                 throw Exception("Не удалось сохранить OAuth токены")
             }
@@ -321,8 +321,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             
             val jmapClient = JmapOAuthClient.getOrCreate(
                 serverUrl = server,
-                email = email,
-                accountId = email,
+                email = tempEmail,
+                accountId = tempEmail,
                 tokenStore = tokenStore,
                 metadata = metadata,
                 clientId = CLIENT_ID
@@ -339,7 +339,16 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 onSuccess = { account ->
                     Log.d("LoginViewModel", "OAuth вход успешен, account: ${account.id}, сохранение сессии")
-                    preferencesManager.saveSession(server, email, account.id)
+                    val accountEmail = account.email.ifBlank { tempEmail }
+                    if (accountEmail != tempEmail) {
+                        tokenStore.saveTokens(server, accountEmail, tokenResponse)
+                        tokenStore.clearTokens(server, tempEmail)
+                    }
+                    Log.d(
+                        "LoginViewModel",
+                        "Сохранение сессии: server=$server, accountEmail=$accountEmail, tempEmail=$tempEmail, accountId=${account.id}"
+                    )
+                    preferencesManager.saveSession(server, accountEmail, account.id)
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         account = account,

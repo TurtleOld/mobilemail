@@ -37,7 +37,7 @@ fun LoginScreen(
         uiState.account?.let { account ->
             onLoginSuccess(
                 uiState.server,
-                uiState.server,
+                account.email,
                 "",
                 account.id
             )

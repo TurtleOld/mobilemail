@@ -46,7 +46,7 @@ object ErrorHandler {
                 return Result.success(block())
             } catch (e: Throwable) {
                 lastException = e
-                val error = handleError(e)
+                handleError(e)
                 
                 if (!shouldRetry(e) || attempt == retries - 1) {
                     return Result.failure(e)

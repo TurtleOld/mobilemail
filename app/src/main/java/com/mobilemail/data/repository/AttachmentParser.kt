@@ -50,7 +50,6 @@ object AttachmentParser {
             }
             
             val isTextPart = type == "text" && (subtype == "plain" || subtype == "html")
-            val isMultipart = type == "multipart"
             
             var filename: String? = null
             disposition?.optJSONObject("params")?.let { params ->

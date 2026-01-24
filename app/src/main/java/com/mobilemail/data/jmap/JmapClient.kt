@@ -424,6 +424,7 @@ class JmapClient(
                 accounts[accountId] = JmapAccount(
                     id = accountId,
                     name = accountJson.optString("name", accountId),
+                    username = accountJson.optString("username", null),
                     isPersonal = accountJson.optBoolean("isPersonal", true),
                     isReadOnly = accountJson.optBoolean("isReadOnly", false),
                     accountCapabilities = null

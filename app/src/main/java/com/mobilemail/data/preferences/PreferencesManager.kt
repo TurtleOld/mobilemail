@@ -23,6 +23,9 @@ class PreferencesManager(private val context: Context) {
         private val SESSION_SAVED_KEY = booleanPreferencesKey("session_saved")
     }
 
+    private fun signatureKey(server: String, email: String) =
+        stringPreferencesKey("signature_${server}_$email")
+
     val serverUrl: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[SERVER_URL_KEY]
     }
@@ -67,6 +70,20 @@ class PreferencesManager(private val context: Context) {
             preferences.remove(SERVER_URL_KEY)
             preferences[SESSION_SAVED_KEY] = false
         }
+    }
+
+    fun signature(server: String, email: String): Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[signatureKey(server, email)]
+    }
+
+    suspend fun saveSignature(server: String, email: String, signature: String) {
+        context.dataStore.edit { preferences ->
+            preferences[signatureKey(server, email)] = signature
+        }
+    }
+
+    suspend fun getSignature(server: String, email: String): String? {
+        return context.dataStore.data.first()[signatureKey(server, email)]
     }
 
     suspend fun saveOAuthMetadata(server: String, metadata: OAuthServerMetadata) {

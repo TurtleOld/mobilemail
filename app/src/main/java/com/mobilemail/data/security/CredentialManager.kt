@@ -32,7 +32,7 @@ class CredentialManager(private val context: Context) {
             .apply()
     }
     
-    fun getPassword(server: String, email: String): String? {
+    fun getPassword(email: String): String? {
         return encryptedPrefs.getString("password_$email", null)
     }
     

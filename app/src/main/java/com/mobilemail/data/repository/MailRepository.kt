@@ -44,10 +44,18 @@ class MailRepository(
             val account = session.accounts[id]
             account?.let {
                 Log.d("MailRepository", "Аккаунт найден: ${it.id}, имя: ${it.name}")
+                val resolvedEmail = when {
+                    !it.username.isNullOrBlank() -> it.username
+                    it.name.isNotBlank() && it.name.contains("@") -> it.name
+                    it.id.isNotBlank() && it.id.contains("@") -> it.id
+                    it.id.isNotBlank() -> it.id
+                    else -> it.name
+                }
+                val resolvedDisplayName = it.name.ifBlank { resolvedEmail }
                 Account(
                     id = it.id,
-                    email = it.id,
-                    displayName = it.name
+                    email = resolvedEmail,
+                    displayName = resolvedDisplayName
                 )
             } ?: throw IllegalStateException("AccountId не найден в сессии")
         } ?: throw IllegalStateException("AccountId не найден в сессии")

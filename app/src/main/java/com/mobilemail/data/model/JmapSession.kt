@@ -24,6 +24,8 @@ data class JmapAccount(
     val id: String,
     @SerializedName("name")
     val name: String,
+    @SerializedName("username")
+    val username: String? = null,
     @SerializedName("isPersonal")
     val isPersonal: Boolean,
     @SerializedName("isReadOnly")
