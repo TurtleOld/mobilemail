@@ -24,4 +24,27 @@ interface JmapApi {
         accountId: String? = null,
         properties: List<String>? = null
     ): List<JmapEmail>
+
+    suspend fun updateEmailKeywords(
+        emailId: String,
+        keywords: Map<String, Boolean>,
+        accountId: String? = null
+    ): Boolean
+
+    suspend fun deleteEmail(
+        emailId: String,
+        accountId: String? = null
+    ): Boolean
+
+    suspend fun moveEmail(
+        emailId: String,
+        fromMailboxId: String,
+        toMailboxId: String,
+        accountId: String? = null
+    ): Boolean
+
+    suspend fun downloadAttachment(
+        blobId: String,
+        accountId: String? = null
+    ): ByteArray
 }

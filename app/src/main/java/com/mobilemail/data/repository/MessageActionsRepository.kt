@@ -2,10 +2,10 @@ package com.mobilemail.data.repository
 
 import com.mobilemail.data.common.Result
 import com.mobilemail.data.common.runCatchingSuspend
-import com.mobilemail.data.jmap.JmapClient
+import com.mobilemail.data.jmap.JmapApi
 
 class MessageActionsRepository(
-    private val jmapClient: JmapClient
+    private val jmapClient: JmapApi
 ) {
     suspend fun markAsRead(messageId: String, isRead: Boolean): Result<Boolean> = runCatchingSuspend {
         val session = jmapClient.getSession()
