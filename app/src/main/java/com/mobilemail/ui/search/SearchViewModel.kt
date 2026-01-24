@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.JmapClient
 import com.mobilemail.data.model.Folder
+import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.SearchRepository
@@ -54,7 +55,22 @@ class SearchViewModel(
                 },
                 onSuccess = { folders ->
                     Log.d("SearchViewModel", "Получено папок: ${folders.size}")
-                    _uiState.value = _uiState.value.copy(folders = folders)
+                    val defaultOrder = listOf(
+                        FolderRole.INBOX,
+                        FolderRole.DRAFTS,
+                        FolderRole.SENT,
+                        FolderRole.SPAM,
+                        FolderRole.TRASH
+                    )
+                    val defaultFolders = defaultOrder.mapNotNull { role ->
+                        folders.firstOrNull { it.role == role }
+                    }
+                    val customFolders = folders
+                        .filter { it.role !in defaultOrder }
+                        .sortedBy { it.name.lowercase() }
+                    _uiState.value = _uiState.value.copy(
+                        folders = defaultFolders + customFolders
+                    )
                 }
             )
         }

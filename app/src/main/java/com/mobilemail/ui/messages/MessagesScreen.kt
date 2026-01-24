@@ -21,6 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -119,12 +120,41 @@ fun FoldersList(
     onFolderSelected: (com.mobilemail.data.model.Folder) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val defaultOrder = listOf(
+        FolderRole.INBOX,
+        FolderRole.DRAFTS,
+        FolderRole.SENT,
+        FolderRole.SPAM,
+        FolderRole.TRASH
+    )
+    val defaultFolders = defaultOrder.mapNotNull { role ->
+        folders.firstOrNull { it.role == role }
+    }
+    val customFolders = folders
+        .filter { it.role !in defaultOrder }
+        .sortedBy { it.name.lowercase(Locale.getDefault()) }
+
     LazyColumn(
         modifier = modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        items(folders.size) { index ->
-            val folder = folders[index]
+        items(defaultFolders.size) { index ->
+            val folder = defaultFolders[index]
+            FolderItem(
+                folder = folder,
+                isSelected = folder.id == selectedFolder?.id,
+                onClick = { onFolderSelected(folder) }
+            )
+        }
+
+        if (defaultFolders.isNotEmpty() && customFolders.isNotEmpty()) {
+            item {
+                Divider(modifier = Modifier.padding(vertical = 8.dp))
+            }
+        }
+
+        items(customFolders.size) { index ->
+            val folder = customFolders[index]
             FolderItem(
                 folder = folder,
                 isSelected = folder.id == selectedFolder?.id,
