@@ -43,23 +43,23 @@ class JmapOAuthClient(
     companion object {
         private val clientCache = mutableMapOf<String, JmapOAuthClient>()
         private val lock = Any()
-        
+
         fun getOrCreate(
-            baseUrl: String,
+            serverUrl: String,
             email: String,
             accountId: String,
             tokenStore: TokenStore,
             metadata: OAuthServerMetadata,
             clientId: String
         ): JmapOAuthClient {
-            val key = "$baseUrl:$email"
+            val key = "$serverUrl:$email"
             synchronized(lock) {
                 return clientCache.getOrPut(key) {
-                    JmapOAuthClient(baseUrl, email, accountId, tokenStore, metadata, clientId)
+                    JmapOAuthClient(serverUrl, email, accountId, tokenStore, metadata, clientId)
                 }
             }
         }
-        
+
         fun clearCache() {
             synchronized(lock) {
                 clientCache.clear()
@@ -68,9 +68,9 @@ class JmapOAuthClient(
     }
     
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .connectionPool(ConnectionPool(2, 2, TimeUnit.MINUTES))
         .protocols(listOf(Protocol.HTTP_1_1))
@@ -83,145 +83,105 @@ class JmapOAuthClient(
     private val sessionCacheTtl = 5 * 60 * 1000L
     
     private val sessionMutex = Mutex()
+    private val tokenMutex = Mutex()
     private val requestSemaphore = Semaphore(permits = 2)
     private var isFirstLaunch = true
+
+    private val serverUrl = baseUrl.trimEnd('/')
     
-    private suspend fun getAccessToken(): String = sessionMutex.withLock {
-        val stored = tokenStore.getTokens(baseUrl, email)
-        
-        if (stored != null && stored.isValid()) {
-            Log.d("JmapOAuthClient", "Используется валидный access token")
-            return@withLock stored.accessToken
-        }
-        
+    private suspend fun getAccessToken(): String = tokenMutex.withLock {
+        val stored = tokenStore.getTokens(serverUrl, email)
+
+        if (stored != null && stored.isValid()) return@withLock stored.accessToken
+
         if (stored?.refreshToken != null) {
             try {
-                Log.d("JmapOAuthClient", "Access token истёк, обновление через refresh_token")
                 val newToken = tokenRefresh.refreshToken(stored.refreshToken)
-                tokenStore.saveTokens(baseUrl, email, newToken)
-                Log.d("JmapOAuthClient", "Токен успешно обновлён")
+                tokenStore.saveTokens(serverUrl, email, newToken)
                 return@withLock newToken.accessToken
-            } catch (e: OAuthException) {
-                Log.e("JmapOAuthClient", "Не удалось обновить токен через refresh_token: ${e.message}, код: ${e.statusCode}", e)
-                tokenStore.clearTokens(baseUrl, email)
-                throw OAuthTokenExpiredException("Токен истёк и не удалось обновить. Требуется повторная авторизация.")
             } catch (e: Exception) {
-                Log.e("JmapOAuthClient", "Неожиданная ошибка при обновлении токена", e)
-                tokenStore.clearTokens(baseUrl, email)
-                throw OAuthTokenExpiredException("Ошибка обновления токена: ${e.message}")
+                tokenStore.clearTokens(serverUrl, email)
+                throw OAuthTokenExpiredException("Не удалось обновить токен: ${e.message}")
             }
         }
-        
-        Log.w("JmapOAuthClient", "Токен отсутствует или истёк, refresh token отсутствует")
+
         throw OAuthTokenExpiredException("Токен отсутствует или истёк. Требуется авторизация.")
+    }
+
+    private suspend fun forceRefreshAccessToken(): String = tokenMutex.withLock {
+        val stored = tokenStore.getTokens(serverUrl, email)
+
+        if (stored?.refreshToken != null) {
+            try {
+                val newToken = tokenRefresh.refreshToken(stored.refreshToken)
+                tokenStore.saveTokens(serverUrl, email, newToken)
+                return@withLock newToken.accessToken
+            } catch (e: Exception) {
+                tokenStore.clearTokens(serverUrl, email)
+                throw OAuthTokenExpiredException("Не удалось обновить токен: ${e.message}")
+            }
+        }
+
+        throw OAuthTokenExpiredException("Токен отсутствует. Требуется авторизация.")
     }
     
     private fun getAuthHeader(accessToken: String): String {
         return "Bearer $accessToken"
     }
     
-    override suspend fun getSession(): JmapSession = sessionMutex.withLock {
+    override suspend fun getSession(): JmapSession {
         val accessToken = getAccessToken()
-        val cacheKey = "$accountId:$accessToken"
-        val cached = sessionCache[cacheKey]
-        if (cached != null && cached.second > System.currentTimeMillis()) {
-            Log.d("JmapOAuthClient", "Используется кэшированная сессия")
-            return@withLock cached.first
-        }
-        
-        if (session != null) {
-            Log.d("JmapOAuthClient", "Используется существующая сессия")
-            sessionCache[cacheKey] = Pair(session!!, System.currentTimeMillis() + sessionCacheTtl)
-            return@withLock session!!
-        }
-        
-        Log.d("JmapOAuthClient", "Запрос новой сессии с URL: $baseUrl")
-        val normalizedBaseUrl = baseUrl.trimEnd('/')
-        val sessionUrl = "$normalizedBaseUrl/.well-known/jmap"
-        
-        val request = Request.Builder()
-            .url(sessionUrl)
-            .header("Accept", "application/json")
-            .header("Authorization", getAuthHeader(accessToken))
-            .get()
-            .build()
-        
-        val (response, responseBody) = withContext(Dispatchers.IO) {
-            var lastException: Exception? = null
-            repeat(3) { attempt ->
-                try {
-                    val resp = client.newCall(request).execute()
-                    val body = try {
-                        resp.body?.string() ?: ""
-                    } catch (e: java.io.EOFException) {
-                        Log.w("JmapOAuthClient", "EOFException при чтении ответа, попытка $attempt")
-                        if (attempt < 2) {
-                            delay((attempt + 1) * 1000L)
-                            throw e
-                        } else {
-                            ""
-                        }
-                    }
-                    return@withContext Pair(resp, body)
-                } catch (e: java.io.EOFException) {
-                    Log.w("JmapOAuthClient", "EOFException при выполнении запроса, попытка ${attempt + 1}/3")
-                    lastException = e
-                    if (attempt < 2) {
-                        delay((attempt + 1) * 1000L)
-                    }
-                } catch (e: java.io.IOException) {
-                    Log.w("JmapOAuthClient", "IOException при выполнении запроса, попытка ${attempt + 1}/3: ${e.message}")
-                    lastException = e
-                    if (attempt < 2) {
-                        delay((attempt + 1) * 1000L)
-                    }
-                } catch (e: Exception) {
-                    Log.w("JmapOAuthClient", "Ошибка при выполнении запроса, попытка ${attempt + 1}/3: ${e.message}")
-                    lastException = e
-                    if (attempt < 2) {
-                        delay((attempt + 1) * 1000L)
-                    }
-                }
+
+        return sessionMutex.withLock {
+            val cacheKey = "$accountId:$accessToken"
+            val cached = sessionCache[cacheKey]
+            if (cached != null && cached.second > System.currentTimeMillis()) {
+                return@withLock cached.first
             }
-            throw Exception("Не удалось подключиться к серверу: ${lastException?.message}", lastException)
-        }
-        
-        if (!response.isSuccessful) {
-            if (response.code == 401 || response.code == 403) {
-                try {
-                    Log.d("JmapOAuthClient", "Session запрос вернул ${response.code}, попытка обновить токен и повторить")
-                    val newToken = getAccessToken()
-                    val retryRequest = request.newBuilder()
-                        .header("Authorization", getAuthHeader(newToken))
-                        .build()
-                    val retryResponse = client.newCall(retryRequest).execute()
-                    val retryBody = retryResponse.body?.string() ?: ""
-                    if (!retryResponse.isSuccessful) {
-                        Log.e("JmapOAuthClient", "Session запрос не удался после обновления токена: код ${retryResponse.code}")
-                        throw Exception("JMAP session failed после обновления токена: код ${retryResponse.code}, ответ: ${retryBody.take(200)}")
-                    }
-                    Log.d("JmapOAuthClient", "Session запрос успешен после обновления токена")
-                    val sessionJson = JSONObject(retryBody)
-                    session = parseSession(sessionJson)
-                } catch (e: OAuthTokenExpiredException) {
-                    Log.e("JmapOAuthClient", "Токен истёк и не может быть обновлён для session", e)
-                    throw e
-                } catch (e: Exception) {
-                    Log.e("JmapOAuthClient", "Ошибка при повторной попытке session запроса", e)
-                    throw Exception("JMAP session failed: код ${response.code}, ответ: ${responseBody.take(200)}")
+
+            session?.let {
+                sessionCache[cacheKey] = Pair(it, System.currentTimeMillis() + sessionCacheTtl)
+                return@withLock it
+            }
+
+            val sessionUrl = "$serverUrl/.well-known/jmap"
+
+            fun buildReq(token: String) = Request.Builder()
+                .url(sessionUrl)
+                .header("Accept", "application/json")
+                .header("Authorization", getAuthHeader(token))
+                .get()
+                .build()
+
+            suspend fun doCall(req: Request): Pair<Int, String> = withContext(Dispatchers.IO) {
+                val resp = client.newCall(req).execute()
+                val body = resp.body?.string().orEmpty()
+                resp.code to body
+            }
+
+            val (code1, body1) = doCall(buildReq(accessToken))
+
+            val finalBody = if (code1 == 401 || code1 == 403) {
+                val refreshed = forceRefreshAccessToken() // гарантированно новый токен
+                val (code2, body2) = doCall(buildReq(refreshed))
+                if (code2 != 200) {
+                    throw Exception("JMAP session failed после refresh: код $code2, ответ: ${body2.take(200)}")
                 }
+                body2
             } else {
-                throw Exception("JMAP session failed: код ${response.code}, ответ: ${responseBody.take(200)}")
+                if (code1 != 200) {
+                    throw Exception("JMAP session failed: код $code1, ответ: ${body1.take(200)}")
+                }
+                body1
             }
-        } else {
-            val sessionJson = JSONObject(responseBody)
-            session = parseSession(sessionJson)
+
+            val created = parseSession(JSONObject(finalBody))
+            session = created
+            sessionCache[cacheKey] = Pair(created, System.currentTimeMillis() + sessionCacheTtl)
+            return@withLock created
         }
-        
-        val created = session ?: throw Exception("Failed to get session")
-        sessionCache[cacheKey] = Pair(created, System.currentTimeMillis() + sessionCacheTtl)
-        return@withLock created
     }
+
     
     private fun parseSession(json: JSONObject): JmapSession {
         val accountsJson = json.optJSONObject("accounts") ?: JSONObject()
@@ -607,10 +567,10 @@ class JmapOAuthClient(
         return JSONObject(responseBody)
     }
     
-    suspend fun updateEmailKeywords(
+    override suspend fun updateEmailKeywords(
         emailId: String,
         keywords: Map<String, Boolean>,
-        accountId: String? = null
+        accountId: String?
     ): Boolean {
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -651,9 +611,9 @@ class JmapOAuthClient(
         return updated != null && updated.has(emailId)
     }
     
-    suspend fun deleteEmail(
+    override suspend fun deleteEmail(
         emailId: String,
-        accountId: String? = null
+        accountId: String?
     ): Boolean {
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -685,11 +645,11 @@ class JmapOAuthClient(
         return destroyed != null && (0 until destroyed.length()).any { destroyed.getString(it) == emailId }
     }
     
-    suspend fun moveEmail(
+    override suspend fun moveEmail(
         emailId: String,
         fromMailboxId: String,
         toMailboxId: String,
-        accountId: String? = null
+        accountId: String?
     ): Boolean {
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -733,13 +693,12 @@ class JmapOAuthClient(
     }
     
     private fun getDownloadUrl(accountId: String, blobId: String): String {
-        val normalizedBaseUrl = baseUrl.trimEnd('/')
-        return "$normalizedBaseUrl/jmap/download/$accountId/$blobId/attachment?accept=application/octet-stream"
+        return "$serverUrl/jmap/download/$accountId/$blobId/attachment?accept=application/octet-stream"
     }
     
-    suspend fun downloadAttachment(
+    override suspend fun downloadAttachment(
         blobId: String,
-        accountId: String? = null
+        accountId: String?
     ): ByteArray = requestSemaphore.withPermit {
         if (blobId.isBlank() || blobId == "null") {
             Log.e("JmapOAuthClient", "blobId пустой или null: '$blobId'")

@@ -57,9 +57,9 @@ class JmapClient(
     }
     
     private val client = OkHttpClient.Builder()
-        .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .connectionPool(ConnectionPool(2, 2, TimeUnit.MINUTES))
         .protocols(listOf(Protocol.HTTP_1_1))
@@ -773,10 +773,10 @@ class JmapClient(
         return JSONObject(responseBody)
     }
 
-    suspend fun updateEmailKeywords(
+    override suspend fun updateEmailKeywords(
         emailId: String,
         keywords: Map<String, Boolean>,
-        accountId: String? = null
+        accountId: String?
     ): Boolean {
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -817,9 +817,9 @@ class JmapClient(
         return updated != null && updated.has(emailId)
     }
 
-    suspend fun deleteEmail(
+    override suspend fun deleteEmail(
         emailId: String,
-        accountId: String? = null
+        accountId: String?
     ): Boolean {
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -851,11 +851,11 @@ class JmapClient(
         return destroyed != null && (0 until destroyed.length()).any { destroyed.getString(it) == emailId }
     }
 
-    suspend fun moveEmail(
+    override suspend fun moveEmail(
         emailId: String,
         fromMailboxId: String,
         toMailboxId: String,
-        accountId: String? = null
+        accountId: String?
     ): Boolean {
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
@@ -903,9 +903,9 @@ class JmapClient(
         return "$normalizedBaseUrl/jmap/download/$accountId/$blobId/attachment?accept=application/octet-stream"
     }
 
-    suspend fun downloadAttachment(
+    override suspend fun downloadAttachment(
         blobId: String,
-        accountId: String? = null
+        accountId: String?
     ): ByteArray = requestSemaphore.withPermit {
         if (blobId.isBlank() || blobId == "null") {
             Log.e("JmapClient", "blobId пустой или null: '$blobId'")
