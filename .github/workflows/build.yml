@@ -23,7 +23,7 @@ jobs:
 
     - name: Decode keystore
       run: |
-        echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > app/homemail.jks
+        echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > app/mobilemail.jks
         
         
     - name: Setup Android SDK
