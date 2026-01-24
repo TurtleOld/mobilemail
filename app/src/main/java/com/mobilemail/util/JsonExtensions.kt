@@ -51,7 +51,7 @@ fun JSONObject.optJSONArrayOrNull(key: String): JSONArray? {
     }
 }
 
-fun JSONArray.toList(): List<Any> {
+fun JSONArray.toAnyList(): List<Any> {
     val list = mutableListOf<Any>()
     for (i in 0 until length()) {
         list.add(get(i))
@@ -68,7 +68,7 @@ fun JSONArray.toStringList(): List<String> {
 }
 
 fun JSONObject.getStringOrEmpty(key: String): String {
-    return optString(key, )
+    return optString(key, "")
 }
 
 fun JSONObject.getIntOrDefault(key: String, default: Int = 0): Int {

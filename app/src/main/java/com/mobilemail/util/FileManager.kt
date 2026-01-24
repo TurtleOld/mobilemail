@@ -12,7 +12,6 @@ import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStream
 
 object FileManager {
     suspend fun saveToDownloads(
@@ -25,7 +24,7 @@ object FileManager {
             val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 saveToDownloadsApi29Plus(context, filename, data, mimeType)
             } else {
-                saveToDownloadsLegacy(context, filename, data)
+                saveToDownloadsLegacy(filename, data)
             }
             Log.d("FileManager", "Файл сохранен: $uri")
             uri
@@ -33,7 +32,7 @@ object FileManager {
     }
 
     @Suppress("DEPRECATION")
-    private fun saveToDownloadsLegacy(context: Context, filename: String, data: ByteArray): Uri {
+    private fun saveToDownloadsLegacy(filename: String, data: ByteArray): Uri {
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         if (!downloadsDir.exists()) {
             downloadsDir.mkdirs()
@@ -115,7 +114,10 @@ object FileManager {
     ): com.mobilemail.data.common.Result<Uri> = withContext(Dispatchers.IO) {
         com.mobilemail.data.common.runCatchingSuspend {
             val cacheDir = context.cacheDir
-            val file = File(cacheDir, filename)
+            val extension = mimeType.substringAfter('/', "").substringBefore(';').ifBlank { "bin" }
+            val normalizedExtension = if (extension == "octet-stream") "bin" else extension
+            val safeFilename = if (filename.contains('.')) filename else "$filename.$normalizedExtension"
+            val file = File(cacheDir, safeFilename)
             
             var counter = 1
             var finalFile = file

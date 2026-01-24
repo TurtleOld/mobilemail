@@ -37,6 +37,10 @@ fun <T> Flow<T>.retryExponential(
 fun <T> Flow<T>.timeoutOrDefault(
     timeoutMillis: Long,
     defaultValue: T
-): Flow<T> = catch { emit(defaultValue) }
+): Flow<T> = catch {
+    if (timeoutMillis > 0L) {
+        emit(defaultValue)
+    }
+}
 
 fun <T> Flow<T>.onErrorReturn(defaultValue: T): Flow<T> = catch { emit(defaultValue) }
