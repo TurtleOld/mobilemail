@@ -26,6 +26,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavDeepLinkRequest
+import androidx.navigation.navOptions
 import com.mobilemail.ui.login.LoginScreen
 import com.mobilemail.ui.login.LoginViewModel
 import com.mobilemail.ui.messagedetail.MessageDetailScreen
@@ -71,7 +73,8 @@ class MainActivity : ComponentActivity() {
                                 
                                 if (isAccessTokenValid || hasRefreshToken) {
                                     android.util.Log.d("MainActivity", "Автоматический вход через OAuth")
-                                    val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}//${Uri.encode(savedSession.accountId)}"
+                                    val passwordPlaceholder = "-"
+                                    val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}/${Uri.encode(passwordPlaceholder)}/${Uri.encode(savedSession.accountId)}"
                                     navController.navigate(route) {
                                         popUpTo(0) { inclusive = true }
                                     }
@@ -81,7 +84,8 @@ class MainActivity : ComponentActivity() {
                                     tokenStore.clearTokens(savedSession.server, savedSession.email)
                                 }
                             } else {
-                                android.util.Log.d("MainActivity", "OAuth токены не найдены")
+                                android.util.Log.w("MainActivity", "OAuth токены не найдены, авто-вход отключен")
+                                preferencesManager.clearSession()
                             }
                         }
                     }
@@ -104,8 +108,9 @@ class MainActivity : ComponentActivity() {
                                 onLoginSuccess = { server, email, _, accountId ->
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
+                                    val encodedPassword = Uri.encode("-")
                                     val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("messages/$encodedServer/$encodedEmail//$encodedAccountId") {
+                                    navController.navigate("messages/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId") {
                                         popUpTo("login") { inclusive = true }
                                     }
                                 }
@@ -133,15 +138,17 @@ class MainActivity : ComponentActivity() {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
                                     val encodedAccountId = Uri.encode(accountId)
+                                    val encodedPassword = Uri.encode(password)
                                     val encodedMessageId = Uri.encode(messageId)
                                     android.util.Log.d("MainActivity", "Навигация с encodedMessageId=$encodedMessageId")
-                                    navController.navigate("message/$encodedServer/$encodedEmail//$encodedAccountId/$encodedMessageId")
+                                    navController.navigate("message/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId/$encodedMessageId")
                                 },
                                 onSearchClick = {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
+                                    val encodedPassword = Uri.encode(password)
                                     val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("search/$encodedServer/$encodedEmail//$encodedAccountId")
+                                    navController.navigate("search/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId")
                                 },
                                 onLogout = {
                                     activityScope.launch {
@@ -223,6 +230,22 @@ class MainActivity : ComponentActivity() {
                                     messagesViewModel.updateMessageReadStatus(messageId, isUnread)
                                 }
                             )
+                        }
+                    }
+
+                    // Безопасная обработка внешних deep-link'ов: проверяем через NavDeepLinkRequest
+                    // и игнорируем те, что не совпадают с графом, чтобы не получить IllegalArgumentException.
+                    val data = intent?.data
+                    if (data != null) {
+                        val request = NavDeepLinkRequest.Builder.fromUri(data).build()
+                        if (navController.graph.hasDeepLink(request)) {
+                            try {
+                                navController.handleDeepLink(intent)
+                            } catch (e: IllegalArgumentException) {
+                                android.util.Log.w("MainActivity", "Deep link not matched, ignoring: $data", e)
+                            }
+                        } else {
+                            android.util.Log.w("MainActivity", "Deep link not in graph, ignoring: $data")
                         }
                     }
                 }

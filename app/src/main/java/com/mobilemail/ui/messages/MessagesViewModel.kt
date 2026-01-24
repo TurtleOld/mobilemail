@@ -42,18 +42,26 @@ class MessagesViewModel(
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState
 
-    private val jmapClient: JmapApi = if (password.isBlank() && application != null) {
+    private val jmapClient: JmapApi = if ((password.isBlank() || password == "-") && application != null) {
         val tokenStore = TokenStore(application)
         val tokens = tokenStore.getTokens(server, email)
-        if (tokens != null && tokens.isValid()) {
+        android.util.Log.d(
+            "MessagesViewModel",
+            "Проверка OAuth токенов: found=${tokens != null}, accessValid=${tokens?.isValid()}, hasRefresh=${tokens?.refreshToken != null}"
+        )
+        if (password == "-") {
+            android.util.Log.d("MessagesViewModel", "Обнаружен OAuth placeholder пароля ('-'), используем OAuth клиент")
+        }
+        if (tokens != null) {
             kotlinx.coroutines.runBlocking {
                 try {
                     val httpClient = OAuthDiscovery.createClient()
                     val discovery = OAuthDiscovery(httpClient)
                     val discoveryUrl = "$server/.well-known/oauth-authorization-server"
                     val metadata = discovery.discover(discoveryUrl)
+                    android.util.Log.d("MessagesViewModel", "Создаем JmapOAuthClient")
                     JmapOAuthClient.getOrCreate(
-                        baseUrl = server,
+                        serverUrl = server,
                         email = email,
                         accountId = accountId,
                         tokenStore = tokenStore,
@@ -61,11 +69,12 @@ class MessagesViewModel(
                         clientId = "mail-client"
                     )
                 } catch (e: Exception) {
-                    android.util.Log.e("MessagesViewModel", "Ошибка создания OAuth клиента", e)
+                    android.util.Log.e("MessagesViewModel", "Ошибка создания OAuth клиента, fallback на basic", e)
                     JmapClient.getOrCreate(server, email, "", accountId)
                 }
             }
         } else {
+            android.util.Log.w("MessagesViewModel", "OAuth токены не найдены, используем basic")
             JmapClient.getOrCreate(server, email, password, accountId)
         }
     } else {
