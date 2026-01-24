@@ -47,25 +47,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
         private const val CLIENT_ID = "mail-client"
     }
 
-    private fun normalizeServerUrl(rawServer: String): String? {
-        val trimmed = rawServer.trim()
-        if (trimmed.isBlank()) return null
-        val withScheme = if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
-            trimmed
-        } else {
-            "https://$trimmed"
-        }
 
-        return try {
-            val uri = java.net.URI(withScheme)
-            val host = uri.host ?: return null
-            val scheme = uri.scheme ?: return null
-            val portPart = if (uri.port > 0) ":${uri.port}" else ""
-            "$scheme://$host$portPart"
-        } catch (e: Exception) {
-            null
-        }
-    }
     
     fun updateServer(server: String) {
         _uiState.value = _uiState.value.copy(server = server)
@@ -83,13 +65,12 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
         
         viewModelScope.launch {
             try {
-                val normalizedServer = normalizeServerUrl(state.server)
-                    ?: throw IllegalArgumentException("Неверный адрес сервера")
-                
+                val normalizedUrl = state.server.trimEnd('/')
+
                 val httpClient = OAuthDiscovery.createClient()
                 discovery = OAuthDiscovery(httpClient)
-                
-                val discoveryUrl = "$normalizedServer/.well-known/oauth-authorization-server"
+
+                val discoveryUrl = "$normalizedUrl/.well-known/oauth-authorization-server"
                 val metadata = discovery!!.discover(discoveryUrl)
                 
                 deviceFlowClient = DeviceFlowClient(
@@ -125,7 +106,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
                         is DeviceFlowState.Success -> {
                             viewModelScope.launch {
                                 handleTokenSuccess(
-                                    server = normalizedServer,
+                                    server = normalizedUrl,
                                     metadata = metadata,
                                     tokenResponse = flowState.tokenResponse
                                 )
@@ -173,7 +154,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
             tokenStore.saveTokens(server, server, tokenResponse)
             
             val jmapClient = JmapOAuthClient.getOrCreate(
-                baseUrl = server,
+                serverUrl = server,
                 email = server,
                 accountId = server,
                 tokenStore = tokenStore,
