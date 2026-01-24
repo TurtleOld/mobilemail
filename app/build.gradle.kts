@@ -6,6 +6,29 @@ plugins {
     id("org.jetbrains.dokka")
 }
 
+fun secret(name: String): String {
+    System.getenv(name)?.takeIf { it.isNotBlank() }?.let { return it }
+
+    val dotenv = rootProject.file(".env")
+    if (dotenv.exists()) {
+        dotenv.readLines()
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+            .map {
+                val k = it.substringBefore("=").trim()
+                val v = it.substringAfter("=").trim().trim('"', '\'')
+                k to v
+            }
+            .firstOrNull { it.first == name }
+            ?.second
+            ?.let { return it }
+    }
+
+    error("Missing secret $name (env or .env)")
+}
+
+
 android {
     namespace = "com.mobilemail"
     compileSdk = 34
@@ -16,22 +39,50 @@ android {
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
-
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-        vectorDrawables {
-            useSupportLibrary = true
+        vectorDrawables { useSupportLibrary = true }
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("../release/mobilemail.jks")
+
+            val storePass = secret("KEYSTORE_PASSWORD")
+                ?: error("Missing env var KEYSTORE_PASSWORD")
+            val keyAliasVal = secret("KEY_ALIAS")
+                ?: error("Missing env var KEY_ALIAS")
+            val keyPass = secret("KEY_PASSWORD")
+                ?: error("Missing env var KEY_PASSWORD")
+
+            storePassword = storePass
+            keyAlias = keyAliasVal
+            keyPassword = keyPass
         }
     }
 
     buildTypes {
-        release {
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
         }
+
+        create("internal") {
+            initWith(getByName("debug"))
+            signingConfig = signingConfigs.getByName("release")
+
+            isDebuggable = true
+            isMinifyEnabled = false
+
+            versionNameSuffix = "-internal"
+            applicationIdSuffix = ".internal"
+        }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17

@@ -20,6 +20,11 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '17'
+
+    - name: Decode keystore
+      run: |
+        echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > app/homemail.jks
+        
         
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
@@ -40,30 +45,12 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
           
-    - name: Build Debug APK
-      run: |
-        if [ -f ./gradlew ]; then
-          ./gradlew assembleDebug --no-daemon
-        else
-          gradle assembleDebug --no-daemon
-        fi
-      
-    - name: Build Release APK
-      run: |
-        if [ -f ./gradlew ]; then
-          ./gradlew assembleRelease --no-daemon
-        else
-          gradle assembleRelease --no-daemon
-        fi
-      continue-on-error: true
-      
-    - name: Upload Debug APK
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-debug-apk
-        path: app/build/outputs/apk/debug/app-debug.apk
-        retention-days: 30
-        if-no-files-found: warn
+    - name: Build release
+      env:
+        KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      run: ./gradlew :app:assembleRelease
         
     - name: Upload Release APK
       uses: actions/upload-artifact@v4
