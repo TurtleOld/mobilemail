@@ -36,9 +36,11 @@ import com.mobilemail.ui.messagedetail.MessageDetailViewModelFactory
 import com.mobilemail.ui.messages.MessagesScreen
 import com.mobilemail.ui.messages.MessagesViewModel
 import com.mobilemail.ui.messages.MessagesViewModelFactory
+import com.mobilemail.ui.newmessage.NewMessageScreen
 import com.mobilemail.ui.search.SearchScreen
 import com.mobilemail.ui.search.SearchViewModel
 import com.mobilemail.ui.search.SearchViewModelFactory
+import com.mobilemail.ui.settings.SettingsScreen
 
 class MainActivity : ComponentActivity() {
     private val database by lazy {
@@ -150,6 +152,22 @@ class MainActivity : ComponentActivity() {
                                     val encodedAccountId = Uri.encode(accountId)
                                     navController.navigate("search/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId")
                                 },
+                                onComposeClick = {
+                                    val encodedServer = Uri.encode(server)
+                                    val encodedEmail = Uri.encode(email)
+                                    val encodedPassword = Uri.encode(password)
+                                    val encodedAccountId = Uri.encode(accountId)
+                                    android.util.Log.d(
+                                        "MainActivity",
+                                        "Навигация в compose: server=$server, email=$email, accountId=$accountId, passwordPlaceholder=${password == "-"}"
+                                    )
+                                    navController.navigate("compose/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId")
+                                },
+                                onSettingsClick = {
+                                    val encodedServer = Uri.encode(server)
+                                    val encodedEmail = Uri.encode(email)
+                                    navController.navigate("settings/$encodedServer/$encodedEmail")
+                                },
                                 onLogout = {
                                     activityScope.launch {
                                         android.util.Log.d("MainActivity", "Выход из приложения: server=$server, email=$email")
@@ -163,6 +181,21 @@ class MainActivity : ComponentActivity() {
                                         }
                                     }
                                 }
+                            )
+                        }
+
+                        composable("compose/{server}/{email}/{password}/{accountId}") { backStackEntry ->
+                            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
+                            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
+                            val password = Uri.decode(backStackEntry.arguments?.getString("password") ?: return@composable)
+                            val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+
+                            NewMessageScreen(
+                                server = server,
+                                email = email,
+                                password = password,
+                                accountId = accountId,
+                                onBack = { navController.popBackStack() }
                             )
                         }
 
@@ -189,6 +222,18 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
+                        composable("settings/{server}/{email}") { backStackEntry ->
+                            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
+                            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
+
+                            SettingsScreen(
+                                server = server,
+                                email = email,
+                                preferencesManager = preferencesManager,
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
                         composable("message/{server}/{email}/{password}/{accountId}/{messageId}") { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
@@ -211,9 +256,9 @@ class MainActivity : ComponentActivity() {
                             )
                             
                             LaunchedEffect(viewModel, messagesViewModel) {
-                                viewModel.setOnReadStatusChanged { messageId, isUnread ->
-                                    android.util.Log.d("MainActivity", "Callback onReadStatusChanged вызван: messageId=$messageId, isUnread=$isUnread")
-                                    messagesViewModel.updateMessageReadStatus(messageId, isUnread)
+                                viewModel.setOnReadStatusChanged { updatedMessageId, isUnread ->
+                                    android.util.Log.d("MainActivity", "Callback onReadStatusChanged вызван: messageId=$updatedMessageId, isUnread=$isUnread")
+                                    messagesViewModel.updateMessageReadStatus(updatedMessageId, isUnread)
                                 }
                             }
                             
@@ -225,9 +270,9 @@ class MainActivity : ComponentActivity() {
                                 onMessageDeleted = { deletedMessageId ->
                                     messagesViewModel.removeMessage(deletedMessageId)
                                 },
-                                onReadStatusChanged = { messageId, isUnread ->
-                                    android.util.Log.d("MainActivity", "onReadStatusChanged вызван: messageId=$messageId, isUnread=$isUnread")
-                                    messagesViewModel.updateMessageReadStatus(messageId, isUnread)
+                                onReadStatusChanged = { updatedMessageId, isUnread ->
+                                    android.util.Log.d("MainActivity", "onReadStatusChanged вызван: messageId=$updatedMessageId, isUnread=$isUnread")
+                                    messagesViewModel.updateMessageReadStatus(updatedMessageId, isUnread)
                                 }
                             )
                         }

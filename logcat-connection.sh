@@ -5,7 +5,7 @@
 PACKAGE_NAME='com.mobilemail'
 
 echo "📋 Просмотр логов подключения к серверу"
-echo "Фильтр: JmapClient, LoginViewModel, MailRepository"
+echo "Фильтр: JmapClient, LoginViewModel, MailRepository, MainActivity, NewMessageScreen"
 echo "Нажмите Ctrl+C для выхода"
 echo "========================================"
 
@@ -13,4 +13,4 @@ echo "========================================"
 adb logcat -c
 
 # Показ логов с фильтрацией по тегам приложения
-adb logcat -s JmapClient:D LoginViewModel:D MailRepository:D AndroidRuntime:E *:S
+adb logcat -s JmapClient:D LoginViewModel:D MailRepository:D MainActivity:D NewMessageScreen:D AndroidRuntime:E *:S

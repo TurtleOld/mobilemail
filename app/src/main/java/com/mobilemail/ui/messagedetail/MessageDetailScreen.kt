@@ -233,7 +233,7 @@ fun MessageContent(
                 Text(
                     text = message.to.joinToString(", ") { addr ->
                         when {
-                            !addr.name.isNullOrBlank() -> addr.name!!
+                            !addr.name.isNullOrBlank() -> addr.name.orEmpty()
                             addr.email.isNotBlank() -> addr.email
                             else -> "(без адреса)"
                         }

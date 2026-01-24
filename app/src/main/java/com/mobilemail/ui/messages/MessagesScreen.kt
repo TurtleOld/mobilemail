@@ -5,10 +5,12 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,6 +35,8 @@ fun MessagesScreen(
     viewModel: MessagesViewModel,
     onMessageClick: (String) -> Unit,
     onSearchClick: () -> Unit = {},
+    onComposeClick: () -> Unit = {},
+    onSettingsClick: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -85,11 +89,32 @@ fun MessagesScreen(
                         }
                     },
                     actions = {
+                        IconButton(onClick = onComposeClick) {
+                            Box(modifier = Modifier.size(24.dp)) {
+                                Icon(
+                                    Icons.Default.Email,
+                                    contentDescription = "Написать письмо",
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .size(20.dp)
+                                )
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(12.dp)
+                                )
+                            }
+                        }
                         IconButton(onClick = onSearchClick) {
                             Icon(Icons.Default.Search, contentDescription = "Поиск")
                         }
                         IconButton(onClick = { viewModel.refresh() }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                        }
+                        IconButton(onClick = onSettingsClick) {
+                            Icon(Icons.Default.Settings, contentDescription = "Настройки")
                         }
                         IconButton(onClick = onLogout) {
                             Icon(Icons.Default.ExitToApp, contentDescription = "Выход")
