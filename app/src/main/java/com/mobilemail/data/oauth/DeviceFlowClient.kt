@@ -13,6 +13,7 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -75,21 +76,26 @@ class DeviceFlowClient(
                 }
             }
             .build()
-        
+
         val request = Request.Builder()
             .url(metadata.deviceAuthorizationEndpoint)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .post(formBody)
             .build()
-        
-        Log.d("DeviceFlowClient", "Запрос device code: ${metadata.deviceAuthorizationEndpoint}")
-        
+
+        Log.d("DeviceFlowClient", "=== REQUESTING DEVICE CODE ===")
+        Log.d("DeviceFlowClient", "Device authorization endpoint: ${metadata.deviceAuthorizationEndpoint}")
+        Log.d("DeviceFlowClient", "Client ID: $clientId")
+        Log.d("DeviceFlowClient", "Scopes: ${scopes.joinToString(", ")}")
+
+        Log.d("DeviceFlowClient", "Executing HTTP request...")
         val response = client.newCall(request).execute()
+        Log.d("DeviceFlowClient", "HTTP response received, code: ${response.code}")
         val body = response.body?.string() ?: ""
-        
+
         if (!response.isSuccessful) {
             val error = parseErrorResponse(body, response.code)
-            throw OAuthException("Ошибка получения device code: ${error.message}", response.code)
+            throw OAuthException("Ошибка получения device code: ${error.message}", response.code, body)
         }
         
         try {
@@ -113,7 +119,12 @@ class DeviceFlowClient(
             )
         } catch (e: Exception) {
             Log.e("DeviceFlowClient", "Ошибка парсинга device code ответа", e)
-            throw OAuthException("Ошибка парсинга device code: ${e.message}", null, e)
+            throw OAuthException(
+                "Ошибка парсинга device code: ${e.message}",
+                statusCode = null,
+                errorBody = null,
+                cause = e
+            )
         }
     }
     
@@ -123,53 +134,77 @@ class DeviceFlowClient(
         expiresAt: Long,
         onStateChange: (DeviceFlowState) -> Unit
     ) {
+        Log.d("DeviceFlowClient", "=== STARTING TOKEN POLLING ===")
+        Log.d("DeviceFlowClient", "Device code: ${deviceCode.take(8)}...")
+        Log.d("DeviceFlowClient", "Polling interval: ${interval}s")
+        Log.d("DeviceFlowClient", "Expires at: ${expiresAt}")
+
         isCancelled.set(false)
         var currentInterval = interval * 1000L
-        val startTime = System.currentTimeMillis()
-        
+
         pollingJob = kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             try {
                 while (isActive && !isCancelled.get()) {
                     if (System.currentTimeMillis() >= expiresAt) {
+                        Log.w("DeviceFlowClient", "Device code expired, stopping polling")
                         onStateChange(DeviceFlowState.Error(OAuthDeviceFlowError.ExpiredToken()))
                         return@launch
                     }
-                    
+
+                    Log.d("DeviceFlowClient", "Polling for token (interval: ${currentInterval/1000}s)... start=${System.currentTimeMillis()}")
                     val tokenResponse = try {
                         requestToken(deviceCode)
                     } catch (e: OAuthException) {
-                        val error = parseErrorResponse(e.message ?: "", e.statusCode)
+                        Log.e("DeviceFlowClient", "OAuth error during polling: status=${e.statusCode}, body=${e.errorBody?.take(200)}")
+                        val errorBody = e.errorBody ?: e.message
+                        val error = parseErrorResponse(errorBody, e.statusCode)
+                        Log.d("DeviceFlowClient", "Token request error: ${error.javaClass.simpleName}")
                         when (error) {
                             is OAuthDeviceFlowError.AuthorizationPending -> {
+                                Log.d("DeviceFlowClient", "Authorization pending, waiting ${currentInterval/1000}s...")
                                 delay(currentInterval)
                                 continue
                             }
                             is OAuthDeviceFlowError.SlowDown -> {
+                                Log.w("DeviceFlowClient", "Slow down requested, increasing interval")
                                 currentInterval += 5000L
                                 delay(currentInterval)
                                 continue
                             }
-                            is OAuthDeviceFlowError.ExpiredToken,
+                            is OAuthDeviceFlowError.ExpiredToken -> {
+                                Log.e("DeviceFlowClient", "Token expired during polling")
+                                onStateChange(DeviceFlowState.Error(error))
+                                return@launch
+                            }
                             is OAuthDeviceFlowError.AccessDenied -> {
+                                Log.e("DeviceFlowClient", "Access denied during polling")
                                 onStateChange(DeviceFlowState.Error(error))
                                 return@launch
                             }
                             else -> {
+                                Log.e("DeviceFlowClient", "Other OAuth error during polling: ${error.message}")
                                 onStateChange(DeviceFlowState.Error(error))
                                 return@launch
                             }
                         }
+                    } catch (e: IOException) {
+                        Log.w("DeviceFlowClient", "Network error during polling: ${e.message}, retrying in ${currentInterval/1000}s")
+                        delay(currentInterval)
+                        continue
                     }
-                    
+
+                    Log.d("DeviceFlowClient", "Token polling successful!")
                     onStateChange(DeviceFlowState.Success(tokenResponse))
                     return@launch
                 }
             } catch (e: Exception) {
                 if (!isCancelled.get()) {
-                    Log.e("DeviceFlowClient", "Ошибка polling", e)
+                    Log.e("DeviceFlowClient", "Fatal polling error", e)
                     onStateChange(DeviceFlowState.Error(
                         OAuthDeviceFlowError.NetworkError("Ошибка polling: ${e.message}", e)
                     ))
+                } else {
+                    Log.d("DeviceFlowClient", "Polling cancelled by user")
                 }
             }
         }
@@ -181,19 +216,25 @@ class DeviceFlowClient(
             .add("device_code", deviceCode)
             .add("client_id", clientId)
             .build()
-        
+
         val request = Request.Builder()
             .url(metadata.tokenEndpoint)
             .header("Content-Type", "application/x-www-form-urlencoded")
             .post(formBody)
             .build()
+
+        val startTs = System.currentTimeMillis()
+        Log.d("DeviceFlowClient", "Requesting token from endpoint: ${metadata.tokenEndpoint} at=$startTs")
+        Log.d("DeviceFlowClient", "Device code: ${deviceCode.take(8)}...")
         
         val response = client.newCall(request).execute()
+        val endTs = System.currentTimeMillis()
+        Log.d("DeviceFlowClient", "Token HTTP response code=${response.code} duration=${endTs - startTs}ms")
         val body = response.body?.string() ?: ""
         
         if (!response.isSuccessful) {
             val error = parseErrorResponse(body, response.code)
-            throw OAuthException("Ошибка получения токена: ${error.message}", response.code)
+            throw OAuthException("Ошибка получения токена: ${error.message}", response.code, body)
         }
         
         try {
@@ -201,7 +242,7 @@ class DeviceFlowClient(
             
             if (json.has("error")) {
                 val error = parseErrorResponse(body, response.code)
-                throw OAuthException(error.message, response.code)
+                throw OAuthException(error.message, response.code, body)
             }
             
             val accessToken = json.getString("access_token")
@@ -221,15 +262,34 @@ class DeviceFlowClient(
             throw e
         } catch (e: Exception) {
             Log.e("DeviceFlowClient", "Ошибка парсинга token ответа", e)
-            throw OAuthException("Ошибка парсинга token: ${e.message}", null, e)
+            throw OAuthException(
+                "Ошибка парсинга token: ${e.message}",
+                statusCode = null,
+                errorBody = null,
+                cause = e
+            )
         }
     }
     
     private fun parseErrorResponse(body: String, statusCode: Int?): OAuthDeviceFlowError {
+        val normalizedBody = body.lowercase()
+        if ("authorization_pending" in normalizedBody) {
+            return OAuthDeviceFlowError.AuthorizationPending()
+        }
+        if ("slow_down" in normalizedBody) {
+            return OAuthDeviceFlowError.SlowDown()
+        }
+        if ("expired_token" in normalizedBody) {
+            return OAuthDeviceFlowError.ExpiredToken()
+        }
+        if ("access_denied" in normalizedBody) {
+            return OAuthDeviceFlowError.AccessDenied()
+        }
+
         return try {
             val json = JSONObject(body)
             val error = json.optString("error", "")
-            
+
             when (error) {
                 "authorization_pending" -> OAuthDeviceFlowError.AuthorizationPending()
                 "slow_down" -> OAuthDeviceFlowError.SlowDown()
@@ -267,9 +327,9 @@ class DeviceFlowClient(
     companion object {
         fun createClient(): OkHttpClient {
             return OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(60, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
                 .retryOnConnectionFailure(true)
                 .build()
         }

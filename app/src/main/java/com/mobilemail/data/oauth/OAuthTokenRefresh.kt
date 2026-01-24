@@ -39,7 +39,7 @@ class OAuthTokenRefresh(
             } catch (e: Exception) {
                 body.take(200)
             }
-            throw OAuthException("Ошибка обновления токена: $error", response.code)
+            throw OAuthException("Ошибка обновления токена: $error", response.code, body)
         }
         
         try {
@@ -59,7 +59,12 @@ class OAuthTokenRefresh(
             )
         } catch (e: Exception) {
             Log.e("OAuthTokenRefresh", "Ошибка парсинга refresh token ответа", e)
-            throw OAuthException("Ошибка парсинга refresh token: ${e.message}", null, e)
+            throw OAuthException(
+                "Ошибка парсинга refresh token: ${e.message}",
+                statusCode = null,
+                errorBody = null,
+                cause = e
+            )
         }
     }
     
