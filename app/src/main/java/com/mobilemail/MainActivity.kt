@@ -36,6 +36,8 @@ import com.mobilemail.ui.messagedetail.MessageDetailViewModelFactory
 import com.mobilemail.ui.messages.MessagesScreen
 import com.mobilemail.ui.messages.MessagesViewModel
 import com.mobilemail.ui.messages.MessagesViewModelFactory
+import com.mobilemail.ui.newmessage.ComposeViewModel
+import com.mobilemail.ui.newmessage.ComposeViewModelFactory
 import com.mobilemail.ui.newmessage.NewMessageScreen
 import com.mobilemail.ui.search.SearchScreen
 import com.mobilemail.ui.search.SearchViewModel
@@ -190,7 +192,11 @@ class MainActivity : ComponentActivity() {
                             val password = Uri.decode(backStackEntry.arguments?.getString("password") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
 
+                            val viewModel: ComposeViewModel = viewModel(
+                                factory = ComposeViewModelFactory(application, server, email, password, accountId)
+                            )
                             NewMessageScreen(
+                                viewModel = viewModel,
                                 server = server,
                                 email = email,
                                 password = password,
