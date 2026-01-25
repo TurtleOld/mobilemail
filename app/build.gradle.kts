@@ -7,7 +7,10 @@ plugins {
 }
 
 fun secret(name: String): String {
-    System.getenv(name)?.takeIf { it.isNotBlank() }?.let { return it }
+    System.getenv(name)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
 
     val dotenv = rootProject.file(".env")
     if (dotenv.exists()) {
@@ -22,12 +25,13 @@ fun secret(name: String): String {
             }
             .firstOrNull { it.first == name }
             ?.second
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
             ?.let { return it }
     }
 
     error("Missing secret $name (env or .env)")
 }
-
 
 android {
     namespace = "com.mobilemail"
@@ -44,26 +48,17 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("../release/mobilemail.jks")
-
-            val storePass = secret("KEYSTORE_PASSWORD")
-                ?: error("Missing env var KEYSTORE_PASSWORD")
-            val keyAliasVal = secret("KEY_ALIAS")
-                ?: error("Missing env var KEY_ALIAS")
-            val keyPass = secret("KEY_PASSWORD")
-                ?: error("Missing env var KEY_PASSWORD")
-
-            storePassword = storePass
-            keyAlias = keyAliasVal
-            keyPassword = keyPass
-        }
+    create("release") {
+        storeFile = file("../release/mobilemail.jks")
+        storePassword = secret("KEYSTORE_PASSWORD")
+        keyAlias = secret("KEY_ALIAS")
+        keyPassword = secret("KEY_PASSWORD")
     }
+}
 
     buildTypes {
         getByName("release") {
             signingConfig = signingConfigs.getByName("release")
-
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -71,17 +66,16 @@ android {
             )
         }
 
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("release")
+        }
+
         create("internal") {
             initWith(getByName("debug"))
-            signingConfig = signingConfigs.getByName("release")
-
-            isDebuggable = true
-            isMinifyEnabled = false
-
             versionNameSuffix = "-internal"
-            applicationIdSuffix = ".internal"
         }
     }
+
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -143,6 +137,7 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation(platform("androidx.compose:compose-bom:2023.10.01"))
+    implementation("androidx.compose.material:material-icons-extended")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
