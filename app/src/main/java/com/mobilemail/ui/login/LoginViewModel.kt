@@ -158,6 +158,13 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     fun updateServer(server: String) {
         _uiState.value = _uiState.value.copy(server = server)
+        viewModelScope.launch {
+            val trimmed = server.trim()
+            if (trimmed.isNotEmpty()) {
+                preferencesManager.saveServerUrl(trimmed)
+                Log.d("LoginViewModel", "Сохранен адрес сервера: $trimmed")
+            }
+        }
     }
 
     fun updateTotpCode(code: String) {
