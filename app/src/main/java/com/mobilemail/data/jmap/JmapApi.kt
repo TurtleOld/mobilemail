@@ -47,4 +47,44 @@ interface JmapApi {
         blobId: String,
         accountId: String? = null
     ): ByteArray
+
+    suspend fun uploadAttachment(
+        data: ByteArray,
+        mimeType: String,
+        filename: String,
+        accountId: String? = null
+    ): com.mobilemail.data.model.Attachment
+
+    /**
+     * Отправляет письмо через JMAP EmailSubmission/set.
+     *
+     * @return submissionId, по которому можно запросить статус доставки через [getEmailSubmission].
+     */
+    suspend fun sendEmail(
+        from: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<com.mobilemail.data.model.Attachment> = emptyList(),
+        draftId: String? = null,
+        accountId: String? = null
+    ): String
+
+    /**
+     * Возвращает информацию о доставке для submissionId (если сервер поддерживает EmailSubmission/get).
+     */
+    suspend fun getEmailSubmission(
+        submissionId: String,
+        accountId: String? = null
+    ): com.mobilemail.data.model.EmailSubmissionStatus
+
+    suspend fun saveDraft(
+        from: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<com.mobilemail.data.model.Attachment> = emptyList(),
+        draftId: String? = null,
+        accountId: String? = null
+    ): String
 }

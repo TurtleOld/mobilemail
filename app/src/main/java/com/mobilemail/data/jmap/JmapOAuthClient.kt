@@ -1,10 +1,12 @@
 package com.mobilemail.data.jmap
 
 import android.util.Log
+import com.mobilemail.data.model.Attachment
 import com.mobilemail.data.model.BodyPart
 import com.mobilemail.data.model.BodyValue
 import com.mobilemail.data.model.EmailAddress
 import com.mobilemail.data.model.EmailQueryResult
+import com.mobilemail.data.model.EmailSubmissionStatus
 import com.mobilemail.data.model.JmapAccount
 import com.mobilemail.data.model.JmapEmail
 import com.mobilemail.data.model.JmapMailbox
@@ -418,6 +420,8 @@ class JmapOAuthClient(
             return addresses
         }
         
+        val subject = json.optStringOrNull("subject")
+
         return JmapEmail(
             id = json.getString("id"),
             threadId = json.getString("threadId"),
@@ -435,7 +439,7 @@ class JmapOAuthClient(
             receivedAt = json.getString("receivedAt"),
             hasAttachment = json.optBoolean("hasAttachment", false),
             preview = json.optString("preview", null),
-            subject = json.optString("subject", null),
+            subject = subject,
             from = parseEmailAddresses(json.optJSONArray("from")),
             to = parseEmailAddresses(json.optJSONArray("to")),
             cc = parseEmailAddresses(json.optJSONArray("cc")),
@@ -545,8 +549,11 @@ class JmapOAuthClient(
                     val retryRequest = request.newBuilder()
                         .header("Authorization", getAuthHeader(newToken))
                         .build()
-                    val retryResponse = client.newCall(retryRequest).execute()
-                    val retryBody = retryResponse.body?.string() ?: "{}"
+                    val (retryResponse, retryBody) = withContext(Dispatchers.IO) {
+                        val resp = client.newCall(retryRequest).execute()
+                        val body = resp.body?.string() ?: "{}"
+                        resp to body
+                    }
                     if (!retryResponse.isSuccessful) {
                         Log.e("JmapOAuthClient", "Запрос не удался после обновления токена: код ${retryResponse.code}")
                         throw Exception("JMAP request failed после обновления токена: код ${retryResponse.code}, ответ: ${retryBody.take(200)}")
@@ -566,6 +573,12 @@ class JmapOAuthClient(
         }
         
         return JSONObject(responseBody)
+    }
+
+    private fun JSONObject.optStringOrNull(key: String): String? {
+        if (!has(key) || isNull(key)) return null
+        val v = optString(key, "").trim()
+        return if (v.isBlank() || v == "null") null else v
     }
     
     override suspend fun updateEmailKeywords(
@@ -655,10 +668,23 @@ class JmapOAuthClient(
         val session = getSession()
         val targetAccountId = accountId ?: session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull() ?: this.accountId
-        
-        val mailboxIds = JSONObject().apply {
-            put(fromMailboxId, false)
-            put(toMailboxId, true)
+
+        // mailboxIds — это map mailboxId->true. Значение false может быть проигнорировано сервером.
+        // Поэтому делаем безопасный move: читаем текущие mailboxIds, удаляем from и добавляем to.
+        val mailboxIds = try {
+            val current = getEmails(
+                ids = listOf(emailId),
+                accountId = targetAccountId,
+                properties = listOf("id", "mailboxIds")
+            ).firstOrNull()
+            JSONObject().apply {
+                current?.mailboxIds?.forEach { (k, v) -> if (v) put(k, true) }
+                remove(fromMailboxId)
+                put(toMailboxId, true)
+            }
+        } catch (e: Exception) {
+            Log.w("JmapOAuthClient", "moveEmail: не удалось прочитать текущие mailboxIds, fallback", e)
+            JSONObject().apply { put(toMailboxId, true) }
         }
         
         val updateObject = JSONObject().apply {
@@ -774,6 +800,452 @@ class JmapOAuthClient(
         }
         
         return@withPermit responseBody
+    }
+
+    override suspend fun uploadAttachment(
+        data: ByteArray,
+        mimeType: String,
+        filename: String,
+        accountId: String?
+    ): Attachment {
+        val session = getSession()
+        val targetAccountId = accountId ?: session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+
+        val uploadUrl = session.uploadUrl
+            .replace("{accountId}", targetAccountId)
+            .replace("{name}", filename)
+            .replace("{type}", mimeType)
+
+        val accessToken = getAccessToken()
+        val request = Request.Builder()
+            .url(uploadUrl)
+            .header("Authorization", getAuthHeader(accessToken))
+            .post(data.toRequestBody(mimeType.toMediaType()))
+            .build()
+
+        val (response, responseBody) = withContext(Dispatchers.IO) {
+            val resp = client.newCall(request).execute()
+            val body = resp.body?.string().orEmpty()
+            Pair(resp, body)
+        }
+
+        if (!response.isSuccessful) {
+            throw Exception("Upload failed: код ${response.code}, ответ: ${responseBody.take(200)}")
+        }
+
+        val json = JSONObject(responseBody)
+        val blobId = json.optString("blobId")
+        val size = json.optLong("size", data.size.toLong())
+        val type = json.optString("type", mimeType)
+
+        if (blobId.isBlank()) {
+            throw Exception("Upload failed: blobId отсутствует")
+        }
+
+        return Attachment(
+            id = blobId,
+            filename = filename,
+            mime = type,
+            size = size
+        )
+    }
+
+    override suspend fun saveDraft(
+        from: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<Attachment>,
+        draftId: String?,
+        accountId: String?
+    ): String {
+        Log.d(
+            "JmapOAuthClient",
+            "saveDraft: from=$from, toCount=${to.size}, subjectLength=${subject.length}, bodyLength=${body.length}, attachments=${attachments.size}, draftId=$draftId"
+        )
+        val session = getSession()
+        val targetAccountId = accountId ?: session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+
+        val mailboxes = getMailboxes(targetAccountId)
+        val draftsMailbox = mailboxes.firstOrNull { it.role == "drafts" } ?: mailboxes.firstOrNull()
+            ?: throw IllegalStateException("Drafts mailbox not found")
+
+        val toArray = JSONArray().apply {
+            to.filter { it.isNotBlank() }.forEach { address ->
+                put(JSONObject().apply { put("email", address.trim()) })
+            }
+        }
+
+        val fromArray = JSONArray().apply {
+            put(JSONObject().apply { put("email", from.trim()) })
+        }
+
+        val bodyParts = JSONArray().apply {
+            put(JSONObject().apply {
+                put("partId", "text")
+                put("type", "text/plain")
+            })
+        }
+
+        val bodyValues = JSONObject().apply {
+            put("text", JSONObject().apply { put("value", body) })
+        }
+
+        attachments.forEach { attachment ->
+            bodyParts.put(JSONObject().apply {
+                put("type", attachment.mime)
+                put("name", attachment.filename)
+                put("disposition", "attachment")
+                put("blobId", attachment.id)
+                put("size", attachment.size)
+            })
+        }
+
+        val bodyStructure = if (bodyParts.length() == 1) {
+            bodyParts.getJSONObject(0)
+        } else {
+            JSONObject().apply {
+                put("type", "multipart/mixed")
+                put("subParts", bodyParts)
+            }
+        }
+
+        // Важно: на некоторых JMAP серверах Email является фактически immutable:
+        // попытки менять from/to/subject через Email/set update возвращают invalidProperties.
+        // Поэтому сохраняем черновик через "replace": create нового письма в drafts + destroy старого.
+        val createEmailObject = JSONObject().apply {
+            put("mailboxIds", JSONObject().apply { put(draftsMailbox.id, true) })
+            // Черновики всегда считаем прочитанными
+            put("keywords", JSONObject().apply { put("\$seen", true) })
+            put("from", fromArray)
+            put("to", toArray)
+            put("subject", subject)
+            put("bodyStructure", bodyStructure)
+            put("bodyValues", bodyValues)
+        }
+
+        val setParams = JSONObject().apply {
+            put("accountId", targetAccountId)
+            // Всегда создаём новый draft
+            put("create", JSONObject().apply { put("draft", createEmailObject) })
+            // Если был старый draftId — удаляем его, чтобы в Drafts не копились версии
+            if (!draftId.isNullOrBlank()) {
+                put("destroy", JSONArray().apply { put(draftId) })
+            }
+        }
+
+        val methodCallArray = JSONArray().apply {
+            put("Email/set")
+            put(setParams)
+            put("d1")
+        }
+
+        val requestJson = JSONObject().apply {
+            put("using", JSONArray().apply {
+                put("urn:ietf:params:jmap:core")
+                put("urn:ietf:params:jmap:mail")
+            })
+            put("methodCalls", JSONArray().apply { put(methodCallArray) })
+        }
+
+        val apiUrl = getApiUrl()
+        val response = makeRequest(apiUrl, requestJson)
+        val methodResponses = response.getJSONArray("methodResponses")
+        val setResponse = methodResponses.getJSONArray(0).getJSONObject(1)
+        Log.d("JmapOAuthClient", "saveDraft response: $setResponse")
+
+        val created = setResponse.optJSONObject("created")?.optJSONObject("draft")
+        val createdId = created?.optString("id")
+        if (createdId.isNullOrBlank()) {
+            throw Exception("Не удалось создать черновик")
+        }
+        return createdId
+    }
+
+    override suspend fun sendEmail(
+        from: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<Attachment>,
+        draftId: String?,
+        accountId: String?
+    ): String {
+        Log.d(
+            "JmapOAuthClient",
+            "sendEmail: from=$from, toCount=${to.size}, subjectLength=${subject.length}, bodyLength=${body.length}, attachments=${attachments.size}, draftId=$draftId"
+        )
+        val session = getSession()
+        val targetAccountId = accountId ?: session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+
+        val resolvedDraftId = if (draftId.isNullOrBlank()) {
+            saveDraft(from, to, subject, body, attachments, null, targetAccountId)
+        } else {
+            saveDraft(from, to, subject, body, attachments, draftId, targetAccountId)
+        }
+
+        val identityId = getIdentityId(targetAccountId, from)
+        if (identityId.isBlank()) {
+            throw Exception("Не удалось определить identityId для отправки")
+        }
+
+        if (resolvedDraftId.isBlank()) {
+            throw Exception("Не удалось определить emailId для отправки")
+        }
+
+        val submissionParams = JSONObject().apply {
+            put("accountId", targetAccountId)
+            put("create", JSONObject().apply {
+                put("submit", JSONObject().apply {
+                    put("emailId", resolvedDraftId)
+                    put("identityId", identityId)
+                    put("envelope", JSONObject().apply {
+                        put("mailFrom", JSONObject().apply { put("email", from.trim()) })
+                        put("rcptTo", JSONArray().apply {
+                            to.filter { it.isNotBlank() }.forEach { address ->
+                                put(JSONObject().apply { put("email", address.trim()) })
+                            }
+                        })
+                    })
+                })
+            })
+        }
+
+        val submissionCall = JSONArray().apply {
+            put("EmailSubmission/set")
+            put(submissionParams)
+            put("c2")
+        }
+
+        val requestJson = JSONObject().apply {
+            put("using", JSONArray().apply {
+                put("urn:ietf:params:jmap:core")
+                put("urn:ietf:params:jmap:mail")
+                put("urn:ietf:params:jmap:submission")
+            })
+            put("methodCalls", JSONArray().apply {
+                put(submissionCall)
+            })
+        }
+
+        val apiUrl = getApiUrl()
+        val response = makeRequest(apiUrl, requestJson)
+        val methodResponses = response.getJSONArray("methodResponses")
+
+        val submissionResponse = methodResponses.getJSONArray(0).getJSONObject(1)
+        Log.d("JmapOAuthClient", "sendEmail response: $submissionResponse")
+        val createdSubmission = submissionResponse.optJSONObject("created")?.optJSONObject("submit")
+        val submissionId = createdSubmission?.optString("id")
+
+        if (submissionId.isNullOrBlank()) {
+            throw Exception("Не удалось отправить письмо: ответ сервера без id")
+        }
+
+        Log.d(
+            "JmapOAuthClient",
+            "EmailSubmission создан: submissionId=$submissionId, emailId=$resolvedDraftId"
+        )
+
+        // После успешного EmailSubmission/set переносим письмо из Drafts в Sent.
+        // Некоторые серверы не делают это автоматически, поэтому делаем явно.
+        try {
+            val mailboxes = getMailboxes(targetAccountId)
+            val draftsMailbox = mailboxes.firstOrNull { it.role == "drafts" }
+            val sentMailbox = mailboxes.firstOrNull { it.role == "sent" }
+            if (draftsMailbox != null && sentMailbox != null) {
+                // Важно: Email/get может вернуть только часть свойств (а наш парсер ожидал threadId/receivedAt).
+                // Чтобы избежать падения и лишних запросов, делаем простой "move":
+                // устанавливаем mailboxIds только в Sent. Это убирает письмо из Drafts.
+                val newMailboxIds = JSONObject().apply {
+                    put(sentMailbox.id, true)
+                }
+
+                val updateObject = JSONObject().apply {
+                    put(resolvedDraftId, JSONObject().apply { put("mailboxIds", newMailboxIds) })
+                }
+
+                val setParams = JSONObject().apply {
+                    put("accountId", targetAccountId)
+                    put("update", updateObject)
+                }
+
+                val methodCallArray = JSONArray().apply {
+                    put("Email/set")
+                    put(setParams)
+                    put("m1")
+                }
+
+                val requestJson2 = JSONObject().apply {
+                    put("using", JSONArray().apply {
+                        put("urn:ietf:params:jmap:core")
+                        put("urn:ietf:params:jmap:mail")
+                    })
+                    put("methodCalls", JSONArray().apply { put(methodCallArray) })
+                }
+
+                val moveResp = makeRequest(getApiUrl(), requestJson2)
+                val mr = moveResp.getJSONArray("methodResponses")
+                val first = mr.getJSONArray(0)
+                val data = first.optJSONObject(1)
+                val updatedOk = data?.optJSONObject("updated")?.has(resolvedDraftId) == true
+                if (!updatedOk) {
+                    Log.w(
+                        "JmapOAuthClient",
+                        "Перемещение в Sent могло не выполниться: emailId=$resolvedDraftId, response=${data ?: first.toString()}"
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            // Не падаем: отправка уже успешна, но логируем, чтобы можно было диагностировать
+            Log.w("JmapOAuthClient", "Не удалось переместить письмо из Drafts в Sent", e)
+        }
+
+        return submissionId
+    }
+
+    override suspend fun getEmailSubmission(
+        submissionId: String,
+        accountId: String?
+    ): EmailSubmissionStatus {
+        val session = getSession()
+        val targetAccountId = accountId ?: session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+
+        val methodCallArray = JSONArray().apply {
+            put("EmailSubmission/get")
+            put(JSONObject().apply {
+                put("accountId", targetAccountId)
+                put("ids", JSONArray().apply { put(submissionId) })
+            })
+            put("s1")
+        }
+
+        val requestJson = JSONObject().apply {
+            put("using", JSONArray().apply {
+                put("urn:ietf:params:jmap:core")
+                put("urn:ietf:params:jmap:mail")
+                put("urn:ietf:params:jmap:submission")
+            })
+            put("methodCalls", JSONArray().apply { put(methodCallArray) })
+        }
+
+        val apiUrl = getApiUrl()
+        val response = makeRequest(apiUrl, requestJson)
+        val methodResponses = response.getJSONArray("methodResponses")
+        val getResponse = methodResponses.getJSONArray(0)
+        val data = getResponse.getJSONObject(1)
+
+        val list = data.optJSONArray("list") ?: JSONArray()
+        if (list.length() == 0) {
+            return EmailSubmissionStatus(id = submissionId, raw = emptyMap())
+        }
+
+        val obj = list.getJSONObject(0)
+        val emailId = obj.optString("emailId", null)
+
+        // Попытка вытащить человекочитаемую причину из deliveryStatus.*.smtpReply/smtpReply
+        val deliveryStatusObj = obj.optJSONObject("deliveryStatus")
+        var lastStatusText: String? = null
+        if (deliveryStatusObj != null) {
+            val it = deliveryStatusObj.keys()
+            while (it.hasNext()) {
+                val k = it.next()
+                val ds = deliveryStatusObj.optJSONObject(k) ?: continue
+                val reply = ds.optString("smtpReply", null)
+                    ?: ds.optString("description", null)
+                    ?: ds.optString("message", null)
+                if (!reply.isNullOrBlank()) {
+                    lastStatusText = reply
+                    break
+                }
+            }
+        }
+
+        // delivered/failed в JMAP нет стандарта; некоторые серверы отдают undoStatus/isFinal/status
+        val delivered = when (obj.optString("undoStatus", "")) {
+            "final" -> true
+            else -> null
+        }
+        val failed = obj.optString("undoStatus", "").equals("failed", ignoreCase = true)
+            .takeIf { it }
+
+        return EmailSubmissionStatus(
+            id = obj.optString("id", submissionId),
+            emailId = emailId,
+            delivered = delivered,
+            failed = failed,
+            lastStatusText = lastStatusText,
+            raw = obj.toMap()
+        )
+    }
+
+    private fun JSONObject.toMap(): Map<String, Any?> {
+        val result = mutableMapOf<String, Any?>()
+        val it = keys()
+        while (it.hasNext()) {
+            val k = it.next()
+            result[k] = when (val v = opt(k)) {
+                is JSONObject -> v.toMap()
+                is JSONArray -> v.toList()
+                JSONObject.NULL -> null
+                else -> v
+            }
+        }
+        return result
+    }
+
+    private fun JSONArray.toList(): List<Any?> {
+        val result = mutableListOf<Any?>()
+        for (i in 0 until length()) {
+            result += when (val v = opt(i)) {
+                is JSONObject -> v.toMap()
+                is JSONArray -> v.toList()
+                JSONObject.NULL -> null
+                else -> v
+            }
+        }
+        return result
+    }
+
+    private suspend fun getIdentityId(accountId: String, from: String): String {
+        val methodCallArray = JSONArray().apply {
+            put("Identity/get")
+            put(JSONObject().apply { put("accountId", accountId) })
+            put("i1")
+        }
+
+        val requestJson = JSONObject().apply {
+            put("using", JSONArray().apply {
+                put("urn:ietf:params:jmap:core")
+                put("urn:ietf:params:jmap:mail")
+            })
+            put("methodCalls", JSONArray().apply { put(methodCallArray) })
+        }
+
+        val apiUrl = getApiUrl()
+        val response = makeRequest(apiUrl, requestJson)
+        val methodResponses = response.getJSONArray("methodResponses")
+        val identityResponse = methodResponses.getJSONArray(0).getJSONObject(1)
+        val list = identityResponse.optJSONArray("list") ?: JSONArray()
+        if (list.length() == 0) return ""
+
+        val normalizedFrom = from.trim().lowercase()
+        var fallbackId = ""
+        for (i in 0 until list.length()) {
+            val identity = list.getJSONObject(i)
+            val id = identity.optString("id")
+            if (fallbackId.isBlank()) {
+                fallbackId = id
+            }
+            val email = identity.optString("email", "").trim().lowercase()
+            if (email == normalizedFrom) {
+                return id
+            }
+        }
+        return fallbackId
     }
 }
 
