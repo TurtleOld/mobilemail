@@ -342,6 +342,7 @@ fun MessageContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AttachmentItem(
     attachment: com.mobilemail.data.model.Attachment,
@@ -360,6 +361,7 @@ fun AttachmentItem(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp),
+        onClick = onOpen,
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(
