@@ -2,8 +2,8 @@ package com.mobilemail
 
 import android.net.Uri
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -43,8 +43,15 @@ import com.mobilemail.ui.search.SearchScreen
 import com.mobilemail.ui.search.SearchViewModel
 import com.mobilemail.ui.search.SearchViewModelFactory
 import com.mobilemail.ui.settings.SettingsScreen
+import com.mobilemail.ui.security.PinSetupScreen
+import com.mobilemail.ui.security.PinSetupViewModel
+import com.mobilemail.ui.security.PinSetupViewModelFactory
+import com.mobilemail.ui.security.PinLockScreen
+import com.mobilemail.ui.security.PinLockViewModel
+import com.mobilemail.ui.security.PinLockViewModelFactory
+import com.mobilemail.data.security.PinManager
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private val database by lazy {
         Room.databaseBuilder(
             applicationContext,
@@ -54,6 +61,7 @@ class MainActivity : ComponentActivity() {
     }
     private val preferencesManager by lazy { PreferencesManager(applicationContext) }
     private val tokenStore by lazy { TokenStore(applicationContext) }
+    private val pinManager by lazy { PinManager(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -65,40 +73,66 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
-
-                    LaunchedEffect(Unit) {
-                        val savedSession = preferencesManager.getSavedSession()
-                        if (savedSession != null) {
-                            val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
-                            if (tokens != null) {
-                                val hasRefreshToken = tokens.refreshToken != null
-                                val isAccessTokenValid = tokens.isValid()
-                                android.util.Log.d("MainActivity", "Найдена сохраненная OAuth сессия: access_valid=$isAccessTokenValid, has_refresh=$hasRefreshToken")
-                                
-                                if (isAccessTokenValid || hasRefreshToken) {
-                                    android.util.Log.d("MainActivity", "Автоматический вход через OAuth")
-                                    val passwordPlaceholder = "-"
-                                    val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}/${Uri.encode(passwordPlaceholder)}/${Uri.encode(savedSession.accountId)}"
-                                    navController.navigate(route) {
-                                        popUpTo(0) { inclusive = true }
-                                    }
-                                } else {
-                                    android.util.Log.w("MainActivity", "OAuth токены истекли и нет refresh token, требуется повторная авторизация")
-                                    preferencesManager.clearSession()
-                                    tokenStore.clearTokens(savedSession.server, savedSession.email)
-                                }
-                            } else {
-                                android.util.Log.w("MainActivity", "OAuth токены не найдены, авто-вход отключен")
-                                preferencesManager.clearSession()
-                            }
-                        }
-                    }
+                    val startDestination = if (pinManager.isPinEnabled()) "pin-lock" else "login"
 
                     NavHost(
                         navController = navController,
-                        startDestination = "login"
+                        startDestination = startDestination
                     ) {
+                        composable("pin-lock") {
+                            val viewModel: PinLockViewModel = viewModel(
+                                factory = PinLockViewModelFactory(application)
+                            )
+                            PinLockScreen(
+                                viewModel = viewModel,
+                                onUnlocked = {
+                                    navController.navigate("login") {
+                                        popUpTo("pin-lock") { inclusive = true }
+                                    }
+                                },
+                                onLogout = {
+                                    activityScope.launch {
+                                        preferencesManager.clearSession()
+                                        JmapOAuthClient.clearCache()
+                                        JmapClient.clearCache()
+                                        navController.navigate("login") {
+                                            popUpTo(0) { inclusive = true }
+                                        }
+                                    }
+                                }
+                            )
+                        }
+
                         composable("login") {
+                            // Автовход через OAuth (только после прохождения PIN, если он включён)
+                            LaunchedEffect(Unit) {
+                                val savedSession = preferencesManager.getSavedSession()
+                                if (savedSession != null) {
+                                    val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
+                                    if (tokens != null) {
+                                        val hasRefreshToken = tokens.refreshToken != null
+                                        val isAccessTokenValid = tokens.isValid()
+                                        android.util.Log.d("MainActivity", "Найдена сохраненная OAuth сессия: access_valid=$isAccessTokenValid, has_refresh=$hasRefreshToken")
+
+                                        if (isAccessTokenValid || hasRefreshToken) {
+                                            android.util.Log.d("MainActivity", "Автоматический вход через OAuth")
+                                            val passwordPlaceholder = "-"
+                                            val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}/${Uri.encode(passwordPlaceholder)}/${Uri.encode(savedSession.accountId)}"
+                                            navController.navigate(route) {
+                                                popUpTo(0) { inclusive = true }
+                                            }
+                                        } else {
+                                            android.util.Log.w("MainActivity", "OAuth токены истекли и нет refresh token, требуется повторная авторизация")
+                                            preferencesManager.clearSession()
+                                            tokenStore.clearTokens(savedSession.server, savedSession.email)
+                                        }
+                                    } else {
+                                        android.util.Log.w("MainActivity", "OAuth токены не найдены, авто-вход отключен")
+                                        preferencesManager.clearSession()
+                                    }
+                                }
+                            }
+
                             val viewModel: LoginViewModel = viewModel(
                                 factory = object : ViewModelProvider.Factory {
                                     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
@@ -236,6 +270,19 @@ class MainActivity : ComponentActivity() {
                                 server = server,
                                 email = email,
                                 preferencesManager = preferencesManager,
+                                onBack = { navController.popBackStack() },
+                                onPinSetupClick = {
+                                    navController.navigate("pin-setup")
+                                }
+                            )
+                        }
+
+                        composable("pin-setup") {
+                            val viewModel: PinSetupViewModel = viewModel(
+                                factory = PinSetupViewModelFactory(application)
+                            )
+                            PinSetupScreen(
+                                viewModel = viewModel,
                                 onBack = { navController.popBackStack() }
                             )
                         }
