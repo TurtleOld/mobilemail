@@ -66,15 +66,61 @@ fun MessagesScreen(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
-                FoldersList(
-                    folders = uiState.folders,
-                    selectedFolder = uiState.selectedFolder,
-                    onFolderSelected = { folder ->
-                        viewModel.selectFolder(folder)
-                        scope.launch { drawerState.close() }
-                    },
-                    modifier = Modifier.fillMaxHeight()
-                )
+                Column(modifier = Modifier.fillMaxHeight()) {
+                    // Новое письмо
+                    NavigationDrawerItem(
+                        icon = {
+                            Box(modifier = Modifier.size(24.dp)) {
+                                Icon(
+                                    Icons.Default.Email,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .align(Alignment.Center)
+                                        .size(20.dp)
+                                )
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription = null,
+                                    modifier = Modifier
+                                        .align(Alignment.BottomEnd)
+                                        .size(12.dp)
+                                )
+                            }
+                        },
+                        label = { Text("Написать письмо") },
+                        selected = false,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            onComposeClick()
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+
+                    // Настройки
+                    NavigationDrawerItem(
+                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+                        label = { Text("Настройки") },
+                        selected = false,
+                        onClick = {
+                            scope.launch { drawerState.close() }
+                            onSettingsClick()
+                        },
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+                    )
+
+                    Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+                    // Папки
+                    FoldersList(
+                        folders = uiState.folders,
+                        selectedFolder = uiState.selectedFolder,
+                        onFolderSelected = { folder ->
+                            viewModel.selectFolder(folder)
+                            scope.launch { drawerState.close() }
+                        },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
         ) {
@@ -89,32 +135,11 @@ fun MessagesScreen(
                         }
                     },
                     actions = {
-                        IconButton(onClick = onComposeClick) {
-                            Box(modifier = Modifier.size(24.dp)) {
-                                Icon(
-                                    Icons.Default.Email,
-                                    contentDescription = "Написать письмо",
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .size(20.dp)
-                                )
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .size(12.dp)
-                                )
-                            }
-                        }
                         IconButton(onClick = onSearchClick) {
                             Icon(Icons.Default.Search, contentDescription = "Поиск")
                         }
                         IconButton(onClick = { viewModel.refresh() }) {
                             Icon(Icons.Default.Refresh, contentDescription = "Обновить")
-                        }
-                        IconButton(onClick = onSettingsClick) {
-                            Icon(Icons.Default.Settings, contentDescription = "Настройки")
                         }
                         IconButton(onClick = onLogout) {
                             Icon(Icons.Default.ExitToApp, contentDescription = "Выход")
