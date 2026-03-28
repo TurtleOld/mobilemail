@@ -50,6 +50,7 @@ jobs:
         KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        ONESIGNAL_APP_ID: ${{ secrets.ONESIGNAL_APP_ID }}
       run: ./gradlew :app:assembleRelease
         
     - name: Upload Release APK
