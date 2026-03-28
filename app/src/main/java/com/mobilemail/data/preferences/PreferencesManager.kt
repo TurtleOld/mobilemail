@@ -21,6 +21,7 @@ class PreferencesManager(private val context: Context) {
         private val SAVED_EMAIL_KEY = stringPreferencesKey("saved_email")
         private val SAVED_ACCOUNT_ID_KEY = stringPreferencesKey("saved_account_id")
         private val SESSION_SAVED_KEY = booleanPreferencesKey("session_saved")
+        private val NOTIFICATION_PERMISSION_REQUESTED_KEY = booleanPreferencesKey("notification_permission_requested")
     }
 
     private fun signatureKey(server: String, email: String) =
@@ -60,6 +61,16 @@ class PreferencesManager(private val context: Context) {
             SavedSession(server, email, accountId)
         } else {
             null
+        }
+    }
+
+    suspend fun isNotificationPermissionRequested(): Boolean {
+        return context.dataStore.data.first()[NOTIFICATION_PERMISSION_REQUESTED_KEY] ?: false
+    }
+
+    suspend fun markNotificationPermissionRequested() {
+        context.dataStore.edit { preferences ->
+            preferences[NOTIFICATION_PERMISSION_REQUESTED_KEY] = true
         }
     }
 

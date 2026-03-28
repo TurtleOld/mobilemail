@@ -1,8 +1,11 @@
 package com.mobilemail
 
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +20,7 @@ import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.ui.theme.MobileMailTheme
+import com.onesignal.OneSignal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -160,6 +164,28 @@ class MainActivity : FragmentActivity() {
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val password = Uri.decode(backStackEntry.arguments?.getString("password") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+
+                            val notificationPermissionLauncher = rememberLauncherForActivityResult(
+                                ActivityResultContracts.RequestPermission()
+                            ) { granted ->
+                                if (granted) {
+                                    OneSignal.User.pushSubscription.optIn()
+                                    OneSignal.login(email)
+                                }
+                            }
+
+                            LaunchedEffect(email) {
+                                val alreadyRequested = preferencesManager.isNotificationPermissionRequested()
+                                if (!alreadyRequested) {
+                                    preferencesManager.markNotificationPermissionRequested()
+                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    } else {
+                                        OneSignal.User.pushSubscription.optIn()
+                                        OneSignal.login(email)
+                                    }
+                                }
+                            }
 
                             android.util.Log.d("MainActivity", "Создание MessagesScreen: server=$server, email=$email, accountId=$accountId")
                             

@@ -1,0 +1,13 @@
+package com.mobilemail
+
+import android.app.Application
+import com.onesignal.OneSignal
+import com.onesignal.debug.LogLevel
+
+class MobileMailApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        OneSignal.Debug.logLevel = LogLevel.NONE
+        OneSignal.initWithContext(this, BuildConfig.ONESIGNAL_APP_ID)
+    }
+}
