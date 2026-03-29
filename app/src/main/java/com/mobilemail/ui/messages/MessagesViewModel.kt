@@ -28,7 +28,8 @@ data class MessagesUiState(
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,
     val currentPosition: Int = 0,
-    val error: AppError? = null
+    val error: AppError? = null,
+    val selectedMessageIds: Set<String> = emptySet()
 )
 
 class MessagesViewModel(
@@ -141,7 +142,8 @@ class MessagesViewModel(
             selectedFolder = folder,
             messages = emptyList(),
             currentPosition = 0,
-            hasMore = true
+            hasMore = true,
+            selectedMessageIds = emptySet()
         )
         loadMessages(folder.id, reset = true)
     }
@@ -276,7 +278,23 @@ class MessagesViewModel(
         }
     }
 
-        fun clearError() {
-            _uiState.value = _uiState.value.copy(error = null)
-        }
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(error = null)
     }
+
+    fun toggleMessageSelection(messageId: String) {
+        val current = _uiState.value.selectedMessageIds
+        val updated = if (current.contains(messageId)) current - messageId else current + messageId
+        _uiState.value = _uiState.value.copy(selectedMessageIds = updated)
+    }
+
+    fun clearSelection() {
+        _uiState.value = _uiState.value.copy(selectedMessageIds = emptySet())
+    }
+
+    fun selectAll() {
+        _uiState.value = _uiState.value.copy(
+            selectedMessageIds = _uiState.value.messages.map { it.id }.toSet()
+        )
+    }
+}

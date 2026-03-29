@@ -1,15 +1,19 @@
 package com.mobilemail.ui.messages
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -127,25 +131,44 @@ fun MessagesScreen(
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
-                TopAppBar(
-                    title = { Text(uiState.selectedFolder?.name ?: "Почта") },
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Меню")
+                if (uiState.selectedMessageIds.isNotEmpty()) {
+                    TopAppBar(
+                        title = { Text("${uiState.selectedMessageIds.size} выбрано") },
+                        navigationIcon = {
+                            IconButton(onClick = { viewModel.clearSelection() }) {
+                                Icon(Icons.Default.Close, contentDescription = "Отменить выбор")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = { viewModel.selectAll() }) {
+                                Icon(Icons.Default.SelectAll, contentDescription = "Выбрать все")
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer
+                        )
+                    )
+                } else {
+                    TopAppBar(
+                        title = { Text(uiState.selectedFolder?.name ?: "Почта") },
+                        navigationIcon = {
+                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                Icon(Icons.Default.Menu, contentDescription = "Меню")
+                            }
+                        },
+                        actions = {
+                            IconButton(onClick = onSearchClick) {
+                                Icon(Icons.Default.Search, contentDescription = "Поиск")
+                            }
+                            IconButton(onClick = { viewModel.refresh() }) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Обновить")
+                            }
+                            IconButton(onClick = onLogout) {
+                                Icon(Icons.Default.ExitToApp, contentDescription = "Выход")
+                            }
                         }
-                    },
-                    actions = {
-                        IconButton(onClick = onSearchClick) {
-                            Icon(Icons.Default.Search, contentDescription = "Поиск")
-                        }
-                        IconButton(onClick = { viewModel.refresh() }) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Обновить")
-                        }
-                        IconButton(onClick = onLogout) {
-                            Icon(Icons.Default.ExitToApp, contentDescription = "Выход")
-                        }
-                    }
-                )
+                    )
+                }
             }
         ) { padding ->
             MessagesList(
@@ -153,7 +176,15 @@ fun MessagesScreen(
                 isLoading = uiState.isLoading,
                 isLoadingMore = uiState.isLoadingMore,
                 hasMore = uiState.hasMore,
-                onMessageClick = onMessageClick,
+                selectedIds = uiState.selectedMessageIds,
+                onMessageClick = { messageId ->
+                    if (uiState.selectedMessageIds.isNotEmpty()) {
+                        viewModel.toggleMessageSelection(messageId)
+                    } else {
+                        onMessageClick(messageId)
+                    }
+                },
+                onMessageLongClick = { messageId -> viewModel.toggleMessageSelection(messageId) },
                 onLoadMore = { viewModel.loadMoreMessages() },
                 modifier = Modifier
                     .fillMaxSize()
@@ -261,14 +292,16 @@ fun MessagesList(
     isLoading: Boolean,
     isLoadingMore: Boolean,
     hasMore: Boolean,
+    selectedIds: Set<String>,
     onMessageClick: (String) -> Unit,
+    onMessageLongClick: (String) -> Unit,
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     LaunchedEffect(messages.size, isLoading) {
         android.util.Log.d("MessagesScreen", "MessagesList: messages=${messages.size}, isLoading=$isLoading")
     }
-    
+
     Box(
         modifier = modifier.fillMaxSize()
     ) {
@@ -292,7 +325,9 @@ fun MessagesList(
                     val message = messages[index]
                     MessageItem(
                         message = message,
-                        onClick = { onMessageClick(message.id) }
+                        isSelected = selectedIds.contains(message.id),
+                        onClick = { onMessageClick(message.id) },
+                        onLongClick = { onMessageLongClick(message.id) }
                     )
                     if (index == messages.size - 1 && hasMore && !isLoadingMore) {
                         LaunchedEffect(Unit) {
@@ -300,7 +335,7 @@ fun MessagesList(
                         }
                     }
                 }
-                
+
                 if (isLoadingMore) {
                     item {
                         Box(
@@ -318,96 +353,117 @@ fun MessagesList(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun MessageItem(
     message: MessageListItem,
-    onClick: () -> Unit
+    isSelected: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     val isUnread = message.flags.unread
-    
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            ),
         elevation = CardDefaults.cardElevation(
             defaultElevation = if (isUnread) 4.dp else 2.dp
         ),
         colors = CardDefaults.cardColors(
-            containerColor = if (isUnread) 
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-            else 
-                MaterialTheme.colorScheme.surface
+            containerColor = when {
+                isSelected -> MaterialTheme.colorScheme.primaryContainer
+                isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                else -> MaterialTheme.colorScheme.surface
+            }
         )
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(16.dp),
+            verticalAlignment = Alignment.Top
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            if (isSelected) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = "Выбрано",
+                    modifier = Modifier
+                        .size(20.dp)
+                        .padding(end = 0.dp),
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            Column(modifier = Modifier.weight(1f)) {
                 Row(
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (isUnread) {
-                        Icon(
-                            Icons.Default.Email,
-                            contentDescription = "Непрочитанное",
-                            modifier = Modifier.size(16.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        if (isUnread && !isSelected) {
+                            Icon(
+                                Icons.Default.Email,
+                                contentDescription = "Непрочитанное",
+                                modifier = Modifier.size(16.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
+                        Text(
+                            text = message.from.name ?: message.from.email,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.weight(1f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
                     }
                     Text(
-                        text = message.from.name ?: message.from.email,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
-                        modifier = Modifier.weight(1f),
-                        maxLines = 1,
+                        text = dateFormat.format(message.date),
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Text(
+                    text = message.subject,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                if (message.snippet.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = message.snippet,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
-                Text(
-                    text = dateFormat.format(message.date),
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            Text(
-                text = message.subject,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            
-            if (message.snippet.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = message.snippet,
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-            
-            if (message.flags.hasAttachments) {
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "📎",
-                    style = MaterialTheme.typography.bodySmall
-                )
+
+                if (message.flags.hasAttachments) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "📎",
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
             }
         }
     }
