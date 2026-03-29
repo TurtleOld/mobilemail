@@ -170,8 +170,8 @@ class MainActivity : FragmentActivity() {
                             ) { granted ->
                                 if (granted) {
                                     OneSignal.User.pushSubscription.optIn()
-                                    OneSignal.login(email)
                                 }
+                                OneSignal.login(email)
                             }
 
                             LaunchedEffect(email) {
@@ -184,6 +184,8 @@ class MainActivity : FragmentActivity() {
                                         OneSignal.User.pushSubscription.optIn()
                                         OneSignal.login(email)
                                     }
+                                } else {
+                                    OneSignal.login(email)
                                 }
                             }
 
