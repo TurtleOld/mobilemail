@@ -185,6 +185,8 @@ class MainActivity : FragmentActivity() {
                                         OneSignal.login(email)
                                     }
                                 } else {
+                                    // Always ensure push subscription is active on app relaunch
+                                    OneSignal.User.pushSubscription.optIn()
                                     OneSignal.login(email)
                                 }
                             }
