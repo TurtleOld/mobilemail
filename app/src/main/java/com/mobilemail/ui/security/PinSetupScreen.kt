@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -37,6 +38,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
@@ -68,6 +70,14 @@ fun PinSetupScreen(
     val uiState by viewModel.uiState.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
     val context = LocalContext.current
+    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
+    val centeredCardModifier = if (isExpandedLayout) {
+        Modifier
+            .fillMaxWidth()
+            .widthIn(max = 640.dp)
+    } else {
+        Modifier.fillMaxWidth()
+    }
 
     // Обработка запроса биометрии при включении
     LaunchedEffect(uiState.showBiometricPrompt) {
@@ -143,11 +153,11 @@ fun PinSetupScreen(
                 .fillMaxSize()
                 .padding(padding)
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
+                .padding(horizontal = if (isExpandedLayout) 24.dp else 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Card(
-                modifier = Modifier.fillMaxWidth()
+                modifier = centeredCardModifier
             ) {
                 Column(
                     modifier = Modifier.padding(16.dp),
@@ -191,7 +201,7 @@ fun PinSetupScreen(
             // Показываем форму ввода PIN только если PIN ещё не сохранён
             if (uiState.isPinEnabled && !uiState.isPinSaved) {
                 Card(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = centeredCardModifier
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp),
@@ -262,7 +272,7 @@ fun PinSetupScreen(
             // Показываем биометрию только когда PIN уже сохранён
             if (uiState.isPinSaved && uiState.isBiometricAvailable) {
                 Card(
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = centeredCardModifier
                 ) {
                     Column(
                         modifier = Modifier.padding(16.dp)

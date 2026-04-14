@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
@@ -29,6 +30,7 @@ fun LoginScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var hasOpenedAuthPage by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val verificationUri = uiState.oauthVerificationUriComplete ?: uiState.oauthVerificationUri
@@ -73,110 +75,120 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(24.dp),
+                .padding(horizontal = if (isExpandedLayout) 32.dp else 24.dp, vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                text = stringResource(R.string.login_title),
-                style = MaterialTheme.typography.headlineLarge,
-                modifier = Modifier.padding(bottom = 32.dp)
-            )
-
-            OutlinedTextField(
-                value = uiState.server,
-                onValueChange = viewModel::updateServer,
-                label = { Text(stringResource(R.string.server_hint)) },
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = if (uiState.oauthUserCode != null) 16.dp else 24.dp),
-                singleLine = true,
-                placeholder = { Text("https://mail.example.com") }
-            )
-
-            val oauthUserCode = uiState.oauthUserCode
-            if (oauthUserCode != null) {
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer
-                    )
+                    .widthIn(max = 520.dp)
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(20.dp)
                 ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp)
-                    ) {
-                        Text(
-                            text = "Код авторизации:",
-                            style = MaterialTheme.typography.labelMedium
-                        )
-                        Text(
-                            text = oauthUserCode,
-                            style = MaterialTheme.typography.headlineMedium,
-                            modifier = Modifier.padding(vertical = 8.dp)
-                        )
-                        if (verificationUri != null) {
-                            Button(
-                                onClick = {
-                                    openAuthorizationPage(context, verificationUri)
-                                    hasOpenedAuthPage = true
-                                },
-                                modifier = Modifier.fillMaxWidth()
+                    Text(
+                        text = stringResource(R.string.login_title),
+                        style = MaterialTheme.typography.headlineLarge
+                    )
+
+                    OutlinedTextField(
+                        value = uiState.server,
+                        onValueChange = viewModel::updateServer,
+                        label = { Text(stringResource(R.string.server_hint)) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .semantics { contentDescription = "Адрес почтового сервера" },
+                        singleLine = true,
+                        placeholder = { Text("https://mail.example.com") }
+                    )
+
+                    val oauthUserCode = uiState.oauthUserCode
+                    if (oauthUserCode != null) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text("Открыть страницу авторизации")
+                                Text(
+                                    text = "Код авторизации:",
+                                    style = MaterialTheme.typography.labelMedium
+                                )
+                                Text(
+                                    text = oauthUserCode,
+                                    style = MaterialTheme.typography.headlineMedium,
+                                    modifier = Modifier.semantics {
+                                        contentDescription = "Код авторизации $oauthUserCode"
+                                    }
+                                )
+                                if (verificationUri != null) {
+                                    Button(
+                                        onClick = {
+                                            openAuthorizationPage(context, verificationUri)
+                                            hasOpenedAuthPage = true
+                                        },
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Text("Открыть страницу авторизации")
+                                    }
+                                }
+                                TextButton(
+                                    onClick = { viewModel.cancelOAuthLogin() },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Отменить")
+                                }
                             }
                         }
-                        TextButton(
-                            onClick = { viewModel.cancelOAuthLogin() },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text("Отменить")
+                    }
+
+                    if (uiState.requiresTwoFactor) {
+                        OutlinedTextField(
+                            value = uiState.totpCode,
+                            onValueChange = { newValue ->
+                                if (newValue.length <= 6 && newValue.all { it.isDigit() }) {
+                                    viewModel.updateTotpCode(newValue)
+                                }
+                            },
+                            label = { Text("Код двухфакторной авторизации") },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .semantics {
+                                    contentDescription = "Код двухфакторной авторизации"
+                                },
+                            singleLine = true,
+                            placeholder = { Text("000000") },
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.NumberPassword,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(onDone = { }),
+                            visualTransformation = PasswordVisualTransformation()
+                        )
+                    }
+
+                    Button(
+                        onClick = { viewModel.startOAuthLogin { } },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(56.dp),
+                        enabled = !uiState.isLoading && (uiState.oauthUserCode == null)
+                    ) {
+                        if (uiState.isLoading) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(24.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                        } else {
+                            Text("Войти через OAuth")
                         }
                     }
-                }
-            }
-
-            if (uiState.requiresTwoFactor) {
-                OutlinedTextField(
-                    value = uiState.totpCode,
-                    onValueChange = { newValue ->
-                        if (newValue.length <= 6 && newValue.all { it.isDigit() }) {
-                            viewModel.updateTotpCode(newValue)
-                        }
-                    },
-                    label = { Text("Код двухфакторной авторизации") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 24.dp)
-                        .semantics {
-                            contentDescription = "TOTP код двухфакторной авторизации"
-                        },
-                    singleLine = true,
-                    placeholder = { Text("000000") },
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = KeyboardType.NumberPassword,
-                        imeAction = ImeAction.Done
-                    ),
-                    keyboardActions = KeyboardActions(onDone = { }),
-                    visualTransformation = PasswordVisualTransformation()
-                )
-            }
-
-            Button(
-                onClick = { viewModel.startOAuthLogin { } },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                enabled = !uiState.isLoading && (uiState.oauthUserCode == null)
-            ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                } else {
-                    Text("Войти через OAuth")
                 }
             }
         }

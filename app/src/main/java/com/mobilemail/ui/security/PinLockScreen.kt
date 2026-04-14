@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backspace
@@ -33,7 +34,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -59,6 +65,7 @@ fun PinLockScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
+    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
 
     LaunchedEffect(uiState.isUnlocked) {
         if (uiState.isUnlocked) {
@@ -116,112 +123,126 @@ fun PinLockScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(32.dp),
+                .padding(horizontal = if (isExpandedLayout) 48.dp else 32.dp, vertical = 32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Icon(
-                imageVector = Icons.Default.Email,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Text(
-                text = "MobileMail",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Text(
-                text = "Введите PIN-код",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // PIN dots
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            Surface(
+                modifier = Modifier.widthIn(max = 520.dp),
+                tonalElevation = if (isExpandedLayout) 2.dp else 0.dp,
+                shape = MaterialTheme.shapes.large
             ) {
-                repeat(PinManager.PIN_LENGTH) { index ->
-                    PinDot(isFilled = index < uiState.pin.length)
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Error message
-            uiState.error?.let { error ->
-                Text(
-                    text = error,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.error,
-                    textAlign = TextAlign.Center
-                )
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Numeric keypad
-            Column(
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                listOf(
-                    listOf("1", "2", "3"),
-                    listOf("4", "5", "6"),
-                    listOf("7", "8", "9"),
-                    listOf(
-                        if (uiState.isBiometricEnabled) "bio" else "",
-                        "0",
-                        "del"
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Email,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.primary
                     )
-                ).forEach { row ->
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        text = "MobileMail",
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = "Введите PIN-код",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        modifier = Modifier.semantics {
+                            contentDescription = "Введено цифр PIN: ${uiState.pin.length} из ${PinManager.PIN_LENGTH}"
+                        }
                     ) {
-                        row.forEach { key ->
-                            when (key) {
-                                "bio" -> {
-                                    KeypadButton(
-                                        onClick = { viewModel.requestBiometric() }
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Fingerprint,
-                                            contentDescription = "Биометрия",
-                                            modifier = Modifier.size(28.dp)
-                                        )
-                                    }
-                                }
-                                "del" -> {
-                                    KeypadButton(
-                                        onClick = { viewModel.onPinDigitDeleted() }
-                                    ) {
-                                        Icon(
-                                            Icons.Default.Backspace,
-                                            contentDescription = "Удалить",
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                }
-                                "" -> {
-                                    Spacer(modifier = Modifier.size(72.dp))
-                                }
-                                else -> {
-                                    KeypadButton(
-                                        onClick = { viewModel.onPinDigitEntered(key) }
-                                    ) {
-                                        Text(
-                                            text = key,
-                                            fontSize = 24.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
+                        repeat(PinManager.PIN_LENGTH) { index ->
+                            PinDot(isFilled = index < uiState.pin.length)
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    uiState.error?.let { error ->
+                        Text(
+                            text = error,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(32.dp))
+
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        listOf(
+                            listOf("1", "2", "3"),
+                            listOf("4", "5", "6"),
+                            listOf("7", "8", "9"),
+                            listOf(
+                                if (uiState.isBiometricEnabled) "bio" else "",
+                                "0",
+                                "del"
+                            )
+                        ).forEach { row ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                row.forEach { key ->
+                                    when (key) {
+                                        "bio" -> {
+                                            KeypadButton(
+                                                onClick = { viewModel.requestBiometric() },
+                                                contentDescription = "Биометрия"
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Fingerprint,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(28.dp)
+                                                )
+                                            }
+                                        }
+                                        "del" -> {
+                                            KeypadButton(
+                                                onClick = { viewModel.onPinDigitDeleted() },
+                                                contentDescription = "Удалить последнюю цифру"
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Backspace,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+                                        "" -> {
+                                            Spacer(modifier = Modifier.size(72.dp))
+                                        }
+                                        else -> {
+                                            KeypadButton(
+                                                onClick = { viewModel.onPinDigitEntered(key) },
+                                                contentDescription = "Цифра $key"
+                                            ) {
+                                                Text(
+                                                    text = key,
+                                                    fontSize = 24.sp,
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -256,6 +277,7 @@ private fun PinDot(isFilled: Boolean) {
 @Composable
 private fun KeypadButton(
     onClick: () -> Unit,
+    contentDescription: String,
     content: @Composable () -> Unit
 ) {
     Box(
@@ -263,6 +285,10 @@ private fun KeypadButton(
             .size(72.dp)
             .clip(CircleShape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
+            .semantics {
+                role = Role.Button
+                this.contentDescription = contentDescription
+            }
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

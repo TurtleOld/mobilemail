@@ -1,7 +1,9 @@
 package com.mobilemail.ui.search
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -10,6 +12,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -18,7 +25,7 @@ import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun SearchScreen(
     viewModel: SearchViewModel,
@@ -28,6 +35,7 @@ fun SearchScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var showFolderDialog by remember { mutableStateOf(false) }
 
     // Обработка ошибок
@@ -130,71 +138,74 @@ fun SearchScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .padding(horizontal = if (isExpandedLayout) 24.dp else 0.dp)
         ) {
-            // Поле поиска
-            OutlinedTextField(
-                value = uiState.query,
-                onValueChange = { 
-                    viewModel.updateQuery(it)
-                    if (it.isBlank()) {
-                        viewModel.performSearch() // Очистить результаты при очистке поля
-                    }
-                },
-                label = { Text("Поиск писем") },
-                placeholder = { Text("Введите текст для поиска...") },
-                leadingIcon = {
-                    Icon(Icons.Default.Search, contentDescription = null)
-                },
-                trailingIcon = {
-                    if (uiState.query.isNotEmpty()) {
-                        IconButton(onClick = { 
-                            viewModel.updateQuery("")
-                            viewModel.performSearch()
-                        }) {
-                            Icon(Icons.Default.Clear, contentDescription = "Очистить")
-                        }
-                    }
-                },
-                singleLine = true,
+            Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp)
-            )
-
-            // Фильтры
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(16.dp),
+                tonalElevation = if (isExpandedLayout) 1.dp else 0.dp,
+                color = if (isExpandedLayout) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
             ) {
-                // Фильтр по папке
-                FilterChip(
-                    selected = uiState.selectedFolder != null,
-                    onClick = { showFolderDialog = true },
-                    label = { 
-                        Text(
-                            text = uiState.selectedFolder?.name ?: "Все папки",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                Column(
+                    modifier = Modifier.padding(if (isExpandedLayout) 20.dp else 0.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = uiState.query,
+                        onValueChange = {
+                            viewModel.updateQuery(it)
+                            if (it.isBlank()) {
+                                viewModel.performSearch()
+                            }
+                        },
+                        label = { Text("Поиск писем") },
+                        placeholder = { Text("Введите текст для поиска...") },
+                        leadingIcon = {
+                            Icon(Icons.Default.Search, contentDescription = null)
+                        },
+                        trailingIcon = {
+                            if (uiState.query.isNotEmpty()) {
+                                IconButton(onClick = {
+                                    viewModel.updateQuery("")
+                                    viewModel.performSearch()
+                                }) {
+                                    Icon(Icons.Default.Clear, contentDescription = "Очистить")
+                                }
+                            }
+                        },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        FilterChip(
+                            selected = uiState.selectedFolder != null,
+                            onClick = { showFolderDialog = true },
+                            label = {
+                                Text(
+                                    text = uiState.selectedFolder?.name ?: "Все папки",
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         )
-                    },
-                    modifier = Modifier.weight(1f)
-                )
-
-                // Фильтр непрочитанных
-                FilterChip(
-                    selected = uiState.unreadOnly,
-                    onClick = { viewModel.toggleUnreadOnly() },
-                    label = { Text("Непрочитанные") }
-                )
-
-                // Фильтр с вложениями
-                FilterChip(
-                    selected = uiState.hasAttachments,
-                    onClick = { viewModel.toggleHasAttachments() },
-                    label = { Text("С вложениями") }
-                )
+                        FilterChip(
+                            selected = uiState.unreadOnly,
+                            onClick = { viewModel.toggleUnreadOnly() },
+                            label = { Text("Непрочитанные") }
+                        )
+                        FilterChip(
+                            selected = uiState.hasAttachments,
+                            onClick = { viewModel.toggleHasAttachments() },
+                            label = { Text("С вложениями") }
+                        )
+                    }
+                }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -265,6 +276,13 @@ fun MessageItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics {
+                role = Role.Button
+                stateDescription = buildString {
+                    append(if (message.flags.unread) "Непрочитанное" else "Прочитанное")
+                    if (message.flags.hasAttachments) append(", с вложением")
+                }
+            }
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
