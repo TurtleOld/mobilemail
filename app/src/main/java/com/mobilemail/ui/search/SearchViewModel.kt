@@ -17,16 +17,40 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+enum class SearchSmartFilter(
+    val label: String,
+    val dateRange: SearchRepository.DateRange = SearchRepository.DateRange.ANY,
+    val unreadOnly: Boolean = false,
+    val hasAttachments: Boolean = false,
+    val starredOnly: Boolean = false,
+    val importantOnly: Boolean = false
+) {
+    RECENT("7 дней", dateRange = SearchRepository.DateRange.LAST_7_DAYS),
+    UNREAD("Непрочитанные", unreadOnly = true),
+    ATTACHMENTS("Вложения", hasAttachments = true),
+    STARRED("Избранное", starredOnly = true),
+    IMPORTANT("Важные", importantOnly = true)
+}
+
 data class SearchUiState(
     val query: String = "",
+    val senderQuery: String = "",
     val selectedFolder: Folder? = null,
     val folders: List<Folder> = emptyList(),
     val unreadOnly: Boolean = false,
     val hasAttachments: Boolean = false,
+    val starredOnly: Boolean = false,
+    val importantOnly: Boolean = false,
+    val dateRange: SearchRepository.DateRange = SearchRepository.DateRange.ANY,
+    val showAdvancedFilters: Boolean = false,
     val results: List<MessageListItem> = emptyList(),
     val isLoading: Boolean = false,
     val error: AppError? = null
-)
+) {
+    val hasActiveFilters: Boolean
+        get() = selectedFolder != null || unreadOnly || hasAttachments || starredOnly || importantOnly ||
+            dateRange != SearchRepository.DateRange.ANY || senderQuery.isNotBlank()
+}
 
 class SearchViewModel(
     application: Application,
@@ -81,21 +105,73 @@ class SearchViewModel(
         _uiState.value = _uiState.value.copy(query = query)
     }
 
+    fun updateSenderQuery(query: String) {
+        _uiState.value = _uiState.value.copy(senderQuery = query)
+        refreshIfNeeded()
+    }
+
     fun selectFolder(folder: Folder?) {
         _uiState.value = _uiState.value.copy(selectedFolder = folder)
+        refreshIfNeeded()
     }
 
     fun toggleUnreadOnly() {
         _uiState.value = _uiState.value.copy(unreadOnly = !_uiState.value.unreadOnly)
+        refreshIfNeeded()
     }
 
     fun toggleHasAttachments() {
         _uiState.value = _uiState.value.copy(hasAttachments = !_uiState.value.hasAttachments)
+        refreshIfNeeded()
+    }
+
+    fun toggleStarredOnly() {
+        _uiState.value = _uiState.value.copy(starredOnly = !_uiState.value.starredOnly)
+        refreshIfNeeded()
+    }
+
+    fun toggleImportantOnly() {
+        _uiState.value = _uiState.value.copy(importantOnly = !_uiState.value.importantOnly)
+        refreshIfNeeded()
+    }
+
+    fun setDateRange(range: SearchRepository.DateRange) {
+        _uiState.value = _uiState.value.copy(dateRange = range)
+        refreshIfNeeded()
+    }
+
+    fun toggleAdvancedFilters() {
+        _uiState.value = _uiState.value.copy(showAdvancedFilters = !_uiState.value.showAdvancedFilters)
+    }
+
+    fun clearFilters() {
+        _uiState.value = _uiState.value.copy(
+            senderQuery = "",
+            selectedFolder = null,
+            unreadOnly = false,
+            hasAttachments = false,
+            starredOnly = false,
+            importantOnly = false,
+            dateRange = SearchRepository.DateRange.ANY,
+            results = if (_uiState.value.query.isBlank()) emptyList() else _uiState.value.results
+        )
+        refreshIfNeeded()
+    }
+
+    fun applySmartFilter(filter: SearchSmartFilter) {
+        _uiState.value = _uiState.value.copy(
+            unreadOnly = filter.unreadOnly,
+            hasAttachments = filter.hasAttachments,
+            starredOnly = filter.starredOnly,
+            importantOnly = filter.importantOnly,
+            dateRange = filter.dateRange
+        )
+        refreshIfNeeded()
     }
 
     fun performSearch() {
         val currentQuery = _uiState.value.query.trim()
-        if (currentQuery.isBlank()) {
+        if (currentQuery.isBlank() && !_uiState.value.hasActiveFilters) {
             _uiState.value = _uiState.value.copy(results = emptyList())
             return
         }
@@ -105,9 +181,13 @@ class SearchViewModel(
             
             searchRepository.searchMessages(
                 query = currentQuery,
+                senderQuery = _uiState.value.senderQuery,
                 folderId = _uiState.value.selectedFolder?.id,
                 unreadOnly = _uiState.value.unreadOnly,
-                hasAttachments = _uiState.value.hasAttachments
+                hasAttachments = _uiState.value.hasAttachments,
+                starredOnly = _uiState.value.starredOnly,
+                importantOnly = _uiState.value.importantOnly,
+                dateRange = _uiState.value.dateRange
             ).fold(
                 onError = { e ->
                     Log.e("SearchViewModel", "Ошибка поиска", e)
@@ -130,5 +210,11 @@ class SearchViewModel(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    private fun refreshIfNeeded() {
+        if (_uiState.value.query.isNotBlank() || _uiState.value.hasActiveFilters) {
+            performSearch()
+        }
     }
 }

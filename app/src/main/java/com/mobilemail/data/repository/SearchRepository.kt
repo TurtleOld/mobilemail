@@ -12,11 +12,23 @@ import java.util.Date
 class SearchRepository(
     private val jmapClient: JmapApi
 ) {
+    enum class DateRange {
+        ANY,
+        TODAY,
+        LAST_7_DAYS,
+        LAST_30_DAYS,
+        LAST_365_DAYS
+    }
+
     suspend fun searchMessages(
         query: String,
         folderId: String? = null,
         unreadOnly: Boolean = false,
         hasAttachments: Boolean = false,
+        starredOnly: Boolean = false,
+        importantOnly: Boolean = false,
+        senderQuery: String = "",
+        dateRange: DateRange = DateRange.ANY,
         limit: Int = 50
     ): Result<List<MessageListItem>> = runCatchingSuspend {
         val session = jmapClient.getSession()
@@ -24,15 +36,26 @@ class SearchRepository(
             ?: session.accounts.keys.firstOrNull()
             ?: throw IllegalStateException("AccountId не найден")
         
-        val filter = mutableMapOf<String, Any>()
+        val conditions = mutableListOf<Map<String, Any>>()
         if (folderId != null) {
-            filter["inMailbox"] = folderId
+            conditions += mapOf("inMailbox" to folderId)
         }
         if (unreadOnly) {
-            filter["notKeyword"] = "\$seen"
+            conditions += mapOf("notKeyword" to "\$seen")
         }
         if (hasAttachments) {
-            filter["hasAttachment"] = true
+            conditions += mapOf("hasAttachment" to true)
+        }
+        if (starredOnly) {
+            conditions += mapOf("hasKeyword" to "\$flagged")
+        }
+        if (importantOnly) {
+            conditions += mapOf("hasKeyword" to "\$important")
+        }
+        val filter = when (conditions.size) {
+            0 -> null
+            1 -> conditions.first()
+            else -> mapOf("operator" to "AND", "conditions" to conditions)
         }
         
         val queryResult = jmapClient.queryEmails(
@@ -41,7 +64,7 @@ class SearchRepository(
             position = 0,
             limit = limit,
             filter = filter,
-            searchText = query
+            searchText = query.takeIf { it.isNotBlank() }
         )
         
         if (queryResult.ids.isEmpty()) {
@@ -63,6 +86,11 @@ class SearchRepository(
             val isUnread = email.keywords?.get("\$seen") != true
             val isStarred = email.keywords?.get("\$flagged") == true
             val isImportant = email.keywords?.get("\$important") == true
+            val receivedDate = try {
+                Date.from(Instant.parse(email.receivedAt))
+            } catch (e: Exception) {
+                Date()
+            }
             
             // Парсим вложения для точного определения их наличия
             val hasRealAttachments = if (email.bodyStructure != null) {
@@ -88,11 +116,7 @@ class SearchRepository(
                 from = from,
                 subject = email.subject ?: "(без темы)",
                 snippet = email.preview ?: "",
-                date = try {
-                    Date.from(Instant.parse(email.receivedAt))
-                } catch (e: Exception) {
-                    Date()
-                },
+                date = receivedDate,
                 flags = MessageFlags(
                     unread = isUnread,
                     starred = isStarred,
@@ -101,6 +125,32 @@ class SearchRepository(
                 ),
                 size = email.size
             )
+        }.filter { message ->
+            matchesSender(message, senderQuery) &&
+                matchesDateRange(message.date, dateRange) &&
+                (!starredOnly || message.flags.starred) &&
+                (!importantOnly || message.flags.important)
+        }
+    }
+
+    private fun matchesSender(message: MessageListItem, senderQuery: String): Boolean {
+        if (senderQuery.isBlank()) return true
+        val normalized = senderQuery.trim().lowercase()
+        return (message.from.name ?: "").lowercase().contains(normalized) ||
+            message.from.email.lowercase().contains(normalized)
+    }
+
+    private fun matchesDateRange(date: Date, dateRange: DateRange): Boolean {
+        if (dateRange == DateRange.ANY) return true
+        val now = System.currentTimeMillis()
+        val diff = now - date.time
+        val day = 24L * 60L * 60L * 1000L
+        return when (dateRange) {
+            DateRange.ANY -> true
+            DateRange.TODAY -> diff <= day
+            DateRange.LAST_7_DAYS -> diff <= day * 7
+            DateRange.LAST_30_DAYS -> diff <= day * 30
+            DateRange.LAST_365_DAYS -> diff <= day * 365
         }
     }
 }

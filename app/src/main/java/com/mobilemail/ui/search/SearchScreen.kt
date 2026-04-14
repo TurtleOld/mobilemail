@@ -117,9 +117,17 @@ fun SearchScreen(
                     }
                 },
                 actions = {
+                    if (uiState.hasActiveFilters) {
+                        IconButton(onClick = { viewModel.clearFilters() }) {
+                            Icon(Icons.Default.FilterAltOff, contentDescription = "Сбросить фильтры")
+                        }
+                    }
+                    IconButton(onClick = { viewModel.toggleAdvancedFilters() }) {
+                        Icon(Icons.Default.Tune, contentDescription = "Расширенные фильтры")
+                    }
                     IconButton(
                         onClick = { viewModel.performSearch() },
-                        enabled = uiState.query.isNotBlank() && !uiState.isLoading
+                        enabled = (uiState.query.isNotBlank() || uiState.hasActiveFilters) && !uiState.isLoading
                     ) {
                         if (uiState.isLoading) {
                             CircularProgressIndicator(
@@ -183,6 +191,20 @@ fun SearchScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        SearchSmartFilter.entries.forEach { filter ->
+                            val isSelected = when (filter) {
+                                SearchSmartFilter.RECENT -> uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_7_DAYS
+                                SearchSmartFilter.UNREAD -> uiState.unreadOnly
+                                SearchSmartFilter.ATTACHMENTS -> uiState.hasAttachments
+                                SearchSmartFilter.STARRED -> uiState.starredOnly
+                                SearchSmartFilter.IMPORTANT -> uiState.importantOnly
+                            }
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = { viewModel.applySmartFilter(filter) },
+                                label = { Text(filter.label) }
+                            )
+                        }
                         FilterChip(
                             selected = uiState.selectedFolder != null,
                             onClick = { showFolderDialog = true },
@@ -205,6 +227,66 @@ fun SearchScreen(
                             label = { Text("С вложениями") }
                         )
                     }
+
+                    if (uiState.showAdvancedFilters) {
+                        OutlinedTextField(
+                            value = uiState.senderQuery,
+                            onValueChange = { viewModel.updateSenderQuery(it) },
+                            label = { Text("Отправитель") },
+                            placeholder = { Text("Имя или email") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            DateFilterChip(
+                                label = "Любая дата",
+                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.ANY,
+                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.ANY) }
+                            )
+                            DateFilterChip(
+                                label = "Сегодня",
+                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.TODAY,
+                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.TODAY) }
+                            )
+                            DateFilterChip(
+                                label = "7 дней",
+                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_7_DAYS,
+                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.LAST_7_DAYS) }
+                            )
+                            DateFilterChip(
+                                label = "30 дней",
+                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_30_DAYS,
+                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.LAST_30_DAYS) }
+                            )
+                            DateFilterChip(
+                                label = "Год",
+                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_365_DAYS,
+                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.LAST_365_DAYS) }
+                            )
+                        }
+
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FilterChip(
+                                selected = uiState.starredOnly,
+                                onClick = { viewModel.toggleStarredOnly() },
+                                label = { Text("Избранные") }
+                            )
+                            FilterChip(
+                                selected = uiState.importantOnly,
+                                onClick = { viewModel.toggleImportantOnly() },
+                                label = { Text("Важные") }
+                            )
+                        }
+                    }
                 }
             }
 
@@ -220,7 +302,7 @@ fun SearchScreen(
                 ) {
                     CircularProgressIndicator()
                 }
-            } else if (uiState.results.isEmpty() && uiState.query.isNotBlank()) {
+            } else if (uiState.results.isEmpty() && (uiState.query.isNotBlank() || uiState.hasActiveFilters)) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -256,7 +338,7 @@ fun SearchScreen(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = "Введите запрос для поиска",
+                        text = "Введите запрос или выберите фильтры",
                         style = MaterialTheme.typography.bodyLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -264,6 +346,20 @@ fun SearchScreen(
             }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DateFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) }
+    )
 }
 
 @Composable
