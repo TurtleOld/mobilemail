@@ -17,6 +17,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -189,6 +194,7 @@ fun MessageContent(
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     val scrollState = rememberScrollState()
     val context = LocalContext.current
+    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
 
     Column(
         modifier = modifier
@@ -203,42 +209,47 @@ fun MessageContent(
             modifier = Modifier.padding(bottom = 8.dp)
         )
 
-        Row(
-            modifier = Modifier.padding(bottom = 8.dp)
-        ) {
-            Text(
-                text = "От: ",
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = message.from.name ?: message.from.email,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-
-        if (message.to.isNotEmpty()) {
-            LaunchedEffect(message.to) {
-                android.util.Log.d("MessageDetailScreen", "Отображение поля 'Кому': size=${message.to.size}")
-            }
-            
+        if (isExpandedLayout) {
             Row(
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                Text(
-                    text = "Кому: ",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold
+                MessageEnvelope(
+                    label = "От",
+                    value = message.from.name ?: message.from.email,
+                    modifier = Modifier.weight(1f)
                 )
-                Text(
-                    text = message.to.joinToString(", ") { addr ->
+                if (message.to.isNotEmpty()) {
+                    MessageEnvelope(
+                        label = "Кому",
+                        value = message.to.joinToString(", ") { addr ->
+                            when {
+                                !addr.name.isNullOrBlank() -> addr.name.orEmpty()
+                                addr.email.isNotBlank() -> addr.email
+                                else -> "(без адреса)"
+                            }
+                        },
+                        modifier = Modifier.weight(1.2f)
+                    )
+                }
+            }
+        } else {
+            MessageEnvelope(
+                label = "От",
+                value = message.from.name ?: message.from.email,
+                modifier = Modifier.fillMaxWidth()
+            )
+            if (message.to.isNotEmpty()) {
+                MessageEnvelope(
+                    label = "Кому",
+                    value = message.to.joinToString(", ") { addr ->
                         when {
                             !addr.name.isNullOrBlank() -> addr.name.orEmpty()
                             addr.email.isNotBlank() -> addr.email
                             else -> "(без адреса)"
                         }
                     },
-                    style = MaterialTheme.typography.bodyMedium
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
@@ -347,6 +358,27 @@ fun MessageContent(
     }
 }
 
+@Composable
+private fun MessageEnvelope(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier.padding(bottom = 8.dp)
+    ) {
+        Text(
+            text = "$label: ",
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AttachmentItem(
@@ -365,7 +397,11 @@ fun AttachmentItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .padding(vertical = 4.dp)
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = "Вложение ${attachment.filename}, ${formatFileSize(attachment.size)}"
+            },
         onClick = onOpen,
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {

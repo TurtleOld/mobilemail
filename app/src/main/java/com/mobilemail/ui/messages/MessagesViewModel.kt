@@ -53,8 +53,6 @@ class MessagesViewModel(
     )
 
     init {
-        android.util.Log.d("MessagesViewModel", "Инициализация ViewModel: server=$server, email=$email, accountId=$accountId")
-        android.util.Log.d("MessagesViewModel", "JmapClient создан, начинаем загрузку папок")
         try {
             loadFolders()
         } catch (e: Exception) {
@@ -68,7 +66,6 @@ class MessagesViewModel(
 
     private fun loadFolders() {
         viewModelScope.launch {
-            android.util.Log.d("MessagesViewModel", "Начало загрузки папок")
             _uiState.value = _uiState.value.copy(isLoading = true)
             repository.getFolders().fold(
                 onError = { e ->
@@ -79,9 +76,7 @@ class MessagesViewModel(
                     )
                 },
                 onSuccess = { folders ->
-                    android.util.Log.d("MessagesViewModel", "Получено папок: ${folders.size}")
                     val inbox = folders.firstOrNull { it.role == FolderRole.INBOX }
-                    android.util.Log.d("MessagesViewModel", "Inbox найден: ${inbox?.id}, имя: ${inbox?.name}")
                     
                     _uiState.value = _uiState.value.copy(
                         folders = folders,
@@ -90,7 +85,6 @@ class MessagesViewModel(
                     )
                     
                     if (inbox != null) {
-                        android.util.Log.d("MessagesViewModel", "Загрузка писем для inbox: ${inbox.id}")
                         delay(200)
                         loadMessages(inbox.id, reset = true)
                     } else {
@@ -134,7 +128,6 @@ class MessagesViewModel(
                     )
                 },
                 onSuccess = { newMessages ->
-                    android.util.Log.d("MessagesViewModel", "Получено писем: ${newMessages.size}")
                     val updatedMessages = if (reset) {
                         newMessages
                     } else {
@@ -175,13 +168,10 @@ class MessagesViewModel(
     
     fun updateMessageReadStatus(messageId: String, isUnread: Boolean) {
         val currentState = _uiState.value
-        android.util.Log.d("MessagesViewModel", "Обновление статуса прочитанности: messageId=$messageId, isUnread=$isUnread")
         
         val oldMessage = currentState.messages.find { it.id == messageId }
         val wasUnread = oldMessage?.flags?.unread == true
-        android.util.Log.d("MessagesViewModel", "Старый статус: wasUnread=$wasUnread")
         
-        // Обновляем кэш в MailRepository
         viewModelScope.launch {
             repository.updateMessageReadStatus(messageId, isUnread)
         }
@@ -194,28 +184,14 @@ class MessagesViewModel(
             }
         }
         
-        // Обновляем счетчик непрочитанных во всех папках, где может быть это письмо
-        // Но так как мы не знаем точно, в какой папке письмо, обновляем только выбранную
         val selectedFolder = currentState.selectedFolder
         if (selectedFolder != null) {
             val currentUnreadCount = selectedFolder.unreadCount
-            android.util.Log.d("MessagesViewModel", "Текущий счетчик непрочитанных в папке ${selectedFolder.name}: $currentUnreadCount")
             
             val newUnreadCount = when {
-                isUnread && !wasUnread -> {
-                    val newCount = currentUnreadCount + 1
-                    android.util.Log.d("MessagesViewModel", "Увеличиваем счетчик: $currentUnreadCount -> $newCount")
-                    newCount
-                }
-                !isUnread && wasUnread -> {
-                    val newCount = maxOf(0, currentUnreadCount - 1)
-                    android.util.Log.d("MessagesViewModel", "Уменьшаем счетчик: $currentUnreadCount -> $newCount")
-                    newCount
-                }
-                else -> {
-                    android.util.Log.d("MessagesViewModel", "Счетчик не изменяется: $currentUnreadCount")
-                    currentUnreadCount
-                }
+                isUnread && !wasUnread -> currentUnreadCount + 1
+                !isUnread && wasUnread -> maxOf(0, currentUnreadCount - 1)
+                else -> currentUnreadCount
             }
             
             val updatedFolders = currentState.folders.map { folder ->
@@ -227,7 +203,6 @@ class MessagesViewModel(
             }
             
             val updatedSelectedFolder = updatedFolders.find { it.id == selectedFolder.id }
-            android.util.Log.d("MessagesViewModel", "Новый счетчик непрочитанных: ${updatedSelectedFolder?.unreadCount}")
             
             _uiState.value = currentState.copy(
                 messages = updatedMessages,

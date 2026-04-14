@@ -36,6 +36,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.mobilemail.data.preferences.PreferencesManager
@@ -52,6 +53,7 @@ fun SettingsScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
+    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var signature by remember { mutableStateOf("") }
 
     LaunchedEffect(server, email) {
@@ -71,91 +73,136 @@ fun SettingsScreen(
             )
         }
     ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            // Безопасность
-            Text(
-                text = "Безопасность",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium
-            )
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onPinSetupClick() }
+        val contentModifier = Modifier
+            .fillMaxSize()
+            .padding(padding)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+
+        if (isExpandedLayout) {
+            Row(
+                modifier = contentModifier,
+                horizontalArrangement = Arrangement.spacedBy(24.dp)
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Column(
+                    modifier = Modifier.weight(0.9f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            Icons.Default.Lock,
-                            contentDescription = null,
-                            modifier = Modifier.size(24.dp)
-                        )
-                        Column {
-                            Text(
-                                text = "Настроить вход по PIN-коду",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
-                            )
-                            Text(
-                                text = "PIN-код и биометрия",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                    SecuritySection(onPinSetupClick = onPinSetupClick)
+                }
+                Column(
+                    modifier = Modifier.weight(1.1f),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    SignatureSection(
+                        signature = signature,
+                        onSignatureChange = { signature = it },
+                        onSave = {
+                            scope.launch {
+                                preferencesManager.saveSignature(server, email, signature)
+                                snackbarHostState.showSnackbar("Подпись сохранена")
+                            }
                         }
-                    }
-                    Icon(
-                        Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Подпись
-            Text(
-                text = "Подпись",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium
-            )
-            OutlinedTextField(
-                value = signature,
-                onValueChange = { signature = it },
-                label = { Text("Текст подписи") },
-                placeholder = { Text("С уважением, ...") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp),
-                maxLines = 6
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            androidx.compose.material3.Button(
-                onClick = {
-                    scope.launch {
-                        preferencesManager.saveSignature(server, email, signature)
-                        snackbarHostState.showSnackbar("Подпись сохранена")
-                    }
-                }
+        } else {
+            Column(
+                modifier = contentModifier,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Сохранить")
+                SecuritySection(onPinSetupClick = onPinSetupClick)
+                Spacer(modifier = Modifier.height(8.dp))
+                SignatureSection(
+                    signature = signature,
+                    onSignatureChange = { signature = it },
+                    onSave = {
+                        scope.launch {
+                            preferencesManager.saveSignature(server, email, signature)
+                            snackbarHostState.showSnackbar("Подпись сохранена")
+                        }
+                    }
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun SecuritySection(
+    onPinSetupClick: () -> Unit
+) {
+    Text(
+        text = "Безопасность",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium
+    )
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onPinSetupClick() }
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    modifier = Modifier.size(24.dp)
+                )
+                Column {
+                    Text(
+                        text = "Настроить вход по PIN-коду",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "PIN-код и биометрия",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun SignatureSection(
+    signature: String,
+    onSignatureChange: (String) -> Unit,
+    onSave: () -> Unit
+) {
+    Text(
+        text = "Подпись",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium
+    )
+    OutlinedTextField(
+        value = signature,
+        onValueChange = onSignatureChange,
+        label = { Text("Текст подписи") },
+        placeholder = { Text("С уважением, ...") },
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(160.dp),
+        maxLines = 6
+    )
+    Spacer(modifier = Modifier.height(4.dp))
+    androidx.compose.material3.Button(onClick = onSave) {
+        Text("Сохранить")
     }
 }

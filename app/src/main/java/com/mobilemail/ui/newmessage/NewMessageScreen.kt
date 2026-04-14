@@ -47,7 +47,6 @@ import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.runtime.rememberUpdatedState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -58,7 +57,6 @@ fun NewMessageScreen(
     accountId: String,
     onBack: () -> Unit
 ) {
-    Log.d("NewMessageScreen", "Init: server=$server, email=$email, accountId=$accountId")
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var to by remember { mutableStateOf("") }
@@ -73,10 +71,6 @@ fun NewMessageScreen(
             viewModel.addAttachment(context.contentResolver, uri)
         }
     }
-
-    val latestTo by rememberUpdatedState(to)
-    val latestSubject by rememberUpdatedState(subject)
-    val latestBody by rememberUpdatedState(body)
 
     LaunchedEffect(server, email) {
         val signature = preferencesManager.getSignature(server, email).orEmpty()
@@ -108,35 +102,40 @@ fun NewMessageScreen(
         }
     }
 
-    LaunchedEffect(to, subject, body, uiState.attachments, uiState.isSending) {
-        if (uiState.isSending) return@LaunchedEffect
-        if (to.isBlank() && subject.isBlank() && body.isBlank() && uiState.attachments.isEmpty()) {
-            return@LaunchedEffect
-        }
-        delay(1200)
-        viewModel.saveDraft(
-            to = to.split(",", ";").map { it.trim() },
+    data class DraftSnapshot(
+        val to: String,
+        val subject: String,
+        val body: String,
+        val attachmentIds: List<String>
+    )
+
+    val draftSnapshot = remember(to, subject, body, uiState.attachments) {
+        DraftSnapshot(
+            to = to,
             subject = subject,
-            body = body
+            body = body,
+            attachmentIds = uiState.attachments.map { it.id }
         )
     }
+    var lastAutosavedSnapshot by remember { mutableStateOf<DraftSnapshot?>(null) }
 
-    // Периодическое автосохранение черновика (раз в 5 секунд), чтобы соответствовать ожидаемому UX.
-    // Важно: не запускаем во время отправки, чтобы не было гонок send vs autosave.
-    LaunchedEffect(uiState.isSending, uiState.attachments.size, uiState.draftId) {
+    LaunchedEffect(draftSnapshot, uiState.isSending) {
         if (uiState.isSending) return@LaunchedEffect
-        while (true) {
-            delay(5000)
-            // Нечего сохранять
-            if (latestTo.isBlank() && latestSubject.isBlank() && latestBody.isBlank() && uiState.attachments.isEmpty()) {
-                continue
-            }
-            viewModel.saveDraft(
-                to = latestTo.split(",", ";").map { it.trim() },
-                subject = latestSubject,
-                body = latestBody
-            )
+        val isEmptyDraft = draftSnapshot.to.isBlank() &&
+            draftSnapshot.subject.isBlank() &&
+            draftSnapshot.body.isBlank() &&
+            draftSnapshot.attachmentIds.isEmpty()
+        if (isEmptyDraft || draftSnapshot == lastAutosavedSnapshot) {
+            return@LaunchedEffect
         }
+
+        delay(1200)
+        viewModel.saveDraft(
+            to = draftSnapshot.to.split(",", ";").map { it.trim() },
+            subject = draftSnapshot.subject,
+            body = draftSnapshot.body
+        )
+        lastAutosavedSnapshot = draftSnapshot
     }
 
     Scaffold(

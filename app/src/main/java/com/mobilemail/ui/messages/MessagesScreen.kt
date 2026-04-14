@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -24,6 +26,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -45,16 +54,11 @@ fun MessagesScreen(
     onLogout: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Логирование состояния
-    LaunchedEffect(uiState.isLoading, uiState.folders.size, uiState.messages.size, uiState.error) {
-        android.util.Log.d("MessagesScreen", "Состояние UI: isLoading=${uiState.isLoading}, folders=${uiState.folders.size}, messages=${uiState.messages.size}, error=${uiState.error?.getUserMessage()}")
-    }
-
-    // Обработка ошибок
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
             scope.launch {
@@ -67,68 +71,22 @@ fun MessagesScreen(
         }
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet {
-                Column(modifier = Modifier.fillMaxHeight()) {
-                    // Новое письмо
-                    NavigationDrawerItem(
-                        icon = {
-                            Box(modifier = Modifier.size(24.dp)) {
-                                Icon(
-                                    Icons.Default.Email,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .align(Alignment.Center)
-                                        .size(20.dp)
-                                )
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription = null,
-                                    modifier = Modifier
-                                        .align(Alignment.BottomEnd)
-                                        .size(12.dp)
-                                )
-                            }
-                        },
-                        label = { Text("Написать письмо") },
-                        selected = false,
-                        onClick = {
-                            scope.launch { drawerState.close() }
-                            onComposeClick()
-                        },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
-
-                    // Настройки
-                    NavigationDrawerItem(
-                        icon = { Icon(Icons.Default.Settings, contentDescription = null) },
-                        label = { Text("Настройки") },
-                        selected = false,
-                        onClick = {
-                            scope.launch { drawerState.close() }
-                            onSettingsClick()
-                        },
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                    )
-
-                    Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-                    // Папки
-                    FoldersList(
-                        folders = uiState.folders,
-                        selectedFolder = uiState.selectedFolder,
-                        onFolderSelected = { folder ->
-                            viewModel.selectFolder(folder)
-                            scope.launch { drawerState.close() }
-                        },
-                        modifier = Modifier.weight(1f)
-                    )
+    val navigationContent: @Composable () -> Unit = {
+        MailNavigationContent(
+            folders = uiState.folders,
+            selectedFolder = uiState.selectedFolder,
+            onComposeClick = onComposeClick,
+            onSettingsClick = onSettingsClick,
+            onFolderSelected = { folder ->
+                viewModel.selectFolder(folder)
+                if (!isExpandedLayout) {
+                    scope.launch { drawerState.close() }
                 }
             }
-        }
-        ) {
+        )
+    }
+
+    val screenContent: @Composable () -> Unit = {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
@@ -153,8 +111,10 @@ fun MessagesScreen(
                     TopAppBar(
                         title = { Text(uiState.selectedFolder?.name ?: "Почта") },
                         navigationIcon = {
-                            IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                                Icon(Icons.Default.Menu, contentDescription = "Меню")
+                            if (!isExpandedLayout) {
+                                IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                    Icon(Icons.Default.Menu, contentDescription = "Меню")
+                                }
                             }
                         },
                         actions = {
@@ -193,6 +153,95 @@ fun MessagesScreen(
             )
         }
     }
+
+    if (isExpandedLayout) {
+        Row(modifier = Modifier.fillMaxSize()) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(300.dp),
+                tonalElevation = 1.dp,
+                color = MaterialTheme.colorScheme.surfaceVariant
+            ) {
+                navigationContent()
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .width(1.dp)
+                    .padding(vertical = 12.dp)
+            ) {
+                Divider(modifier = Modifier.fillMaxSize())
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                screenContent()
+            }
+        }
+    } else {
+        ModalNavigationDrawer(
+            drawerState = drawerState,
+            drawerContent = {
+                ModalDrawerSheet {
+                    navigationContent()
+                }
+            }
+        ) {
+            screenContent()
+        }
+    }
+}
+
+@Composable
+private fun MailNavigationContent(
+    folders: List<com.mobilemail.data.model.Folder>,
+    selectedFolder: com.mobilemail.data.model.Folder?,
+    onComposeClick: () -> Unit,
+    onSettingsClick: () -> Unit,
+    onFolderSelected: (com.mobilemail.data.model.Folder) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxHeight()) {
+        NavigationDrawerItem(
+            icon = {
+                Box(modifier = Modifier.size(24.dp)) {
+                    Icon(
+                        Icons.Default.Email,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .size(20.dp)
+                    )
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = null,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .size(12.dp)
+                    )
+                }
+            },
+            label = { Text("Написать письмо") },
+            selected = false,
+            onClick = onComposeClick,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        )
+
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Default.Settings, contentDescription = null) },
+            label = { Text("Настройки") },
+            selected = false,
+            onClick = onSettingsClick,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        )
+
+        Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+        FoldersList(
+            folders = folders,
+            selectedFolder = selectedFolder,
+            onFolderSelected = onFolderSelected,
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 @Composable
@@ -220,8 +269,7 @@ fun FoldersList(
         modifier = modifier.padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        items(defaultFolders.size) { index ->
-            val folder = defaultFolders[index]
+        items(defaultFolders, key = { it.id }) { folder ->
             FolderItem(
                 folder = folder,
                 isSelected = folder.id == selectedFolder?.id,
@@ -235,8 +283,7 @@ fun FoldersList(
             }
         }
 
-        items(customFolders.size) { index ->
-            val folder = customFolders[index]
+        items(customFolders, key = { it.id }) { folder ->
             FolderItem(
                 folder = folder,
                 isSelected = folder.id == selectedFolder?.id,
@@ -256,6 +303,15 @@ fun FolderItem(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                role = Role.Tab
+                selected = isSelected
+                contentDescription = if (folder.unreadCount > 0) {
+                    "${folder.name}, непрочитанных ${folder.unreadCount}"
+                } else {
+                    folder.name
+                }
+            }
             .clickable(onClick = onClick),
         color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surface,
@@ -299,8 +355,14 @@ fun MessagesList(
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    LaunchedEffect(messages.size, isLoading) {
-        android.util.Log.d("MessagesScreen", "MessagesList: messages=${messages.size}, isLoading=$isLoading")
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(listState, messages, hasMore, isLoading, isLoadingMore) {
+        if (messages.isEmpty() || !hasMore || isLoading || isLoadingMore) return@LaunchedEffect
+        val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@LaunchedEffect
+        if (lastVisibleIndex >= messages.lastIndex) {
+            onLoadMore()
+        }
     }
 
     Box(
@@ -317,24 +379,19 @@ fun MessagesList(
             )
         } else {
             LazyColumn(
+                state = listState,
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(messages.size) { index ->
-                    val message = messages[index]
+                items(items = messages, key = { it.id }) { message ->
                     MessageItem(
                         message = message,
                         isSelected = selectedIds.contains(message.id),
                         onClick = { onMessageClick(message.id) },
                         onLongClick = { onMessageLongClick(message.id) }
                     )
-                    if (index == messages.size - 1 && hasMore && !isLoadingMore) {
-                        LaunchedEffect(Unit) {
-                            onLoadMore()
-                        }
-                    }
                 }
 
                 if (isLoadingMore) {
@@ -368,6 +425,15 @@ fun MessageItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                stateDescription = buildString {
+                    append(if (isUnread) "Непрочитанное" else "Прочитанное")
+                    if (message.flags.starred) append(", в избранном")
+                    if (message.flags.hasAttachments) append(", с вложением")
+                    if (isSelected) append(", выбрано")
+                }
+            }
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongClick

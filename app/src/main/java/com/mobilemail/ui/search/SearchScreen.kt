@@ -70,7 +70,7 @@ fun SearchScreen(
                             }
                         )
                     }
-                    items(uiState.folders) { folder ->
+                    items(uiState.folders, key = { it.id }) { folder ->
                         ListItem(
                             headlineContent = { Text(folder.name) },
                             modifier = Modifier.clickable {
@@ -230,7 +230,7 @@ fun SearchScreen(
                         .padding(horizontal = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(uiState.results) { message ->
+                    items(uiState.results, key = { it.id }) { message ->
                         MessageItem(
                             message = message,
                             onClick = { onMessageClick(message.id) }

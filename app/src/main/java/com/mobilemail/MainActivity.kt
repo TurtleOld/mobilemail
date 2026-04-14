@@ -116,10 +116,7 @@ class MainActivity : FragmentActivity() {
                                     if (tokens != null) {
                                         val hasRefreshToken = tokens.refreshToken != null
                                         val isAccessTokenValid = tokens.isValid()
-                                        android.util.Log.d("MainActivity", "Найдена сохраненная OAuth сессия: access_valid=$isAccessTokenValid, has_refresh=$hasRefreshToken")
-
                                         if (isAccessTokenValid || hasRefreshToken) {
-                                            android.util.Log.d("MainActivity", "Автоматический вход через OAuth")
                                             val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}/${Uri.encode(savedSession.accountId)}"
                                             navController.navigate(route) {
                                                 popUpTo(0) { inclusive = true }
@@ -188,23 +185,18 @@ class MainActivity : FragmentActivity() {
                                 }
                             }
 
-                            android.util.Log.d("MainActivity", "Создание MessagesScreen: server=$server, email=$email, accountId=$accountId")
-                            
                             val viewModel: MessagesViewModel = viewModel(
                                 key = "messages_${server}_${email}_${accountId}",
                                 factory = MessagesViewModelFactory(server, email, accountId, database, application)
                             )
-                            
-                            android.util.Log.d("MainActivity", "MessagesViewModel создан, состояние: isLoading=${viewModel.uiState.value.isLoading}")
+
                             MessagesScreen(
                                 viewModel = viewModel,
                                 onMessageClick = { messageId ->
-                                    android.util.Log.d("MainActivity", "Открытие письма: messageId=$messageId")
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
                                     val encodedAccountId = Uri.encode(accountId)
                                     val encodedMessageId = Uri.encode(messageId)
-                                    android.util.Log.d("MainActivity", "Навигация с encodedMessageId=$encodedMessageId")
                                     navController.navigate("message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId")
                                 },
                                 onSearchClick = {
@@ -217,10 +209,6 @@ class MainActivity : FragmentActivity() {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
                                     val encodedAccountId = Uri.encode(accountId)
-                                    android.util.Log.d(
-                                        "MainActivity",
-                                        "Навигация в compose: server=$server, email=$email, accountId=$accountId"
-                                    )
                                     navController.navigate("compose/$encodedServer/$encodedEmail/$encodedAccountId")
                                 },
                                 onSettingsClick = {
@@ -230,12 +218,10 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onLogout = {
                                     activityScope.launch {
-                                        android.util.Log.d("MainActivity", "Выход из приложения: server=$server, email=$email")
                                         preferencesManager.clearSession()
                                         tokenStore.clearTokens(server, email)
                                         JmapOAuthClient.clearCache()
                                         JmapClient.clearCache()
-                                        android.util.Log.d("MainActivity", "Сессия и токены очищены, выход выполнен")
                                         navController.navigate("login") {
                                             popUpTo(0) { inclusive = true }
                                         }
@@ -312,8 +298,6 @@ class MainActivity : FragmentActivity() {
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
                             val messageId = Uri.decode(backStackEntry.arguments?.getString("messageId") ?: return@composable)
-                            android.util.Log.d("MainActivity", "Создание MessageDetailScreen: messageId=$messageId, accountId=$accountId")
-
                             val viewModel: MessageDetailViewModel = viewModel(
                                 factory = MessageDetailViewModelFactory(application, server, email, accountId, messageId)
                             )
@@ -329,7 +313,6 @@ class MainActivity : FragmentActivity() {
                             
                             LaunchedEffect(viewModel, messagesViewModel) {
                                 viewModel.setOnReadStatusChanged { updatedMessageId, isUnread ->
-                                    android.util.Log.d("MainActivity", "Callback onReadStatusChanged вызван: messageId=$updatedMessageId, isUnread=$isUnread")
                                     messagesViewModel.updateMessageReadStatus(updatedMessageId, isUnread)
                                 }
                             }
@@ -343,7 +326,6 @@ class MainActivity : FragmentActivity() {
                                     messagesViewModel.removeMessage(deletedMessageId)
                                 },
                                 onReadStatusChanged = { updatedMessageId, isUnread ->
-                                    android.util.Log.d("MainActivity", "onReadStatusChanged вызван: messageId=$updatedMessageId, isUnread=$isUnread")
                                     messagesViewModel.updateMessageReadStatus(updatedMessageId, isUnread)
                                 }
                             )
