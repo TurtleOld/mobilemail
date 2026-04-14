@@ -18,6 +18,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.Refresh
@@ -70,6 +71,7 @@ fun MessagesScreen(
     detailPane: @Composable (String?) -> Unit = {},
     onSearchClick: () -> Unit = {},
     onComposeClick: () -> Unit = {},
+    onOutboxClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onLogout: () -> Unit = {}
 ) {
@@ -165,6 +167,12 @@ fun MessagesScreen(
             folders = uiState.folders,
             selectedFolder = uiState.selectedFolder,
             onComposeClick = onComposeClick,
+            onOutboxClick = {
+                if (!isExpandedLayout) {
+                    scope.launch { drawerState.close() }
+                }
+                onOutboxClick()
+            },
             onSettingsClick = onSettingsClick,
             onFolderSelected = { folder ->
                 viewModel.selectFolder(folder)
@@ -315,6 +323,7 @@ private fun MailNavigationContent(
     folders: List<com.mobilemail.data.model.Folder>,
     selectedFolder: com.mobilemail.data.model.Folder?,
     onComposeClick: () -> Unit,
+    onOutboxClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onFolderSelected: (com.mobilemail.data.model.Folder) -> Unit
 ) {
@@ -341,6 +350,14 @@ private fun MailNavigationContent(
             label = { Text("Написать письмо") },
             selected = false,
             onClick = onComposeClick,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+        )
+
+        NavigationDrawerItem(
+            icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
+            label = { Text("Очередь") },
+            selected = false,
+            onClick = onOutboxClick,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
         )
 

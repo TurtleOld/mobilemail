@@ -44,5 +44,7 @@ data class Attachment(
     val id: String,
     val filename: String,
     val mime: String,
-    val size: Long
+    val size: Long,
+    val localFilePath: String? = null,
+    val isUploaded: Boolean = true
 )

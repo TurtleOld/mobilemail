@@ -129,6 +129,7 @@ dependencies {
     implementation("androidx.biometric:biometric:1.1.0")
 
     implementation("androidx.browser:browser:1.8.0")
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
     val roomVersion = "2.7.2"
     implementation("androidx.room:room-runtime:$roomVersion")

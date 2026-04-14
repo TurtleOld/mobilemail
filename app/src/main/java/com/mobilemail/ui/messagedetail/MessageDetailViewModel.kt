@@ -15,6 +15,7 @@ import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.data.repository.AttachmentRepository
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.MessageActionsRepository
+import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.NotificationState
@@ -47,11 +48,13 @@ class MessageDetailViewModel(
         val id: String,
         val job: Job,
         val commit: suspend () -> com.mobilemail.data.common.Result<Boolean>,
-        val onCommitted: () -> Unit
+        val onCommitted: () -> Unit,
+        val onQueued: suspend () -> Unit
     )
 
     private val _uiState = MutableStateFlow(MessageDetailUiState())
     val uiState: StateFlow<MessageDetailUiState> = _uiState
+    private val app: Application = getApplication()
 
     private val jmapClient: JmapApi = buildJmapClient()
     private val repository = MailRepository(jmapClient)
@@ -183,6 +186,9 @@ class MessageDetailViewModel(
             onCommitted = {
                 onMessageDeleted?.invoke(messageId)
                 onSuccess()
+            },
+            onQueued = {
+                OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
             }
         )
     }
@@ -297,6 +303,9 @@ class MessageDetailViewModel(
             onCommitted = {
                 onMessageRemoved?.invoke(messageId)
                 onSuccess()
+            },
+            onQueued = {
+                OfflineQueueManager.enqueueMove(app, server, email, accountId, messageId, sourceFolderId, toFolderId)
             }
         )
     }
@@ -330,13 +339,14 @@ class MessageDetailViewModel(
     private fun scheduleDeferredAction(
         pendingMessage: String,
         commitAction: suspend () -> com.mobilemail.data.common.Result<Boolean>,
-        onCommitted: () -> Unit
+        onCommitted: () -> Unit,
+        onQueued: suspend () -> Unit
     ) {
         val existingAction = pendingDetailAction
         if (existingAction != null) {
             viewModelScope.launch {
                 finalizePendingDetailAction(existingAction)
-                scheduleDeferredAction(pendingMessage, commitAction, onCommitted)
+                scheduleDeferredAction(pendingMessage, commitAction, onCommitted, onQueued)
             }
             return
         }
@@ -351,7 +361,8 @@ class MessageDetailViewModel(
             id = actionId,
             job = job,
             commit = commitAction,
-            onCommitted = onCommitted
+            onCommitted = onCommitted,
+            onQueued = onQueued
         )
         _uiState.value = _uiState.value.copy(
             notification = NotificationState.Snackbar(
@@ -367,12 +378,25 @@ class MessageDetailViewModel(
         pendingDetailAction = null
         action.commit().fold(
             onError = { e ->
-                _uiState.value = _uiState.value.copy(
-                    notification = NotificationState.Snackbar(
-                        message = "Не удалось синхронизировать изменения: ${ErrorMapper.mapException(e).getUserMessage()}",
-                        duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                if (OfflineQueueManager.shouldQueue(e)) {
+                    viewModelScope.launch {
+                        action.onQueued()
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Нет сети. Действие поставлено в очередь и будет повторено автоматически.",
+                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                        )
                     )
-                )
+                    action.onCommitted()
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Не удалось синхронизировать изменения: ${ErrorMapper.mapException(e).getUserMessage()}",
+                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                        )
+                    )
+                }
             },
             onSuccess = {
                 action.onCommitted()

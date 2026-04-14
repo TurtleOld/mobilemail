@@ -17,7 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.room.Room
 import com.mobilemail.data.jmap.JmapClient
 import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.data.local.database.AppDatabase
@@ -48,6 +47,9 @@ import com.mobilemail.ui.messages.MessagesViewModelFactory
 import com.mobilemail.ui.newmessage.ComposeViewModel
 import com.mobilemail.ui.newmessage.ComposeViewModelFactory
 import com.mobilemail.ui.newmessage.NewMessageScreen
+import com.mobilemail.ui.outbox.OutboxScreen
+import com.mobilemail.ui.outbox.OutboxViewModel
+import com.mobilemail.ui.outbox.OutboxViewModelFactory
 import com.mobilemail.ui.search.SearchScreen
 import com.mobilemail.ui.search.SearchViewModel
 import com.mobilemail.ui.search.SearchViewModelFactory
@@ -59,14 +61,11 @@ import com.mobilemail.ui.security.PinLockScreen
 import com.mobilemail.ui.security.PinLockViewModel
 import com.mobilemail.ui.security.PinLockViewModelFactory
 import com.mobilemail.data.security.PinManager
+import com.mobilemail.data.sync.OfflineQueueManager
 
 class MainActivity : FragmentActivity() {
     private val database by lazy {
-        Room.databaseBuilder(
-            applicationContext,
-            AppDatabase::class.java,
-            AppDatabase.DATABASE_NAME
-        ).build()
+        AppDatabase.getInstance(applicationContext)
     }
     private val preferencesManager by lazy { PreferencesManager(applicationContext) }
     private val tokenStore by lazy { TokenStore(applicationContext) }
@@ -174,6 +173,7 @@ class MainActivity : FragmentActivity() {
                             }
 
                             LaunchedEffect(email) {
+                                OfflineQueueManager.processPending(application)
                                 val alreadyRequested = preferencesManager.isNotificationPermissionRequested()
                                 if (!alreadyRequested) {
                                     preferencesManager.markNotificationPermissionRequested()
@@ -263,6 +263,12 @@ class MainActivity : FragmentActivity() {
                                     val encodedAccountId = Uri.encode(accountId)
                                     navController.navigate("compose/$encodedServer/$encodedEmail/$encodedAccountId")
                                 },
+                                onOutboxClick = {
+                                    val encodedServer = Uri.encode(server)
+                                    val encodedEmail = Uri.encode(email)
+                                    val encodedAccountId = Uri.encode(accountId)
+                                    navController.navigate("outbox/$encodedServer/$encodedEmail/$encodedAccountId")
+                                },
                                 onSettingsClick = {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
@@ -316,6 +322,14 @@ class MainActivity : FragmentActivity() {
                                     val encodedMessageId = Uri.encode(messageId)
                                     navController.navigate("message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId")
                                 },
+                                onBack = { navController.popBackStack() }
+                            )
+                        }
+
+                        composable("outbox/{server}/{email}/{accountId}") {
+                            val viewModel: OutboxViewModel = viewModel(factory = OutboxViewModelFactory(application))
+                            OutboxScreen(
+                                viewModel = viewModel,
                                 onBack = { navController.popBackStack() }
                             )
                         }

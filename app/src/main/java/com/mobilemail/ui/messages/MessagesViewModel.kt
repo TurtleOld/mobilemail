@@ -10,6 +10,7 @@ import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.data.repository.MessageActionsRepository
 import com.mobilemail.data.repository.MailRepository
+import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.SnackbarDuration
 import com.mobilemail.ui.common.AppError
@@ -43,11 +44,14 @@ class MessagesViewModel(
     private val database: com.mobilemail.data.local.database.AppDatabase? = null,
     private val application: Application? = null
 ) : ViewModel() {
+    private val app: Application = requireNotNull(application) { "Application is required" }
+
     private data class PendingFolderAction(
         val id: String,
         val restoreState: MessagesUiState,
         val job: Job,
-        val commit: suspend () -> com.mobilemail.data.common.Result<Unit>
+        val commit: suspend () -> com.mobilemail.data.common.Result<Unit>,
+        val onQueued: suspend () -> Unit
     )
 
     private val _uiState = MutableStateFlow(MessagesUiState())
@@ -255,7 +259,10 @@ class MessagesViewModel(
         scheduleFolderAction(
             messageIds = selectedIds,
             pendingMessage = if (selectedIds.size == 1) "Письмо будет удалено" else "Писем будет удалено: ${selectedIds.size}",
-            commitAction = { messageId -> messageActionsRepository.deleteMessage(messageId) }
+            commitAction = { messageId -> messageActionsRepository.deleteMessage(messageId) },
+            enqueueAction = { messageId ->
+                OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
+            }
         )
     }
 
@@ -329,6 +336,9 @@ class MessagesViewModel(
             },
             commitAction = { messageId ->
                 messageActionsRepository.moveMessage(messageId, fromFolderId, toFolderId)
+            },
+            enqueueAction = { messageId ->
+                OfflineQueueManager.enqueueMove(app, server, email, accountId, messageId, fromFolderId, toFolderId)
             }
         )
     }
@@ -341,7 +351,10 @@ class MessagesViewModel(
         scheduleFolderAction(
             messageIds = setOf(messageId),
             pendingMessage = "Письмо будет удалено",
-            commitAction = { id -> messageActionsRepository.deleteMessage(id) }
+            commitAction = { id -> messageActionsRepository.deleteMessage(id) },
+            enqueueAction = { id ->
+                OfflineQueueManager.enqueueDelete(app, server, email, accountId, id)
+            }
         )
     }
 
@@ -370,6 +383,9 @@ class MessagesViewModel(
             },
             commitAction = { id ->
                 messageActionsRepository.moveMessage(id, currentFolderId, targetFolder.id)
+            },
+            enqueueAction = { id ->
+                OfflineQueueManager.enqueueMove(app, server, email, accountId, id, currentFolderId, targetFolder.id)
             }
         )
     }
@@ -394,7 +410,8 @@ class MessagesViewModel(
     private fun scheduleFolderAction(
         messageIds: Set<String>,
         pendingMessage: String,
-        commitAction: suspend (String) -> com.mobilemail.data.common.Result<Boolean>
+        commitAction: suspend (String) -> com.mobilemail.data.common.Result<Boolean>,
+        enqueueAction: suspend (String) -> Unit
     ) {
         if (messageIds.isEmpty()) return
 
@@ -402,7 +419,7 @@ class MessagesViewModel(
         if (existingAction != null) {
             viewModelScope.launch {
                 finalizePendingAction(existingAction)
-                scheduleFolderAction(messageIds, pendingMessage, commitAction)
+                scheduleFolderAction(messageIds, pendingMessage, commitAction, enqueueAction)
             }
             return
         }
@@ -444,6 +461,9 @@ class MessagesViewModel(
                 } else {
                     com.mobilemail.data.common.Result.Success(Unit)
                 }
+            },
+            onQueued = {
+                messageIds.forEach { enqueueAction(it) }
             }
         )
 
@@ -470,12 +490,23 @@ class MessagesViewModel(
                 _uiState.value.selectedFolder?.let { loadMessages(it.id, reset = true) }
             }
             is com.mobilemail.data.common.Result.Error -> {
-                _uiState.value = action.restoreState.copy(
-                    notification = NotificationState.Snackbar(
-                        message = "Не удалось синхронизировать изменения: ${ErrorMapper.mapException(result.exception).getUserMessage()}",
-                        duration = SnackbarDuration.Long
+                if (OfflineQueueManager.shouldQueue(result.exception)) {
+                    action.onQueued()
+                    refreshFoldersPreservingSelection()
+                    _uiState.value = _uiState.value.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Нет сети. Действие поставлено в очередь и будет повторено автоматически.",
+                            duration = SnackbarDuration.Long
+                        )
                     )
-                )
+                } else {
+                    _uiState.value = action.restoreState.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Не удалось синхронизировать изменения: ${ErrorMapper.mapException(result.exception).getUserMessage()}",
+                            duration = SnackbarDuration.Long
+                        )
+                    )
+                }
             }
         }
     }
@@ -494,13 +525,25 @@ class MessagesViewModel(
 
     private fun refreshFoldersPreservingSelection() {
         viewModelScope.launch {
+            val queueSummary = OfflineQueueManager.processPending(app)
             repository.getFolders().fold(
                 onError = { },
                 onSuccess = { folders ->
                     val selectedFolderId = _uiState.value.selectedFolder?.id
                     _uiState.value = _uiState.value.copy(
                         folders = folders,
-                        selectedFolder = folders.firstOrNull { it.id == selectedFolderId } ?: _uiState.value.selectedFolder
+                        selectedFolder = folders.firstOrNull { it.id == selectedFolderId } ?: _uiState.value.selectedFolder,
+                        notification = when {
+                            queueSummary.processedCount > 0 -> NotificationState.Snackbar(
+                                message = "Синхронизировано операций: ${queueSummary.processedCount}",
+                                duration = SnackbarDuration.Short
+                            )
+                            queueSummary.pendingCount > 0 -> NotificationState.Snackbar(
+                                message = "Ожидают синхронизации: ${queueSummary.pendingCount}",
+                                duration = SnackbarDuration.Short
+                            )
+                            else -> _uiState.value.notification
+                        }
                     )
                 }
             )

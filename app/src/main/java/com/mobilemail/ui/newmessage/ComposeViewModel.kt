@@ -9,6 +9,8 @@ import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Attachment
 import com.mobilemail.data.repository.ComposeRepository
+import com.mobilemail.data.sync.OfflineAttachmentStorage
+import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.SnackbarDuration
@@ -89,23 +91,54 @@ class ComposeViewModel(
 
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isSending = true)
+            val resolvedAttachments = resolveAttachmentsForSend(_uiState.value.attachments)
+            if (resolvedAttachments == null) {
+                _uiState.value = _uiState.value.copy(isSending = false)
+                return@launch
+            }
             repository.sendMessage(
                 from = email,
                 to = recipients,
                 subject = trimmedSubject,
                 body = trimmedBody,
-                attachments = _uiState.value.attachments,
+                attachments = resolvedAttachments,
                 draftId = _uiState.value.draftId
             ).fold(
                 onError = { e ->
                     Log.e("ComposeViewModel", "Ошибка отправки письма", e)
-                    _uiState.value = _uiState.value.copy(
-                        isSending = false,
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось отправить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = SnackbarDuration.Long
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        viewModelScope.launch {
+                            OfflineQueueManager.enqueueSend(
+                                application = getApplication(),
+                                server = server,
+                                email = email,
+                                accountId = accountId,
+                                to = recipients,
+                                subject = trimmedSubject,
+                                body = trimmedBody,
+                                attachments = resolvedAttachments,
+                                draftId = _uiState.value.draftId
+                            )
+                            _uiState.value = _uiState.value.copy(
+                                isSending = false,
+                                attachments = emptyList(),
+                                draftId = null,
+                                notification = NotificationState.Snackbar(
+                                    message = "Нет сети. Письмо поставлено в очередь на отправку.",
+                                    duration = SnackbarDuration.Long
+                                )
+                            )
+                            onSuccess()
+                        }
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            isSending = false,
+                            notification = NotificationState.Snackbar(
+                                message = "Не удалось отправить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                duration = SnackbarDuration.Long
+                            )
                         )
-                    )
+                    }
                 },
                 onSuccess = { submissionId ->
                     Log.d("ComposeViewModel", "EmailSubmission создан, submissionId=$submissionId")
@@ -219,12 +252,13 @@ class ComposeViewModel(
                     if (bytes.size > MAX_ATTACHMENT_SIZE_BYTES) {
                         throw IllegalArgumentException("Размер вложения больше 10 МБ")
                     }
-                    Triple(name, type, bytes)
+                    val localPath = OfflineAttachmentStorage.persist(getApplication(), name, bytes)
+                    Quadruple(name, type, bytes, localPath)
                 }
             }
 
             result.fold(
-                onSuccess = { (name, type, bytes) ->
+                onSuccess = { (name, type, bytes, localPath) ->
                     _uiState.value = _uiState.value.copy(
                         notification = NotificationState.Snackbar(
                             message = "Загрузка вложения: $name",
@@ -234,16 +268,33 @@ class ComposeViewModel(
                     repository.uploadAttachment(bytes, type, name).fold(
                         onError = { e ->
                             Log.e("ComposeViewModel", "Ошибка загрузки вложения", e)
-                            _uiState.value = _uiState.value.copy(
-                                notification = NotificationState.Snackbar(
-                                    message = "Не удалось загрузить вложение: ${ErrorMapper.mapException(e).getUserMessage()}",
-                                    duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            if (OfflineQueueManager.shouldQueue(e)) {
+                                _uiState.value = _uiState.value.copy(
+                                    attachments = _uiState.value.attachments + Attachment(
+                                        id = "local:${System.currentTimeMillis()}:$name",
+                                        filename = name,
+                                        mime = type,
+                                        size = bytes.size.toLong(),
+                                        localFilePath = localPath,
+                                        isUploaded = false
+                                    ),
+                                    notification = NotificationState.Snackbar(
+                                        message = "Нет сети. Вложение сохранено локально и будет загружено при отправке.",
+                                        duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                                    )
                                 )
-                            )
+                            } else {
+                                _uiState.value = _uiState.value.copy(
+                                    notification = NotificationState.Snackbar(
+                                        message = "Не удалось загрузить вложение: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                        duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                                    )
+                                )
+                            }
                         },
                         onSuccess = { attachment ->
                             _uiState.value = _uiState.value.copy(
-                                attachments = _uiState.value.attachments + attachment,
+                                attachments = _uiState.value.attachments + attachment.copy(localFilePath = localPath),
                                 notification = NotificationState.Snackbar(
                                     message = "Вложение добавлено: ${attachment.filename}",
                                     duration = com.mobilemail.ui.common.SnackbarDuration.Short
@@ -266,6 +317,7 @@ class ComposeViewModel(
     }
 
     fun removeAttachment(attachment: Attachment) {
+        OfflineAttachmentStorage.delete(attachment.localFilePath)
         _uiState.value = _uiState.value.copy(
             attachments = _uiState.value.attachments.filterNot { it.id == attachment.id }
         )
@@ -290,7 +342,7 @@ class ComposeViewModel(
                 to = to.map { it.trim() }.filter { it.isNotBlank() },
                 subject = trimmedSubject,
                 body = trimmedBody,
-                attachments = _uiState.value.attachments,
+                attachments = _uiState.value.attachments.filter { it.isUploaded },
                 draftId = _uiState.value.draftId
             ).fold(
                 onError = { e ->
@@ -310,4 +362,60 @@ class ComposeViewModel(
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
     }
+
+    private suspend fun resolveAttachmentsForSend(attachments: List<Attachment>): List<Attachment>? {
+        val resolved = mutableListOf<Attachment>()
+        for (attachment in attachments) {
+            if (attachment.isUploaded) {
+                resolved += attachment
+                continue
+            }
+
+            val localPath = attachment.localFilePath
+            if (localPath.isNullOrBlank()) {
+                _uiState.value = _uiState.value.copy(
+                    notification = NotificationState.Snackbar(
+                        message = "Не удалось подготовить вложение ${attachment.filename}",
+                        duration = SnackbarDuration.Long
+                    )
+                )
+                return null
+            }
+
+            val bytes = withContext(Dispatchers.IO) { OfflineAttachmentStorage.read(localPath) }
+            var uploadedAttachment: Attachment? = null
+            repository.uploadAttachment(bytes, attachment.mime, attachment.filename).fold(
+                onError = { e ->
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        uploadedAttachment = attachment
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            notification = NotificationState.Snackbar(
+                                message = "Не удалось загрузить вложение ${attachment.filename}: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                duration = SnackbarDuration.Long
+                            )
+                        )
+                    }
+                },
+                onSuccess = { uploaded ->
+                    uploadedAttachment = uploaded.copy(localFilePath = localPath)
+                }
+            )
+
+            if (uploadedAttachment == null) return null
+            resolved += uploadedAttachment!!
+        }
+
+        if (resolved != attachments) {
+            _uiState.value = _uiState.value.copy(attachments = resolved)
+        }
+        return resolved
+    }
 }
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D
+)

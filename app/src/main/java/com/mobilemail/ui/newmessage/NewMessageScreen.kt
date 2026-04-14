@@ -227,7 +227,12 @@ fun NewMessageScreen(
                     uiState.attachments.forEach { attachment ->
                         AssistChip(
                             onClick = { viewModel.removeAttachment(attachment) },
-                            label = { Text(attachment.filename) },
+                            label = {
+                                Text(
+                                    if (attachment.isUploaded) attachment.filename
+                                    else "${attachment.filename} (offline)"
+                                )
+                            },
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.Close,
