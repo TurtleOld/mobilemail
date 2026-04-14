@@ -1,8 +1,7 @@
 package com.mobilemail.ui.login
 
 import android.net.Uri
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.content.Intent
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,11 +17,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.R
 import kotlinx.coroutines.launch
-import androidx.compose.ui.window.Dialog
 
 @Composable
 fun LoginScreen(
@@ -33,15 +30,11 @@ fun LoginScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var hasOpenedAuthPage by remember { mutableStateOf(false) }
-    var showAuthWebView by remember { mutableStateOf(false) }
-    var authWebViewUrl by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val verificationUri = uiState.oauthVerificationUriComplete ?: uiState.oauthVerificationUri
 
     LaunchedEffect(uiState.account) {
         uiState.account?.let { account ->
-            showAuthWebView = false
-            authWebViewUrl = null
             onLoginSuccess(
                 uiState.server,
                 account.email,
@@ -53,8 +46,6 @@ fun LoginScreen(
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
-            showAuthWebView = false
-            authWebViewUrl = null
             scope.launch {
                 snackbarHostState.showSnackbar(
                     message = error.getUserMessage(),
@@ -67,54 +58,11 @@ fun LoginScreen(
 
     LaunchedEffect(verificationUri, uiState.oauthUserCode) {
         if (!verificationUri.isNullOrBlank() && uiState.oauthUserCode != null && !hasOpenedAuthPage) {
-            authWebViewUrl = verificationUri
-            showAuthWebView = true
+            openAuthorizationPage(context, verificationUri)
             hasOpenedAuthPage = true
         }
         if (uiState.oauthUserCode == null) {
             hasOpenedAuthPage = false
-            showAuthWebView = false
-            authWebViewUrl = null
-        }
-    }
-
-    if (showAuthWebView && authWebViewUrl != null) {
-        Dialog(onDismissRequest = {
-            showAuthWebView = false
-        }) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                shape = MaterialTheme.shapes.medium,
-                tonalElevation = 4.dp
-            ) {
-                Column(modifier = Modifier.fillMaxSize()) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(8.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        TextButton(onClick = { showAuthWebView = false }) {
-                            Text("Закрыть")
-                        }
-                    }
-                    AndroidView(
-                        modifier = Modifier.fillMaxSize(),
-                        factory = { ctx ->
-                            WebView(ctx).apply {
-                                webViewClient = WebViewClient()
-                                settings.javaScriptEnabled = true
-                                loadUrl(authWebViewUrl!!)
-                            }
-                        },
-                        update = { webView ->
-                            if (webView.url != authWebViewUrl) {
-                                webView.loadUrl(authWebViewUrl!!)
-                            }
-                        }
-                    )
-                }
-            }
         }
     }
 
@@ -171,8 +119,7 @@ fun LoginScreen(
                         if (verificationUri != null) {
                             Button(
                                 onClick = {
-                                    authWebViewUrl = verificationUri
-                                    showAuthWebView = true
+                                    openAuthorizationPage(context, verificationUri)
                                     hasOpenedAuthPage = true
                                 },
                                 modifier = Modifier.fillMaxWidth()
@@ -234,4 +181,11 @@ fun LoginScreen(
             }
         }
     }
+}
+
+private fun openAuthorizationPage(context: android.content.Context, uri: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    context.startActivity(intent)
 }

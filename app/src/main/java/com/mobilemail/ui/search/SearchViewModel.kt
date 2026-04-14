@@ -1,9 +1,10 @@
 package com.mobilemail.ui.search
 
+import android.app.Application
 import android.util.Log
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.mobilemail.data.jmap.JmapClient
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Folder
 import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
@@ -28,15 +29,15 @@ data class SearchUiState(
 )
 
 class SearchViewModel(
+    application: Application,
     private val server: String,
     private val email: String,
-    private val password: String,
     private val accountId: String
-) : ViewModel() {
+) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState
 
-    private val jmapClient = JmapClient.getOrCreate(server, email, password, accountId)
+    private val jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
     private val mailRepository = MailRepository(jmapClient)
     private val searchRepository = SearchRepository(jmapClient)
 

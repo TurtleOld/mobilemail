@@ -6,11 +6,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.common.fold
 import com.mobilemail.data.jmap.JmapApi
-import com.mobilemail.data.jmap.JmapClient
-import com.mobilemail.data.jmap.JmapOAuthClient
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Attachment
-import com.mobilemail.data.oauth.OAuthDiscovery
-import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.repository.ComposeRepository
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.NotificationState
@@ -38,7 +35,6 @@ class ComposeViewModel(
     application: Application,
     private val server: String,
     private val email: String,
-    private val password: String,
     private val accountId: String
 ) : AndroidViewModel(application) {
     companion object {
@@ -50,45 +46,12 @@ class ComposeViewModel(
     private val jmapClient: JmapApi = buildJmapClient()
     private val repository = ComposeRepository(jmapClient)
 
-    private fun buildJmapClient(): JmapApi {
-        if (password.isBlank() || password == "-") {
-            val tokenStore = TokenStore(getApplication())
-            val tokens = tokenStore.getTokens(server, email)
-            Log.d(
-                "ComposeViewModel",
-                "Проверка OAuth токенов: found=${tokens != null}, accessValid=${tokens?.isValid()}, hasRefresh=${tokens?.refreshToken != null}"
-            )
-            if (password == "-") {
-                Log.d("ComposeViewModel", "Обнаружен OAuth placeholder пароля ('-'), используем OAuth клиент")
-            }
-            if (tokens != null) {
-                return runBlocking {
-                    try {
-                        val httpClient = OAuthDiscovery.createClient()
-                        val discovery = OAuthDiscovery(httpClient)
-                        val discoveryUrl = "$server/.well-known/oauth-authorization-server"
-                        val metadata = discovery.discover(discoveryUrl)
-                        Log.d("ComposeViewModel", "Создаем JmapOAuthClient")
-                        JmapOAuthClient.getOrCreate(
-                            serverUrl = server,
-                            email = email,
-                            accountId = accountId,
-                            tokenStore = tokenStore,
-                            metadata = metadata,
-                            clientId = "mail-client"
-                        )
-                    } catch (e: Exception) {
-                        Log.e("ComposeViewModel", "Ошибка создания OAuth клиента, fallback на basic", e)
-                        JmapClient.getOrCreate(server, email, "", accountId)
-                    }
-                }
-            } else {
-                Log.w("ComposeViewModel", "OAuth токены не найдены, используем basic")
-                return JmapClient.getOrCreate(server, email, password, accountId)
-            }
-        }
-        return JmapClient.getOrCreate(server, email, password, accountId)
-    }
+    private fun buildJmapClient(): JmapApi = MailClientFactory.create(
+        application = getApplication(),
+        server = server,
+        email = email,
+        accountId = accountId
+    )
 
     fun sendMessage(
         to: List<String>,

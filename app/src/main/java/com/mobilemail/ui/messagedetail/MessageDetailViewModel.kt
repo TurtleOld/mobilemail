@@ -7,8 +7,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.JmapApi
-import com.mobilemail.data.jmap.JmapClient
-import com.mobilemail.data.jmap.JmapOAuthClient
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.MessageDetail
 import com.mobilemail.data.repository.AttachmentRepository
 import com.mobilemail.data.repository.MailRepository
@@ -18,12 +17,9 @@ import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.data.common.fold
 import com.mobilemail.util.FileManager
-import com.mobilemail.data.oauth.OAuthDiscovery
-import com.mobilemail.data.oauth.TokenStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 data class MessageDetailUiState(
     val message: MessageDetail? = null,
@@ -36,7 +32,6 @@ class MessageDetailViewModel(
     application: Application,
     private val server: String,
     private val email: String,
-    private val password: String,
     private val accountId: String,
     private val messageId: String
 ) : AndroidViewModel(application) {
@@ -55,45 +50,12 @@ class MessageDetailViewModel(
         loadMessage()
     }
 
-    private fun buildJmapClient(): JmapApi {
-        if (password.isBlank() || password == "-") {
-            val tokenStore = TokenStore(getApplication())
-            val tokens = tokenStore.getTokens(server, email)
-            Log.d(
-                "MessageDetailViewModel",
-                "Проверка OAuth токенов: found=${tokens != null}, accessValid=${tokens?.isValid()}, hasRefresh=${tokens?.refreshToken != null}"
-            )
-            if (password == "-") {
-                Log.d("MessageDetailViewModel", "Обнаружен OAuth placeholder пароля ('-'), используем OAuth клиент")
-            }
-            if (tokens != null) {
-                return runBlocking {
-                    try {
-                        val httpClient = OAuthDiscovery.createClient()
-                        val discovery = OAuthDiscovery(httpClient)
-                        val discoveryUrl = "$server/.well-known/oauth-authorization-server"
-                        val metadata = discovery.discover(discoveryUrl)
-                        Log.d("MessageDetailViewModel", "Создаем JmapOAuthClient")
-                        JmapOAuthClient.getOrCreate(
-                            serverUrl = server,
-                            email = email,
-                            accountId = accountId,
-                            tokenStore = tokenStore,
-                            metadata = metadata,
-                            clientId = "mail-client"
-                        )
-                    } catch (e: Exception) {
-                        Log.e("MessageDetailViewModel", "Ошибка создания OAuth клиента, fallback на basic", e)
-                        JmapClient.getOrCreate(server, email, "", accountId)
-                    }
-                }
-            } else {
-                Log.w("MessageDetailViewModel", "OAuth токены не найдены, используем basic")
-                return JmapClient.getOrCreate(server, email, password, accountId)
-            }
-        }
-        return JmapClient.getOrCreate(server, email, password, accountId)
-    }
+    private fun buildJmapClient(): JmapApi = MailClientFactory.create(
+        application = getApplication(),
+        server = server,
+        email = email,
+        accountId = accountId
+    )
     
     fun setOnReadStatusChanged(callback: ((String, Boolean) -> Unit)?) {
         onReadStatusChangedCallback = callback

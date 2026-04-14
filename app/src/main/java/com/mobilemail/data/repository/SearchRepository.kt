@@ -2,7 +2,7 @@ package com.mobilemail.data.repository
 
 import com.mobilemail.data.common.Result
 import com.mobilemail.data.common.runCatchingSuspend
-import com.mobilemail.data.jmap.JmapClient
+import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.model.EmailAddress
 import com.mobilemail.data.model.MessageFlags
 import com.mobilemail.data.model.MessageListItem
@@ -10,7 +10,7 @@ import java.time.Instant
 import java.util.Date
 
 class SearchRepository(
-    private val jmapClient: JmapClient
+    private val jmapClient: JmapApi
 ) {
     suspend fun searchMessages(
         query: String,

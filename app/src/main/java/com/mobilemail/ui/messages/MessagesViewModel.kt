@@ -4,10 +4,7 @@ import android.app.Application
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.JmapApi
-import com.mobilemail.data.jmap.JmapClient
-import com.mobilemail.data.jmap.JmapOAuthClient
-import com.mobilemail.data.oauth.OAuthDiscovery
-import com.mobilemail.data.oauth.TokenStore
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Folder
 import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
@@ -35,7 +32,6 @@ data class MessagesUiState(
 class MessagesViewModel(
     private val server: String,
     private val email: String,
-    private val password: String,
     private val accountId: String,
     private val database: com.mobilemail.data.local.database.AppDatabase? = null,
     private val application: Application? = null
@@ -43,44 +39,12 @@ class MessagesViewModel(
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState
 
-    private val jmapClient: JmapApi = if ((password.isBlank() || password == "-") && application != null) {
-        val tokenStore = TokenStore(application)
-        val tokens = tokenStore.getTokens(server, email)
-        android.util.Log.d(
-            "MessagesViewModel",
-            "Проверка OAuth токенов: found=${tokens != null}, accessValid=${tokens?.isValid()}, hasRefresh=${tokens?.refreshToken != null}"
-        )
-        if (password == "-") {
-            android.util.Log.d("MessagesViewModel", "Обнаружен OAuth placeholder пароля ('-'), используем OAuth клиент")
-        }
-        if (tokens != null) {
-            kotlinx.coroutines.runBlocking {
-                try {
-                    val httpClient = OAuthDiscovery.createClient()
-                    val discovery = OAuthDiscovery(httpClient)
-                    val discoveryUrl = "$server/.well-known/oauth-authorization-server"
-                    val metadata = discovery.discover(discoveryUrl)
-                    android.util.Log.d("MessagesViewModel", "Создаем JmapOAuthClient")
-                    JmapOAuthClient.getOrCreate(
-                        serverUrl = server,
-                        email = email,
-                        accountId = accountId,
-                        tokenStore = tokenStore,
-                        metadata = metadata,
-                        clientId = "mail-client"
-                    )
-                } catch (e: Exception) {
-                    android.util.Log.e("MessagesViewModel", "Ошибка создания OAuth клиента, fallback на basic", e)
-                    JmapClient.getOrCreate(server, email, "", accountId)
-                }
-            }
-        } else {
-            android.util.Log.w("MessagesViewModel", "OAuth токены не найдены, используем basic")
-            JmapClient.getOrCreate(server, email, password, accountId)
-        }
-    } else {
-        JmapClient.getOrCreate(server, email, password, accountId)
-    }
+    private val jmapClient: JmapApi = MailClientFactory.create(
+        application = requireNotNull(application) { "Application is required" },
+        server = server,
+        email = email,
+        accountId = accountId
+    )
     
     private val repository = MailRepository(
         jmapClient = jmapClient,

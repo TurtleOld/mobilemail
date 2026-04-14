@@ -55,11 +55,10 @@ fun NewMessageScreen(
     viewModel: ComposeViewModel,
     server: String,
     email: String,
-    password: String,
     accountId: String,
     onBack: () -> Unit
 ) {
-    Log.d("NewMessageScreen", "Init: server=$server, email=$email, accountId=$accountId, passwordPlaceholder=${password == "-"}")
+    Log.d("NewMessageScreen", "Init: server=$server, email=$email, accountId=$accountId")
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     var to by remember { mutableStateOf("") }

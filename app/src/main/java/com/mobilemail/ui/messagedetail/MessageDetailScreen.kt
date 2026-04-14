@@ -310,13 +310,18 @@ fun MessageContent(
                             }
                         }
                         settings.apply {
-                            javaScriptEnabled = true
+                            javaScriptEnabled = false
+                            domStorageEnabled = false
                             useWideViewPort = true
                             loadWithOverviewMode = true
                             builtInZoomControls = true
                             displayZoomControls = false
                             setSupportZoom(true)
                             textZoom = 100
+                            allowFileAccess = false
+                            allowContentAccess = false
+                            blockNetworkImage = true
+                            blockNetworkLoads = true
                         }
                         loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
                     }

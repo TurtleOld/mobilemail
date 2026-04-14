@@ -8,13 +8,12 @@ class ComposeViewModelFactory(
     private val application: Application,
     private val server: String,
     private val email: String,
-    private val password: String,
     private val accountId: String
 ) : ViewModelProvider.Factory {
     @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(ComposeViewModel::class.java)) {
-            return ComposeViewModel(application, server, email, password, accountId) as T
+            return ComposeViewModel(application, server, email, accountId) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

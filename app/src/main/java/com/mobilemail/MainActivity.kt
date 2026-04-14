@@ -120,8 +120,7 @@ class MainActivity : FragmentActivity() {
 
                                         if (isAccessTokenValid || hasRefreshToken) {
                                             android.util.Log.d("MainActivity", "Автоматический вход через OAuth")
-                                            val passwordPlaceholder = "-"
-                                            val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}/${Uri.encode(passwordPlaceholder)}/${Uri.encode(savedSession.accountId)}"
+                                            val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}/${Uri.encode(savedSession.accountId)}"
                                             navController.navigate(route) {
                                                 popUpTo(0) { inclusive = true }
                                             }
@@ -150,19 +149,17 @@ class MainActivity : FragmentActivity() {
                                 onLoginSuccess = { server, email, _, accountId ->
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
-                                    val encodedPassword = Uri.encode("-")
                                     val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("messages/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId") {
+                                    navController.navigate("messages/$encodedServer/$encodedEmail/$encodedAccountId") {
                                         popUpTo("login") { inclusive = true }
                                     }
                                 }
                             )
                         }
 
-                        composable("messages/{server}/{email}/{password}/{accountId}") { backStackEntry ->
+                        composable("messages/{server}/{email}/{accountId}") { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-                            val password = Uri.decode(backStackEntry.arguments?.getString("password") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
 
                             val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -195,7 +192,7 @@ class MainActivity : FragmentActivity() {
                             
                             val viewModel: MessagesViewModel = viewModel(
                                 key = "messages_${server}_${email}_${accountId}",
-                                factory = MessagesViewModelFactory(server, email, password, accountId, database, application)
+                                factory = MessagesViewModelFactory(server, email, accountId, database, application)
                             )
                             
                             android.util.Log.d("MainActivity", "MessagesViewModel создан, состояние: isLoading=${viewModel.uiState.value.isLoading}")
@@ -206,28 +203,25 @@ class MainActivity : FragmentActivity() {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
                                     val encodedAccountId = Uri.encode(accountId)
-                                    val encodedPassword = Uri.encode(password)
                                     val encodedMessageId = Uri.encode(messageId)
                                     android.util.Log.d("MainActivity", "Навигация с encodedMessageId=$encodedMessageId")
-                                    navController.navigate("message/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId/$encodedMessageId")
+                                    navController.navigate("message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId")
                                 },
                                 onSearchClick = {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
-                                    val encodedPassword = Uri.encode(password)
                                     val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("search/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId")
+                                    navController.navigate("search/$encodedServer/$encodedEmail/$encodedAccountId")
                                 },
                                 onComposeClick = {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
-                                    val encodedPassword = Uri.encode(password)
                                     val encodedAccountId = Uri.encode(accountId)
                                     android.util.Log.d(
                                         "MainActivity",
-                                        "Навигация в compose: server=$server, email=$email, accountId=$accountId, passwordPlaceholder=${password == "-"}"
+                                        "Навигация в compose: server=$server, email=$email, accountId=$accountId"
                                     )
-                                    navController.navigate("compose/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId")
+                                    navController.navigate("compose/$encodedServer/$encodedEmail/$encodedAccountId")
                                 },
                                 onSettingsClick = {
                                     val encodedServer = Uri.encode(server)
@@ -250,43 +244,39 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("compose/{server}/{email}/{password}/{accountId}") { backStackEntry ->
+                        composable("compose/{server}/{email}/{accountId}") { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-                            val password = Uri.decode(backStackEntry.arguments?.getString("password") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
 
                             val viewModel: ComposeViewModel = viewModel(
-                                factory = ComposeViewModelFactory(application, server, email, password, accountId)
+                                factory = ComposeViewModelFactory(application, server, email, accountId)
                             )
                             NewMessageScreen(
                                 viewModel = viewModel,
                                 server = server,
                                 email = email,
-                                password = password,
                                 accountId = accountId,
                                 onBack = { navController.popBackStack() }
                             )
                         }
 
-                        composable("search/{server}/{email}/{password}/{accountId}") { backStackEntry ->
+                        composable("search/{server}/{email}/{accountId}") { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-                            val password = Uri.decode(backStackEntry.arguments?.getString("password") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
 
                             val viewModel: SearchViewModel = viewModel(
-                                factory = SearchViewModelFactory(server, email, password, accountId)
+                                factory = SearchViewModelFactory(application, server, email, accountId)
                             )
                             SearchScreen(
                                 viewModel = viewModel,
                                 onMessageClick = { messageId ->
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
-                                    val encodedPassword = Uri.encode(password)
                                     val encodedAccountId = Uri.encode(accountId)
                                     val encodedMessageId = Uri.encode(messageId)
-                                    navController.navigate("message/$encodedServer/$encodedEmail/$encodedPassword/$encodedAccountId/$encodedMessageId")
+                                    navController.navigate("message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId")
                                 },
                                 onBack = { navController.popBackStack() }
                             )
@@ -317,25 +307,24 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("message/{server}/{email}/{password}/{accountId}/{messageId}") { backStackEntry ->
+                        composable("message/{server}/{email}/{accountId}/{messageId}") { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-                            val password = Uri.decode(backStackEntry.arguments?.getString("password") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
                             val messageId = Uri.decode(backStackEntry.arguments?.getString("messageId") ?: return@composable)
                             android.util.Log.d("MainActivity", "Создание MessageDetailScreen: messageId=$messageId, accountId=$accountId")
 
                             val viewModel: MessageDetailViewModel = viewModel(
-                                factory = MessageDetailViewModelFactory(application, server, email, password, accountId, messageId)
+                                factory = MessageDetailViewModelFactory(application, server, email, accountId, messageId)
                             )
-                            
-                            val messagesRoute = "messages/${Uri.encode(server)}/${Uri.encode(email)}/${Uri.encode(password)}/${Uri.encode(accountId)}"
+
+                            val messagesRoute = "messages/${Uri.encode(server)}/${Uri.encode(email)}/${Uri.encode(accountId)}"
                             val parentEntry = remember(messagesRoute) { navController.getBackStackEntry(messagesRoute) }
-                            
+
                             val messagesViewModel: MessagesViewModel = viewModel(
                                 parentEntry,
                                 key = "messages_${server}_${email}_${accountId}",
-                                factory = MessagesViewModelFactory(server, email, password, accountId, database, application)
+                                factory = MessagesViewModelFactory(server, email, accountId, database, application)
                             )
                             
                             LaunchedEffect(viewModel, messagesViewModel) {
