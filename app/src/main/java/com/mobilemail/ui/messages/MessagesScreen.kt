@@ -1,8 +1,10 @@
 package com.mobilemail.ui.messages
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -15,6 +17,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.Refresh
@@ -25,13 +28,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -47,6 +58,9 @@ import com.mobilemail.data.model.MessageListItem
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -82,7 +96,18 @@ fun MessagesScreen(
         when (val notification = uiState.notification) {
             is com.mobilemail.ui.common.NotificationState.Snackbar -> {
                 scope.launch {
-                    snackbarHostState.showSnackbar(notification.message)
+                    val result = snackbarHostState.showSnackbar(
+                        message = notification.message,
+                        actionLabel = notification.actionLabel,
+                        duration = when (notification.duration) {
+                            com.mobilemail.ui.common.SnackbarDuration.Short -> SnackbarDuration.Short
+                            com.mobilemail.ui.common.SnackbarDuration.Long -> SnackbarDuration.Long
+                            com.mobilemail.ui.common.SnackbarDuration.Indefinite -> SnackbarDuration.Indefinite
+                        }
+                    )
+                    if (result == SnackbarResult.ActionPerformed) {
+                        notification.onAction?.invoke()
+                    }
                     viewModel.clearNotification()
                 }
             }
@@ -172,6 +197,9 @@ fun MessagesScreen(
                             IconButton(onClick = { showMoveDialog = true }) {
                                 Icon(Icons.Default.DriveFileMove, contentDescription = "Переместить")
                             }
+                            IconButton(onClick = { viewModel.deleteSelected() }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Удалить")
+                            }
                             IconButton(onClick = { viewModel.selectAll() }) {
                                 Icon(Icons.Default.SelectAll, contentDescription = "Выбрать все")
                             }
@@ -222,6 +250,8 @@ fun MessagesScreen(
                     }
                 },
                 onMessageLongClick = { messageId -> viewModel.toggleMessageSelection(messageId) },
+                onSwipeArchive = { messageId -> viewModel.archiveMessage(messageId) },
+                onSwipeDelete = { messageId -> viewModel.deleteMessageWithUndo(messageId) },
                 onLoadMore = { viewModel.loadMoreMessages() },
                 modifier = Modifier
                     .fillMaxSize()
@@ -442,6 +472,8 @@ fun MessagesList(
     selectedMessageId: String?,
     onMessageClick: (String) -> Unit,
     onMessageLongClick: (String) -> Unit,
+    onSwipeArchive: (String) -> Unit,
+    onSwipeDelete: (String) -> Unit,
     onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -481,7 +513,9 @@ fun MessagesList(
                         isSelected = selectedIds.contains(message.id),
                         isActive = selectedMessageId == message.id,
                         onClick = { onMessageClick(message.id) },
-                        onLongClick = { onMessageLongClick(message.id) }
+                        onLongClick = { onMessageLongClick(message.id) },
+                        onSwipeArchive = { onSwipeArchive(message.id) },
+                        onSwipeDelete = { onSwipeDelete(message.id) }
                     )
                 }
 
@@ -509,121 +543,194 @@ fun MessageItem(
     isSelected: Boolean,
     isActive: Boolean,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onLongClick: () -> Unit,
+    onSwipeArchive: () -> Unit,
+    onSwipeDelete: () -> Unit
 ) {
     val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
     val isUnread = message.flags.unread
+    val haptics = LocalHapticFeedback.current
+    val swipeThresholdPx = with(LocalDensity.current) { 112.dp.toPx() }
+    val maxSwipePx = swipeThresholdPx * 1.7f
+    var offsetX by remember(message.id) { mutableFloatStateOf(0f) }
+    var thresholdDirection by remember(message.id) { mutableIntStateOf(0) }
+    val swipeProgress = min(abs(offsetX) / swipeThresholdPx, 1f)
 
-    Card(
+    val backgroundColor = when {
+        offsetX > 0f -> MaterialTheme.colorScheme.secondaryContainer
+        offsetX < 0f -> MaterialTheme.colorScheme.errorContainer
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
+    val backgroundAlignment = when {
+        offsetX > 0f -> Alignment.CenterStart
+        offsetX < 0f -> Alignment.CenterEnd
+        else -> Alignment.Center
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .semantics(mergeDescendants = true) {
-                role = Role.Button
-                stateDescription = buildString {
-                    append(if (isUnread) "Непрочитанное" else "Прочитанное")
-                    if (message.flags.starred) append(", в избранном")
-                    if (message.flags.hasAttachments) append(", с вложением")
-                    if (isActive) append(", открыто")
-                    if (isSelected) append(", выбрано")
-                }
-            }
-            .combinedClickable(
-                onClick = onClick,
-                onLongClick = onLongClick
-            ),
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = if (isUnread) 4.dp else 2.dp
-        ),
-        colors = CardDefaults.cardColors(
-            containerColor = when {
-                isSelected -> MaterialTheme.colorScheme.primaryContainer
-                isActive -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
-                isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                else -> MaterialTheme.colorScheme.surface
-            }
-        )
+            .padding(vertical = 2.dp)
+            .clip(MaterialTheme.shapes.medium)
+            .background(backgroundColor.copy(alpha = 0.35f + (0.45f * swipeProgress)))
     ) {
-        Row(
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(horizontal = 20.dp),
+            contentAlignment = backgroundAlignment
+        ) {
+            if (offsetX != 0f) {
+                Icon(
+                    imageVector = if (offsetX > 0f) Icons.Default.Archive else Icons.Default.Delete,
+                    contentDescription = if (offsetX > 0f) "Архивировать" else "Удалить",
+                    tint = if (offsetX > 0f) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onErrorContainer
+                )
+            }
+        }
+
+        Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            if (isSelected) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = "Выбрано",
-                    modifier = Modifier
-                        .size(20.dp)
-                        .padding(end = 0.dp),
-                    tint = MaterialTheme.colorScheme.primary
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                .semantics(mergeDescendants = true) {
+                    role = Role.Button
+                    stateDescription = buildString {
+                        append(if (isUnread) "Непрочитанное" else "Прочитанное")
+                        if (message.flags.starred) append(", в избранном")
+                        if (message.flags.hasAttachments) append(", с вложением")
+                        if (isActive) append(", открыто")
+                        if (isSelected) append(", выбрано")
+                    }
+                }
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                .pointerInput(message.id, isSelected) {
+                    if (isSelected) return@pointerInput
+                    detectHorizontalDragGestures(
+                        onHorizontalDrag = { change, dragAmount ->
+                            change.consume()
+                            offsetX = (offsetX + dragAmount).coerceIn(-maxSwipePx, maxSwipePx)
+                            val currentDirection = when {
+                                offsetX >= swipeThresholdPx -> 1
+                                offsetX <= -swipeThresholdPx -> -1
+                                else -> 0
+                            }
+                            if (currentDirection != 0 && currentDirection != thresholdDirection) {
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
+                            thresholdDirection = currentDirection
+                        },
+                        onDragEnd = {
+                            when {
+                                offsetX >= swipeThresholdPx -> onSwipeArchive()
+                                offsetX <= -swipeThresholdPx -> onSwipeDelete()
+                            }
+                            offsetX = 0f
+                            thresholdDirection = 0
+                        },
+                        onDragCancel = {
+                            offsetX = 0f
+                            thresholdDirection = 0
+                        }
+                    )
+                },
+            elevation = CardDefaults.cardElevation(
+                defaultElevation = if (isUnread) 4.dp else 2.dp
+            ),
+            colors = CardDefaults.cardColors(
+                containerColor = when {
+                    isSelected -> MaterialTheme.colorScheme.primaryContainer
+                    isActive -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
+                    isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
+                    else -> MaterialTheme.colorScheme.surface
+                }
+            )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                if (isSelected) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = "Выбрано",
+                        modifier = Modifier
+                            .size(20.dp)
+                            .padding(end = 0.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
                     Row(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        if (isUnread && !isSelected) {
-                            Icon(
-                                Icons.Default.Email,
-                                contentDescription = "Непрочитанное",
-                                modifier = Modifier.size(16.dp),
-                                tint = MaterialTheme.colorScheme.primary
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (isUnread && !isSelected) {
+                                Icon(
+                                    Icons.Default.Email,
+                                    contentDescription = "Непрочитанное",
+                                    modifier = Modifier.size(16.dp),
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = message.from.name ?: message.from.email,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier.weight(1f),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
                         }
                         Text(
-                            text = message.from.name ?: message.from.email,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
-                            modifier = Modifier.weight(1f),
-                            maxLines = 1,
+                            text = dateFormat.format(message.date),
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    Text(
+                        text = message.subject,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    if (message.snippet.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = message.snippet,
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Text(
-                        text = dateFormat.format(message.date),
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                Text(
-                    text = message.subject,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                if (message.snippet.isNotEmpty()) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = message.snippet,
-                        style = MaterialTheme.typography.bodySmall,
-                        fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                if (message.flags.hasAttachments) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "📎",
-                        style = MaterialTheme.typography.bodySmall
-                    )
+                    if (message.flags.hasAttachments) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "📎",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                    }
                 }
             }
         }

@@ -15,10 +15,12 @@ import com.mobilemail.ui.common.SnackbarDuration
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class MessagesUiState(
     val folders: List<Folder> = emptyList(),
@@ -41,6 +43,13 @@ class MessagesViewModel(
     private val database: com.mobilemail.data.local.database.AppDatabase? = null,
     private val application: Application? = null
 ) : ViewModel() {
+    private data class PendingFolderAction(
+        val id: String,
+        val restoreState: MessagesUiState,
+        val job: Job,
+        val commit: suspend () -> com.mobilemail.data.common.Result<Unit>
+    )
+
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState
 
@@ -57,6 +66,7 @@ class MessagesViewModel(
         folderDao = database?.folderDao()
     )
     private val messageActionsRepository = MessageActionsRepository(jmapClient)
+    private var pendingFolderAction: PendingFolderAction? = null
 
     init {
         try {
@@ -170,6 +180,7 @@ class MessagesViewModel(
 
     fun refresh() {
         _uiState.value.selectedFolder?.let { loadMessages(it.id, reset = true) }
+        refreshFoldersPreservingSelection()
     }
     
     fun removeMessage(messageId: String) {
@@ -238,6 +249,16 @@ class MessagesViewModel(
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
     }
 
+    fun deleteSelected() {
+        val selectedIds = _uiState.value.selectedMessageIds
+        if (selectedIds.isEmpty()) return
+        scheduleFolderAction(
+            messageIds = selectedIds,
+            pendingMessage = if (selectedIds.size == 1) "Письмо будет удалено" else "Писем будет удалено: ${selectedIds.size}",
+            commitAction = { messageId -> messageActionsRepository.deleteMessage(messageId) }
+        )
+    }
+
     fun selectMessage(messageId: String?) {
         _uiState.value = _uiState.value.copy(selectedMessageId = messageId)
     }
@@ -299,44 +320,58 @@ class MessagesViewModel(
         val selectedIds = currentState.selectedMessageIds.toList()
         if (selectedIds.isEmpty()) return
 
-        viewModelScope.launch {
-            var movedCount = 0
-            var lastError: Throwable? = null
-            val movedIds = mutableSetOf<String>()
-            selectedIds.forEach { messageId ->
-                messageActionsRepository.moveMessage(messageId, fromFolderId, toFolderId).fold(
-                    onError = { e -> lastError = e },
-                    onSuccess = {
-                        movedCount++
-                        movedIds += messageId
-                    }
-                )
+        scheduleFolderAction(
+            messageIds = selectedIds.toSet(),
+            pendingMessage = if (selectedIds.size == 1) {
+                "Письмо перемещено в ${destinationFolder.name}"
+            } else {
+                "Подготовлено к перемещению: ${selectedIds.size}"
+            },
+            commitAction = { messageId ->
+                messageActionsRepository.moveMessage(messageId, fromFolderId, toFolderId)
             }
+        )
+    }
 
-            if (movedCount > 0) {
-                _uiState.value = _uiState.value.copy(
-                    messages = _uiState.value.messages.filterNot { it.id in movedIds },
-                    selectedMessageIds = _uiState.value.selectedMessageIds - movedIds,
-                    notification = NotificationState.Snackbar(
-                        message = if (movedCount == 1) {
-                            "Письмо перемещено в ${destinationFolder.name}"
-                        } else {
-                            "Перемещено писем: $movedCount"
-                        },
-                        duration = SnackbarDuration.Short
-                    )
-                )
-            }
+    fun archiveMessage(messageId: String) {
+        moveSingleToRole(messageId, FolderRole.ARCHIVE)
+    }
 
-            if (movedCount == 0 && lastError != null) {
-                _uiState.value = _uiState.value.copy(
-                    notification = NotificationState.Snackbar(
-                        message = "Не удалось переместить письма: ${ErrorMapper.mapException(lastError!!).getUserMessage()}",
-                        duration = SnackbarDuration.Long
-                    )
+    fun deleteMessageWithUndo(messageId: String) {
+        scheduleFolderAction(
+            messageIds = setOf(messageId),
+            pendingMessage = "Письмо будет удалено",
+            commitAction = { id -> messageActionsRepository.deleteMessage(id) }
+        )
+    }
+
+    private fun moveSingleToRole(messageId: String, role: FolderRole) {
+        val currentFolderId = _uiState.value.selectedFolder?.id ?: return
+        val targetFolder = _uiState.value.folders.firstOrNull { it.role == role } ?: run {
+            _uiState.value = _uiState.value.copy(
+                notification = NotificationState.Snackbar(
+                    message = when (role) {
+                        FolderRole.ARCHIVE -> "Папка Архив недоступна"
+                        FolderRole.SPAM -> "Папка Спам недоступна"
+                        else -> "Целевая папка недоступна"
+                    },
+                    duration = SnackbarDuration.Short
                 )
-            }
+            )
+            return
         }
+
+        scheduleFolderAction(
+            messageIds = setOf(messageId),
+            pendingMessage = if (role == FolderRole.ARCHIVE) {
+                "Письмо архивировано"
+            } else {
+                "Письмо помечено как спам"
+            },
+            commitAction = { id ->
+                messageActionsRepository.moveMessage(id, currentFolderId, targetFolder.id)
+            }
+        )
     }
 
     private fun moveSelectedToRole(role: FolderRole) {
@@ -354,5 +389,121 @@ class MessagesViewModel(
             return
         }
         moveSelected(targetFolder.id)
+    }
+
+    private fun scheduleFolderAction(
+        messageIds: Set<String>,
+        pendingMessage: String,
+        commitAction: suspend (String) -> com.mobilemail.data.common.Result<Boolean>
+    ) {
+        if (messageIds.isEmpty()) return
+
+        val existingAction = pendingFolderAction
+        if (existingAction != null) {
+            viewModelScope.launch {
+                finalizePendingAction(existingAction)
+                scheduleFolderAction(messageIds, pendingMessage, commitAction)
+            }
+            return
+        }
+
+        val currentState = _uiState.value
+        val removedMessages = currentState.messages.filter { it.id in messageIds }
+        if (removedMessages.isEmpty()) return
+        val removedUnreadCount = removedMessages.count { it.flags.unread }
+        val updatedSelectedFolder = currentState.selectedFolder?.copy(
+            unreadCount = maxOf(0, currentState.selectedFolder.unreadCount - removedUnreadCount)
+        )
+        val updatedFolders = currentState.folders.map { folder ->
+            if (folder.id == currentState.selectedFolder?.id && updatedSelectedFolder != null) updatedSelectedFolder else folder
+        }
+        val restoreState = currentState.copy(notification = NotificationState.None)
+        val actionId = UUID.randomUUID().toString()
+
+        val job = viewModelScope.launch {
+            delay(5000)
+            pendingFolderAction?.takeIf { it.id == actionId }?.let { finalizePendingAction(it) }
+        }
+
+        pendingFolderAction = PendingFolderAction(
+            id = actionId,
+            restoreState = restoreState,
+            job = job,
+            commit = {
+                var failure: Throwable? = null
+                messageIds.forEach { messageId ->
+                    commitAction(messageId).fold(
+                        onError = { error ->
+                            if (failure == null) failure = error
+                        },
+                        onSuccess = {}
+                    )
+                }
+                if (failure != null) {
+                    com.mobilemail.data.common.Result.Error(failure!!)
+                } else {
+                    com.mobilemail.data.common.Result.Success(Unit)
+                }
+            }
+        )
+
+        _uiState.value = currentState.copy(
+            messages = currentState.messages.filterNot { it.id in messageIds },
+            selectedMessageIds = currentState.selectedMessageIds - messageIds,
+            selectedMessageId = currentState.selectedMessageId.takeIf { it !in messageIds },
+            selectedFolder = updatedSelectedFolder,
+            folders = updatedFolders,
+            notification = NotificationState.Snackbar(
+                message = pendingMessage,
+                actionLabel = "Отменить",
+                onAction = { undoPendingAction(actionId) },
+                duration = SnackbarDuration.Long
+            )
+        )
+    }
+
+    private suspend fun finalizePendingAction(action: PendingFolderAction) {
+        pendingFolderAction = null
+        when (val result = action.commit()) {
+            is com.mobilemail.data.common.Result.Success<*> -> {
+                refreshFoldersPreservingSelection()
+                _uiState.value.selectedFolder?.let { loadMessages(it.id, reset = true) }
+            }
+            is com.mobilemail.data.common.Result.Error -> {
+                _uiState.value = action.restoreState.copy(
+                    notification = NotificationState.Snackbar(
+                        message = "Не удалось синхронизировать изменения: ${ErrorMapper.mapException(result.exception).getUserMessage()}",
+                        duration = SnackbarDuration.Long
+                    )
+                )
+            }
+        }
+    }
+
+    private fun undoPendingAction(actionId: String) {
+        val action = pendingFolderAction?.takeIf { it.id == actionId } ?: return
+        action.job.cancel()
+        pendingFolderAction = null
+        _uiState.value = action.restoreState.copy(
+            notification = NotificationState.Snackbar(
+                message = "Действие отменено",
+                duration = SnackbarDuration.Short
+            )
+        )
+    }
+
+    private fun refreshFoldersPreservingSelection() {
+        viewModelScope.launch {
+            repository.getFolders().fold(
+                onError = { },
+                onSuccess = { folders ->
+                    val selectedFolderId = _uiState.value.selectedFolder?.id
+                    _uiState.value = _uiState.value.copy(
+                        folders = folders,
+                        selectedFolder = folders.firstOrNull { it.id == selectedFolderId } ?: _uiState.value.selectedFolder
+                    )
+                }
+            )
+        }
     }
 }

@@ -87,12 +87,14 @@ fun NewMessageScreen(
                     com.mobilemail.ui.common.SnackbarDuration.Long -> androidx.compose.material3.SnackbarDuration.Long
                     com.mobilemail.ui.common.SnackbarDuration.Indefinite -> androidx.compose.material3.SnackbarDuration.Indefinite
                 }
-                snackbarHostState.showSnackbar(
+                val result = snackbarHostState.showSnackbar(
                     message = notification.message,
                     duration = duration,
                     actionLabel = notification.actionLabel
                 )
-                notification.onAction?.invoke()
+                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
+                    notification.onAction?.invoke()
+                }
                 viewModel.clearNotification()
             }
             is NotificationState.Alert -> {

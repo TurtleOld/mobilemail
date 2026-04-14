@@ -20,9 +20,12 @@ import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.data.common.fold
 import com.mobilemail.util.FileManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class MessageDetailUiState(
     val message: MessageDetail? = null,
@@ -40,6 +43,13 @@ class MessageDetailViewModel(
     private val accountId: String,
     private val messageId: String
 ) : AndroidViewModel(application) {
+    private data class PendingDetailAction(
+        val id: String,
+        val job: Job,
+        val commit: suspend () -> com.mobilemail.data.common.Result<Boolean>,
+        val onCommitted: () -> Unit
+    )
+
     private val _uiState = MutableStateFlow(MessageDetailUiState())
     val uiState: StateFlow<MessageDetailUiState> = _uiState
 
@@ -49,6 +59,7 @@ class MessageDetailViewModel(
     private val attachmentRepository = AttachmentRepository(jmapClient)
     
     private var onReadStatusChangedCallback: ((String, Boolean) -> Unit)? = null
+    private var pendingDetailAction: PendingDetailAction? = null
 
     init {
         Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=$accountId")
@@ -166,30 +177,14 @@ class MessageDetailViewModel(
 
     fun deleteMessage(onSuccess: () -> Unit, onMessageDeleted: ((String) -> Unit)? = null) {
         _uiState.value.message ?: return
-        viewModelScope.launch {
-            messageActionsRepository.deleteMessage(messageId).fold(
-                onError = { e ->
-                    Log.e("MessageDetailViewModel", "Ошибка удаления письма", e)
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось удалить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
-                        )
-                    )
-                },
-                onSuccess = {
-                    Log.d("MessageDetailViewModel", "Письмо удалено успешно")
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Письмо удалено",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Short
-                        )
-                    )
-                    onMessageDeleted?.invoke(messageId)
-                    onSuccess()
-                }
-            )
-        }
+        scheduleDeferredAction(
+            pendingMessage = "Письмо будет удалено",
+            commitAction = { messageActionsRepository.deleteMessage(messageId) },
+            onCommitted = {
+                onMessageDeleted?.invoke(messageId)
+                onSuccess()
+            }
+        )
     }
 
     fun toggleReadStatus(onReadStatusChanged: ((String, Boolean) -> Unit)? = null) {
@@ -296,28 +291,14 @@ class MessageDetailViewModel(
         }
 
         val destinationFolder = _uiState.value.folders.firstOrNull { it.id == toFolderId }
-        viewModelScope.launch {
-            messageActionsRepository.moveMessage(messageId, sourceFolderId, toFolderId).fold(
-                onError = { e ->
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось переместить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
-                        )
-                    )
-                },
-                onSuccess = {
-                    onMessageRemoved?.invoke(messageId)
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Письмо перемещено в ${destinationFolder?.name ?: "другую папку"}",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Short
-                        )
-                    )
-                    onSuccess()
-                }
-            )
-        }
+        scheduleDeferredAction(
+            pendingMessage = "Письмо перемещается в ${destinationFolder?.name ?: "другую папку"}",
+            commitAction = { messageActionsRepository.moveMessage(messageId, sourceFolderId, toFolderId) },
+            onCommitted = {
+                onMessageRemoved?.invoke(messageId)
+                onSuccess()
+            }
+        )
     }
 
     private fun moveMessageToRole(
@@ -344,6 +325,71 @@ class MessageDetailViewModel(
 
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
+    }
+
+    private fun scheduleDeferredAction(
+        pendingMessage: String,
+        commitAction: suspend () -> com.mobilemail.data.common.Result<Boolean>,
+        onCommitted: () -> Unit
+    ) {
+        val existingAction = pendingDetailAction
+        if (existingAction != null) {
+            viewModelScope.launch {
+                finalizePendingDetailAction(existingAction)
+                scheduleDeferredAction(pendingMessage, commitAction, onCommitted)
+            }
+            return
+        }
+
+        val actionId = UUID.randomUUID().toString()
+        val job = viewModelScope.launch {
+            delay(5000)
+            pendingDetailAction?.takeIf { it.id == actionId }?.let { finalizePendingDetailAction(it) }
+        }
+
+        pendingDetailAction = PendingDetailAction(
+            id = actionId,
+            job = job,
+            commit = commitAction,
+            onCommitted = onCommitted
+        )
+        _uiState.value = _uiState.value.copy(
+            notification = NotificationState.Snackbar(
+                message = pendingMessage,
+                actionLabel = "Отменить",
+                onAction = { undoPendingDetailAction(actionId) },
+                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+            )
+        )
+    }
+
+    private suspend fun finalizePendingDetailAction(action: PendingDetailAction) {
+        pendingDetailAction = null
+        action.commit().fold(
+            onError = { e ->
+                _uiState.value = _uiState.value.copy(
+                    notification = NotificationState.Snackbar(
+                        message = "Не удалось синхронизировать изменения: ${ErrorMapper.mapException(e).getUserMessage()}",
+                        duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                    )
+                )
+            },
+            onSuccess = {
+                action.onCommitted()
+            }
+        )
+    }
+
+    private fun undoPendingDetailAction(actionId: String) {
+        val action = pendingDetailAction?.takeIf { it.id == actionId } ?: return
+        action.job.cancel()
+        pendingDetailAction = null
+        _uiState.value = _uiState.value.copy(
+            notification = NotificationState.Snackbar(
+                message = "Действие отменено",
+                duration = com.mobilemail.ui.common.SnackbarDuration.Short
+            )
+        )
     }
 
     fun openAttachment(attachmentId: String, filename: String, mimeType: String = "application/octet-stream") {

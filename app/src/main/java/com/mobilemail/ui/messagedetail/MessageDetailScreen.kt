@@ -69,12 +69,14 @@ fun MessageDetailScreen(
                         com.mobilemail.ui.common.SnackbarDuration.Long -> androidx.compose.material3.SnackbarDuration.Long
                         com.mobilemail.ui.common.SnackbarDuration.Indefinite -> androidx.compose.material3.SnackbarDuration.Indefinite
                     }
-                    snackbarHostState.showSnackbar(
+                    val result = snackbarHostState.showSnackbar(
                         message = notification.message,
                         duration = duration,
                         actionLabel = notification.actionLabel
                     )
-                    notification.onAction?.invoke()
+                    if (result == SnackbarResult.ActionPerformed) {
+                        notification.onAction?.invoke()
+                    }
                     viewModel.clearNotification()
                 }
             }
@@ -90,7 +92,7 @@ fun MessageDetailScreen(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Удалить письмо?") },
-            text = { Text("Письмо будет удалено без возможности восстановления.") },
+            text = { Text("Письмо будет удалено после короткой задержки. Действие можно отменить через Undo.") },
             confirmButton = {
                 TextButton(
                     onClick = {
