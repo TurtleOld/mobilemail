@@ -55,13 +55,16 @@ fun NewMessageScreen(
     server: String,
     email: String,
     accountId: String,
+    initialTo: String = "",
+    initialSubject: String = "",
+    initialBody: String = "",
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
-    var to by remember { mutableStateOf("") }
-    var subject by remember { mutableStateOf("") }
-    var body by remember { mutableStateOf("") }
+    var to by remember(initialTo) { mutableStateOf(initialTo) }
+    var subject by remember(initialSubject) { mutableStateOf(initialSubject) }
+    var body by remember(initialBody) { mutableStateOf(initialBody) }
     val context = LocalContext.current
     val preferencesManager = remember(context) { PreferencesManager(context) }
     val attachmentPicker = rememberLauncherForActivityResult(

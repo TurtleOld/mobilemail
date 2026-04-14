@@ -44,9 +44,11 @@ import com.mobilemail.ui.messagedetail.MessageDetailViewModelFactory
 import com.mobilemail.ui.messages.MessagesScreen
 import com.mobilemail.ui.messages.MessagesViewModel
 import com.mobilemail.ui.messages.MessagesViewModelFactory
+import com.mobilemail.ui.newmessage.ComposePrefillStore
 import com.mobilemail.ui.newmessage.ComposeViewModel
 import com.mobilemail.ui.newmessage.ComposeViewModelFactory
 import com.mobilemail.ui.newmessage.NewMessageScreen
+import com.mobilemail.ui.newmessage.ReplyAction
 import com.mobilemail.ui.outbox.OutboxScreen
 import com.mobilemail.ui.outbox.OutboxViewModel
 import com.mobilemail.ui.outbox.OutboxViewModelFactory
@@ -71,6 +73,26 @@ class MainActivity : FragmentActivity() {
     private val tokenStore by lazy { TokenStore(applicationContext) }
     private val pinManager by lazy { PinManager(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    private fun buildComposeRoute(
+        server: String,
+        email: String,
+        accountId: String,
+        draftToken: String = "-"
+    ): String {
+        return "compose/${Uri.encode(server)}/${Uri.encode(email)}/${Uri.encode(accountId)}/${Uri.encode(draftToken)}"
+    }
+
+    private fun buildReplyDraftRoute(
+        server: String,
+        email: String,
+        accountId: String,
+        message: com.mobilemail.data.model.MessageDetail,
+        action: ReplyAction
+    ): String {
+        val token = ComposePrefillStore.createReplyDraft(message, email, action)
+        return buildComposeRoute(server, email, accountId, token)
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -236,6 +258,15 @@ class MainActivity : FragmentActivity() {
                                         MessageDetailScreen(
                                             viewModel = detailViewModel,
                                             onBack = { viewModel.selectMessage(null) },
+                                            onReply = { message ->
+                                                navController.navigate(buildReplyDraftRoute(server, email, accountId, message, ReplyAction.REPLY))
+                                            },
+                                            onReplyAll = { message ->
+                                                navController.navigate(buildReplyDraftRoute(server, email, accountId, message, ReplyAction.REPLY_ALL))
+                                            },
+                                            onForward = { message ->
+                                                navController.navigate(buildReplyDraftRoute(server, email, accountId, message, ReplyAction.FORWARD))
+                                            },
                                             onMessageDeleted = { deletedMessageId ->
                                                 viewModel.removeMessage(deletedMessageId)
                                             },
@@ -258,10 +289,7 @@ class MainActivity : FragmentActivity() {
                                     navController.navigate("search/$encodedServer/$encodedEmail/$encodedAccountId")
                                 },
                                 onComposeClick = {
-                                    val encodedServer = Uri.encode(server)
-                                    val encodedEmail = Uri.encode(email)
-                                    val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("compose/$encodedServer/$encodedEmail/$encodedAccountId")
+                                    navController.navigate(buildComposeRoute(server, email, accountId))
                                 },
                                 onOutboxClick = {
                                     val encodedServer = Uri.encode(server)
@@ -288,10 +316,12 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("compose/{server}/{email}/{accountId}") { backStackEntry ->
+                        composable("compose/{server}/{email}/{accountId}/{draftToken}") { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+                            val draftToken = Uri.decode(backStackEntry.arguments?.getString("draftToken") ?: "-")
+                            val prefill = remember(draftToken) { ComposePrefillStore.consume(draftToken) }
 
                             val viewModel: ComposeViewModel = viewModel(
                                 factory = ComposeViewModelFactory(application, server, email, accountId)
@@ -301,6 +331,9 @@ class MainActivity : FragmentActivity() {
                                 server = server,
                                 email = email,
                                 accountId = accountId,
+                                initialTo = prefill?.to.orEmpty(),
+                                initialSubject = prefill?.subject.orEmpty(),
+                                initialBody = prefill?.body.orEmpty(),
                                 onBack = { navController.popBackStack() }
                             )
                         }
@@ -387,6 +420,15 @@ class MainActivity : FragmentActivity() {
                                 viewModel = viewModel,
                                 onBack = { 
                                     navController.popBackStack()
+                                },
+                                onReply = { message ->
+                                    navController.navigate(buildReplyDraftRoute(server, email, accountId, message, ReplyAction.REPLY))
+                                },
+                                onReplyAll = { message ->
+                                    navController.navigate(buildReplyDraftRoute(server, email, accountId, message, ReplyAction.REPLY_ALL))
+                                },
+                                onForward = { message ->
+                                    navController.navigate(buildReplyDraftRoute(server, email, accountId, message, ReplyAction.FORWARD))
                                 },
                                 onMessageDeleted = { deletedMessageId ->
                                     messagesViewModel.removeMessage(deletedMessageId)

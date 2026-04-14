@@ -48,6 +48,9 @@ import java.util.Locale
 fun MessageDetailScreen(
     viewModel: MessageDetailViewModel,
     onBack: () -> Unit,
+    onReply: ((com.mobilemail.data.model.MessageDetail) -> Unit)? = null,
+    onReplyAll: ((com.mobilemail.data.model.MessageDetail) -> Unit)? = null,
+    onForward: ((com.mobilemail.data.model.MessageDetail) -> Unit)? = null,
     onMessageDeleted: ((String) -> Unit)? = null,
     onReadStatusChanged: ((String, Boolean) -> Unit)? = null,
     onMessageMoved: ((String) -> Unit)? = null,
@@ -58,6 +61,7 @@ fun MessageDetailScreen(
     val scope = rememberCoroutineScope()
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
+    var showReplyMenu by remember { mutableStateOf(false) }
 
     // Обработка уведомлений
     LaunchedEffect(uiState.notification) {
@@ -200,6 +204,46 @@ fun MessageDetailScreen(
                         }
                         IconButton(onClick = { showMoveDialog = true }) {
                             Icon(Icons.Default.DriveFileMove, contentDescription = "Переместить")
+                        }
+                        Box {
+                            IconButton(onClick = { showReplyMenu = true }) {
+                                Icon(Icons.Default.Reply, contentDescription = "Ответить")
+                            }
+                            DropdownMenu(
+                                expanded = showReplyMenu,
+                                onDismissRequest = { showReplyMenu = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Ответить") },
+                                    onClick = {
+                                        showReplyMenu = false
+                                        onReply?.invoke(message)
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Reply, contentDescription = null)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Ответить всем") },
+                                    onClick = {
+                                        showReplyMenu = false
+                                        onReplyAll?.invoke(message)
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.ReplyAll, contentDescription = null)
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Переслать") },
+                                    onClick = {
+                                        showReplyMenu = false
+                                        onForward?.invoke(message)
+                                    },
+                                    leadingIcon = {
+                                        Icon(Icons.Default.Forward, contentDescription = null)
+                                    }
+                                )
+                            }
                         }
                         // Кнопка удаления
                         IconButton(onClick = { showDeleteDialog = true }) {
