@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -34,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.mobilemail.data.model.MessageListItem
 import java.util.regex.Pattern
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.ui.common.NotificationState
@@ -48,7 +50,8 @@ fun MessageDetailScreen(
     onBack: () -> Unit,
     onMessageDeleted: ((String) -> Unit)? = null,
     onReadStatusChanged: ((String, Boolean) -> Unit)? = null,
-    onMessageMoved: ((String) -> Unit)? = null
+    onMessageMoved: ((String) -> Unit)? = null,
+    onThreadMessageClick: ((String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -218,6 +221,8 @@ fun MessageDetailScreen(
             uiState.message?.let { message ->
                 MessageContent(
                     message = message,
+                    threadMessages = uiState.threadMessages,
+                    onThreadMessageClick = onThreadMessageClick,
                     onDownloadAttachment = { attachmentId, filename, mimeType ->
                         viewModel.downloadAttachment(attachmentId, filename, mimeType)
                     },
@@ -245,6 +250,8 @@ fun MessageDetailScreen(
 @Composable
 fun MessageContent(
     message: com.mobilemail.data.model.MessageDetail,
+    threadMessages: List<MessageListItem> = emptyList(),
+    onThreadMessageClick: ((String) -> Unit)? = null,
     onDownloadAttachment: (String, String, String) -> Unit = { _, _, _ -> },
     onOpenAttachment: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
@@ -318,6 +325,15 @@ fun MessageContent(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 16.dp)
         )
+
+        if (threadMessages.size > 1) {
+            ConversationSection(
+                threadMessages = threadMessages,
+                currentMessageId = message.id,
+                onThreadMessageClick = onThreadMessageClick,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+        }
 
         Divider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -412,6 +428,87 @@ fun MessageContent(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun ConversationSection(
+    threadMessages: List<MessageListItem>,
+    currentMessageId: String,
+    onThreadMessageClick: ((String) -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val dateFormat = remember { SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()) }
+
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = "Переписка (${threadMessages.size})",
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(bottom = 8.dp)
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            threadMessages.forEach { threadMessage ->
+                val isCurrent = threadMessage.id == currentMessageId
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .semantics {
+                            role = Role.Button
+                            stateDescription = if (isCurrent) "Открыто" else "Доступно для открытия"
+                        }
+                        .clickable(enabled = !isCurrent && onThreadMessageClick != null) {
+                            onThreadMessageClick?.invoke(threadMessage.id)
+                        },
+                    color = if (isCurrent) {
+                        MaterialTheme.colorScheme.secondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                    },
+                    shape = MaterialTheme.shapes.medium
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = threadMessage.from.name ?: threadMessage.from.email,
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isCurrent || threadMessage.flags.unread) FontWeight.SemiBold else FontWeight.Medium,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = dateFormat.format(threadMessage.date),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = threadMessage.subject,
+                            style = MaterialTheme.typography.bodyMedium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (threadMessage.snippet.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = threadMessage.snippet,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }

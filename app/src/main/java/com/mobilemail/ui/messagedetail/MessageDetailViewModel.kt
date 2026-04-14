@@ -11,6 +11,7 @@ import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Folder
 import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageDetail
+import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.data.repository.AttachmentRepository
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.MessageActionsRepository
@@ -25,6 +26,7 @@ import kotlinx.coroutines.launch
 
 data class MessageDetailUiState(
     val message: MessageDetail? = null,
+    val threadMessages: List<MessageListItem> = emptyList(),
     val folders: List<Folder> = emptyList(),
     val isLoading: Boolean = false,
     val error: AppError? = null,
@@ -112,6 +114,20 @@ class MessageDetailViewModel(
                         },
                         isLoading = false
                     )
+                    loadThreadMessages(message.threadId)
+                }
+            )
+        }
+    }
+
+    private fun loadThreadMessages(threadId: String) {
+        viewModelScope.launch {
+            repository.getThreadMessages(threadId).fold(
+                onError = { e ->
+                    Log.e("MessageDetailViewModel", "Ошибка загрузки переписки", e)
+                },
+                onSuccess = { threadMessages ->
+                    _uiState.value = _uiState.value.copy(threadMessages = threadMessages)
                 }
             )
         }

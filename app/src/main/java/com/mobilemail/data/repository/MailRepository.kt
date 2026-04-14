@@ -516,7 +516,61 @@ class MailRepository(
     }.onError { e ->
         Log.e("MailRepository", "Ошибка загрузки письма messageId=$messageId", e)
     }
-    
+
+    suspend fun getThreadMessages(threadId: String, limit: Int = 100): Result<List<MessageListItem>> = runCatchingSuspend {
+        val session = client.getSession()
+        val accountId = session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull()
+            ?: throw IllegalStateException("AccountId не найден")
+
+        val queryResult = client.queryEmails(
+            accountId = accountId,
+            position = 0,
+            limit = limit,
+            filter = mapOf("threadId" to threadId)
+        )
+
+        if (queryResult.ids.isEmpty()) {
+            return@runCatchingSuspend emptyList()
+        }
+
+        val emails = client.getEmails(
+            ids = queryResult.ids,
+            accountId = accountId,
+            properties = listOf(
+                "id", "threadId", "mailboxIds", "from", "subject",
+                "receivedAt", "preview", "hasAttachment", "size", "keywords"
+            )
+        )
+
+        emails.map { email ->
+            val from = email.from?.firstOrNull() ?: EmailAddress(email = "unknown")
+            val isUnread = email.keywords?.get("\$seen") != true
+            val isStarred = email.keywords?.get("\$flagged") == true
+            val isImportant = email.keywords?.get("\$important") == true
+
+            MessageListItem(
+                id = email.id,
+                threadId = email.threadId,
+                from = from,
+                subject = email.subject ?: "(без темы)",
+                snippet = email.preview ?: "",
+                date = try {
+                    Date.from(Instant.parse(email.receivedAt))
+                } catch (e: Exception) {
+                    Date()
+                },
+                flags = MessageFlags(
+                    unread = isUnread,
+                    starred = isStarred,
+                    important = isImportant,
+                    hasAttachments = email.hasAttachment == true
+                ),
+                size = email.size
+            )
+        }.sortedBy { it.date }
+    }
+
     suspend fun updateMessageReadStatus(messageId: String, isUnread: Boolean) {
         Log.d("MailRepository", "Обновление статуса прочитанности в кэше: messageId=$messageId, isUnread=$isUnread")
         

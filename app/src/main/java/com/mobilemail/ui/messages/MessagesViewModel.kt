@@ -24,6 +24,7 @@ data class MessagesUiState(
     val folders: List<Folder> = emptyList(),
     val selectedFolder: Folder? = null,
     val messages: List<MessageListItem> = emptyList(),
+    val selectedMessageId: String? = null,
     val isLoading: Boolean = false,
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,
@@ -104,6 +105,7 @@ class MessagesViewModel(
         _uiState.value = _uiState.value.copy(
             selectedFolder = folder,
             messages = emptyList(),
+            selectedMessageId = null,
             currentPosition = 0,
             hasMore = true,
             selectedMessageIds = emptySet()
@@ -143,6 +145,11 @@ class MessagesViewModel(
                     
                     _uiState.value = _uiState.value.copy(
                         messages = updatedMessages,
+                        selectedMessageId = updatedMessages.firstOrNull()?.id?.takeIf {
+                            reset && currentState.selectedMessageId == null
+                        } ?: _uiState.value.selectedMessageId?.takeIf { selectedId ->
+                            updatedMessages.any { it.id == selectedId }
+                        },
                         isLoading = false,
                         isLoadingMore = false,
                         hasMore = hasMore,
@@ -167,7 +174,8 @@ class MessagesViewModel(
     
     fun removeMessage(messageId: String) {
         _uiState.value = _uiState.value.copy(
-            messages = _uiState.value.messages.filter { it.id != messageId }
+            messages = _uiState.value.messages.filter { it.id != messageId },
+            selectedMessageId = _uiState.value.selectedMessageId.takeIf { it != messageId }
         )
     }
     
@@ -228,6 +236,10 @@ class MessagesViewModel(
 
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
+    }
+
+    fun selectMessage(messageId: String?) {
+        _uiState.value = _uiState.value.copy(selectedMessageId = messageId)
     }
 
     fun toggleMessageSelection(messageId: String) {

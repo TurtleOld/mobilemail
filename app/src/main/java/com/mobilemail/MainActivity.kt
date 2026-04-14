@@ -7,11 +7,16 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.fragment.app.FragmentActivity
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.room.Room
 import com.mobilemail.data.jmap.JmapClient
 import com.mobilemail.data.jmap.JmapOAuthClient
@@ -199,6 +204,53 @@ class MainActivity : FragmentActivity() {
                                     val encodedMessageId = Uri.encode(messageId)
                                     navController.navigate("message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId")
                                 },
+                                detailPane = { selectedMessageId ->
+                                    if (selectedMessageId == null) {
+                                        Surface(
+                                            modifier = Modifier.fillMaxSize(),
+                                            color = MaterialTheme.colorScheme.surface
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(24.dp),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Text(
+                                                    text = "Выберите письмо для просмотра",
+                                                    style = MaterialTheme.typography.bodyLarge,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        val detailViewModel: MessageDetailViewModel = viewModel(
+                                            key = "embedded_message_${server}_${email}_${accountId}_$selectedMessageId",
+                                            factory = MessageDetailViewModelFactory(application, server, email, accountId, selectedMessageId)
+                                        )
+                                        LaunchedEffect(detailViewModel, viewModel) {
+                                            detailViewModel.setOnReadStatusChanged { updatedMessageId, isUnread ->
+                                                viewModel.updateMessageReadStatus(updatedMessageId, isUnread)
+                                            }
+                                        }
+                                        MessageDetailScreen(
+                                            viewModel = detailViewModel,
+                                            onBack = { viewModel.selectMessage(null) },
+                                            onMessageDeleted = { deletedMessageId ->
+                                                viewModel.removeMessage(deletedMessageId)
+                                            },
+                                            onMessageMoved = { movedMessageId ->
+                                                viewModel.removeMessage(movedMessageId)
+                                            },
+                                            onReadStatusChanged = { updatedMessageId, isUnread ->
+                                                viewModel.updateMessageReadStatus(updatedMessageId, isUnread)
+                                            },
+                                            onThreadMessageClick = { threadMessageId ->
+                                                viewModel.selectMessage(threadMessageId)
+                                            }
+                                        )
+                                    }
+                                },
                                 onSearchClick = {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
@@ -330,6 +382,20 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onReadStatusChanged = { updatedMessageId, isUnread ->
                                     messagesViewModel.updateMessageReadStatus(updatedMessageId, isUnread)
+                                },
+                                onThreadMessageClick = { threadMessageId ->
+                                    if (threadMessageId != messageId) {
+                                        val encodedServer = Uri.encode(server)
+                                        val encodedEmail = Uri.encode(email)
+                                        val encodedAccountId = Uri.encode(accountId)
+                                        val encodedMessageId = Uri.encode(threadMessageId)
+                                        navController.navigate(
+                                            "message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId",
+                                            navOptions {
+                                                launchSingleTop = true
+                                            }
+                                        )
+                                    }
                                 }
                             )
                         }

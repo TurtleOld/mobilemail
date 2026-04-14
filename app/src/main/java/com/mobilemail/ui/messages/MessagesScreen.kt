@@ -53,6 +53,7 @@ import java.util.Locale
 fun MessagesScreen(
     viewModel: MessagesViewModel,
     onMessageClick: (String) -> Unit,
+    detailPane: @Composable (String?) -> Unit = {},
     onSearchClick: () -> Unit = {},
     onComposeClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
@@ -210,9 +211,12 @@ fun MessagesScreen(
                 isLoadingMore = uiState.isLoadingMore,
                 hasMore = uiState.hasMore,
                 selectedIds = uiState.selectedMessageIds,
+                selectedMessageId = uiState.selectedMessageId,
                 onMessageClick = { messageId ->
                     if (uiState.selectedMessageIds.isNotEmpty()) {
                         viewModel.toggleMessageSelection(messageId)
+                    } else if (isExpandedLayout) {
+                        viewModel.selectMessage(messageId)
                     } else {
                         onMessageClick(messageId)
                     }
@@ -245,8 +249,21 @@ fun MessagesScreen(
             ) {
                 Divider(modifier = Modifier.fillMaxSize())
             }
-            Box(modifier = Modifier.weight(1f)) {
-                screenContent()
+            Row(modifier = Modifier.weight(1f)) {
+                Box(modifier = Modifier.weight(0.9f)) {
+                    screenContent()
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(1.dp)
+                        .padding(vertical = 12.dp)
+                ) {
+                    Divider(modifier = Modifier.fillMaxSize())
+                }
+                Box(modifier = Modifier.weight(1.1f)) {
+                    detailPane(uiState.selectedMessageId)
+                }
             }
         }
     } else {
@@ -422,6 +439,7 @@ fun MessagesList(
     isLoadingMore: Boolean,
     hasMore: Boolean,
     selectedIds: Set<String>,
+    selectedMessageId: String?,
     onMessageClick: (String) -> Unit,
     onMessageLongClick: (String) -> Unit,
     onLoadMore: () -> Unit,
@@ -461,6 +479,7 @@ fun MessagesList(
                     MessageItem(
                         message = message,
                         isSelected = selectedIds.contains(message.id),
+                        isActive = selectedMessageId == message.id,
                         onClick = { onMessageClick(message.id) },
                         onLongClick = { onMessageLongClick(message.id) }
                     )
@@ -488,6 +507,7 @@ fun MessagesList(
 fun MessageItem(
     message: MessageListItem,
     isSelected: Boolean,
+    isActive: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit
 ) {
@@ -503,6 +523,7 @@ fun MessageItem(
                     append(if (isUnread) "Непрочитанное" else "Прочитанное")
                     if (message.flags.starred) append(", в избранном")
                     if (message.flags.hasAttachments) append(", с вложением")
+                    if (isActive) append(", открыто")
                     if (isSelected) append(", выбрано")
                 }
             }
@@ -516,6 +537,7 @@ fun MessageItem(
         colors = CardDefaults.cardColors(
             containerColor = when {
                 isSelected -> MaterialTheme.colorScheme.primaryContainer
+                isActive -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
                 isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
                 else -> MaterialTheme.colorScheme.surface
             }
