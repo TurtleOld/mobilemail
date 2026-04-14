@@ -8,7 +8,10 @@ import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Folder
 import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.data.repository.MessageActionsRepository
 import com.mobilemail.data.repository.MailRepository
+import com.mobilemail.ui.common.NotificationState
+import com.mobilemail.ui.common.SnackbarDuration
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
@@ -26,7 +29,8 @@ data class MessagesUiState(
     val hasMore: Boolean = true,
     val currentPosition: Int = 0,
     val error: AppError? = null,
-    val selectedMessageIds: Set<String> = emptySet()
+    val selectedMessageIds: Set<String> = emptySet(),
+    val notification: NotificationState = NotificationState.None
 )
 
 class MessagesViewModel(
@@ -51,6 +55,7 @@ class MessagesViewModel(
         messageDao = database?.messageDao(),
         folderDao = database?.folderDao()
     )
+    private val messageActionsRepository = MessageActionsRepository(jmapClient)
 
     init {
         try {
@@ -221,6 +226,10 @@ class MessagesViewModel(
         _uiState.value = _uiState.value.copy(error = null)
     }
 
+    fun clearNotification() {
+        _uiState.value = _uiState.value.copy(notification = NotificationState.None)
+    }
+
     fun toggleMessageSelection(messageId: String) {
         val current = _uiState.value.selectedMessageIds
         val updated = if (current.contains(messageId)) current - messageId else current + messageId
@@ -235,5 +244,103 @@ class MessagesViewModel(
         _uiState.value = _uiState.value.copy(
             selectedMessageIds = _uiState.value.messages.map { it.id }.toSet()
         )
+    }
+
+    fun archiveSelected() {
+        moveSelectedToRole(FolderRole.ARCHIVE)
+    }
+
+    fun reportSpamSelected() {
+        moveSelectedToRole(FolderRole.SPAM)
+    }
+
+    fun moveSelected(toFolderId: String) {
+        val currentState = _uiState.value
+        val fromFolderId = currentState.selectedFolder?.id ?: run {
+            _uiState.value = currentState.copy(
+                notification = NotificationState.Snackbar(
+                    message = "Не выбрана исходная папка",
+                    duration = SnackbarDuration.Short
+                )
+            )
+            return
+        }
+        val destinationFolder = currentState.folders.firstOrNull { it.id == toFolderId } ?: run {
+            _uiState.value = currentState.copy(
+                notification = NotificationState.Snackbar(
+                    message = "Не удалось найти целевую папку",
+                    duration = SnackbarDuration.Short
+                )
+            )
+            return
+        }
+        if (fromFolderId == toFolderId) {
+            _uiState.value = currentState.copy(
+                notification = NotificationState.Snackbar(
+                    message = "Письма уже находятся в папке ${destinationFolder.name}",
+                    duration = SnackbarDuration.Short
+                )
+            )
+            return
+        }
+
+        val selectedIds = currentState.selectedMessageIds.toList()
+        if (selectedIds.isEmpty()) return
+
+        viewModelScope.launch {
+            var movedCount = 0
+            var lastError: Throwable? = null
+            val movedIds = mutableSetOf<String>()
+            selectedIds.forEach { messageId ->
+                messageActionsRepository.moveMessage(messageId, fromFolderId, toFolderId).fold(
+                    onError = { e -> lastError = e },
+                    onSuccess = {
+                        movedCount++
+                        movedIds += messageId
+                    }
+                )
+            }
+
+            if (movedCount > 0) {
+                _uiState.value = _uiState.value.copy(
+                    messages = _uiState.value.messages.filterNot { it.id in movedIds },
+                    selectedMessageIds = _uiState.value.selectedMessageIds - movedIds,
+                    notification = NotificationState.Snackbar(
+                        message = if (movedCount == 1) {
+                            "Письмо перемещено в ${destinationFolder.name}"
+                        } else {
+                            "Перемещено писем: $movedCount"
+                        },
+                        duration = SnackbarDuration.Short
+                    )
+                )
+            }
+
+            if (movedCount == 0 && lastError != null) {
+                _uiState.value = _uiState.value.copy(
+                    notification = NotificationState.Snackbar(
+                        message = "Не удалось переместить письма: ${ErrorMapper.mapException(lastError!!).getUserMessage()}",
+                        duration = SnackbarDuration.Long
+                    )
+                )
+            }
+        }
+    }
+
+    private fun moveSelectedToRole(role: FolderRole) {
+        val targetFolder = _uiState.value.folders.firstOrNull { it.role == role } ?: run {
+            _uiState.value = _uiState.value.copy(
+                notification = NotificationState.Snackbar(
+                    message = when (role) {
+                        FolderRole.ARCHIVE -> "Папка Архив недоступна"
+                        FolderRole.SPAM -> "Папка Спам недоступна"
+                        else -> "Целевая папка недоступна"
+                    },
+                    duration = SnackbarDuration.Short
+                )
+            )
+            return
+        }
+        moveSelected(targetFolder.id)
     }
 }

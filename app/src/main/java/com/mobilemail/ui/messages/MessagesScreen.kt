@@ -10,10 +10,13 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
@@ -22,8 +25,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -58,6 +63,7 @@ fun MessagesScreen(
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    var showMoveDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(uiState.error) {
         uiState.error?.let { error ->
@@ -69,6 +75,63 @@ fun MessagesScreen(
                 viewModel.clearError()
             }
         }
+    }
+
+    LaunchedEffect(uiState.notification) {
+        when (val notification = uiState.notification) {
+            is com.mobilemail.ui.common.NotificationState.Snackbar -> {
+                scope.launch {
+                    snackbarHostState.showSnackbar(notification.message)
+                    viewModel.clearNotification()
+                }
+            }
+            else -> Unit
+        }
+    }
+
+    if (showMoveDialog) {
+        val currentFolderId = uiState.selectedFolder?.id
+        AlertDialog(
+            onDismissRequest = { showMoveDialog = false },
+            title = { Text("Переместить в папку") },
+            text = {
+                LazyColumn(
+                    modifier = Modifier.heightIn(max = 360.dp)
+                ) {
+                    items(
+                        uiState.folders.filter { it.id != currentFolderId },
+                        key = { it.id }
+                    ) { folder ->
+                        ListItem(
+                            headlineContent = { Text(folder.name) },
+                            supportingContent = {
+                                Text(
+                                    when (folder.role) {
+                                        FolderRole.ARCHIVE -> "Архив"
+                                        FolderRole.SPAM -> "Спам"
+                                        FolderRole.TRASH -> "Корзина"
+                                        FolderRole.SENT -> "Отправленные"
+                                        FolderRole.DRAFTS -> "Черновики"
+                                        FolderRole.INBOX -> "Входящие"
+                                        FolderRole.CUSTOM -> "Папка"
+                                    }
+                                )
+                            },
+                            modifier = Modifier.clickable {
+                                viewModel.moveSelected(folder.id)
+                                showMoveDialog = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMoveDialog = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
     }
 
     val navigationContent: @Composable () -> Unit = {
@@ -99,6 +162,15 @@ fun MessagesScreen(
                             }
                         },
                         actions = {
+                            IconButton(onClick = { viewModel.archiveSelected() }) {
+                                Icon(Icons.Default.Archive, contentDescription = "Архивировать")
+                            }
+                            IconButton(onClick = { viewModel.reportSpamSelected() }) {
+                                Icon(Icons.Default.Report, contentDescription = "В спам")
+                            }
+                            IconButton(onClick = { showMoveDialog = true }) {
+                                Icon(Icons.Default.DriveFileMove, contentDescription = "Переместить")
+                            }
                             IconButton(onClick = { viewModel.selectAll() }) {
                                 Icon(Icons.Default.SelectAll, contentDescription = "Выбрать все")
                             }

@@ -16,6 +16,7 @@ data class MessageListItem(
 data class MessageDetail(
     val id: String,
     val threadId: String,
+    val mailboxIds: Set<String> = emptySet(),
     val from: EmailAddress,
     val to: List<EmailAddress>,
     val cc: List<EmailAddress>? = null,

@@ -325,6 +325,9 @@ class MainActivity : FragmentActivity() {
                                 onMessageDeleted = { deletedMessageId ->
                                     messagesViewModel.removeMessage(deletedMessageId)
                                 },
+                                onMessageMoved = { movedMessageId ->
+                                    messagesViewModel.removeMessage(movedMessageId)
+                                },
                                 onReadStatusChanged = { updatedMessageId, isUnread ->
                                     messagesViewModel.updateMessageReadStatus(updatedMessageId, isUnread)
                                 }

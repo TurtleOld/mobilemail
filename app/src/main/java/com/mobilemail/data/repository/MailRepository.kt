@@ -321,6 +321,7 @@ class MailRepository(
             MessageDetail(
                 id = email.id,
                 threadId = email.threadId,
+                mailboxIds = email.mailboxIds.keys,
                 from = from,
                 to = toList,
                 cc = email.cc?.map { 
@@ -481,6 +482,7 @@ class MailRepository(
         val messageDetail = MessageDetail(
             id = email.id,
             threadId = email.threadId,
+            mailboxIds = email.mailboxIds.keys,
             from = from,
             to = toList,
             cc = email.cc?.map { 

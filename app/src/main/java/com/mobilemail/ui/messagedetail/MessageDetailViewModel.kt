@@ -8,6 +8,8 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.jmap.MailClientFactory
+import com.mobilemail.data.model.Folder
+import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageDetail
 import com.mobilemail.data.repository.AttachmentRepository
 import com.mobilemail.data.repository.MailRepository
@@ -23,6 +25,7 @@ import kotlinx.coroutines.launch
 
 data class MessageDetailUiState(
     val message: MessageDetail? = null,
+    val folders: List<Folder> = emptyList(),
     val isLoading: Boolean = false,
     val error: AppError? = null,
     val notification: NotificationState = NotificationState.None
@@ -47,6 +50,7 @@ class MessageDetailViewModel(
 
     init {
         Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=$accountId")
+        loadFolders()
         loadMessage()
     }
 
@@ -59,6 +63,19 @@ class MessageDetailViewModel(
     
     fun setOnReadStatusChanged(callback: ((String, Boolean) -> Unit)?) {
         onReadStatusChangedCallback = callback
+    }
+
+    private fun loadFolders() {
+        viewModelScope.launch {
+            repository.getFolders().fold(
+                onError = { e ->
+                    _uiState.value = _uiState.value.copy(error = ErrorMapper.mapException(e))
+                },
+                onSuccess = { folders ->
+                    _uiState.value = _uiState.value.copy(folders = folders)
+                }
+            )
+        }
     }
 
     private fun loadMessage() {
@@ -224,6 +241,89 @@ class MessageDetailViewModel(
                 }
             )
         }
+    }
+
+    fun archiveMessage(onSuccess: () -> Unit, onMessageRemoved: ((String) -> Unit)? = null) {
+        moveMessageToRole(FolderRole.ARCHIVE, onSuccess, onMessageRemoved)
+    }
+
+    fun reportSpam(onSuccess: () -> Unit, onMessageRemoved: ((String) -> Unit)? = null) {
+        moveMessageToRole(FolderRole.SPAM, onSuccess, onMessageRemoved)
+    }
+
+    fun moveMessage(
+        toFolderId: String,
+        onSuccess: () -> Unit,
+        onMessageRemoved: ((String) -> Unit)? = null
+    ) {
+        val currentMessage = _uiState.value.message ?: return
+        val sourceFolderId = currentMessage.mailboxIds.firstOrNull()
+            ?: _uiState.value.folders.firstOrNull { it.role == FolderRole.INBOX }?.id
+            ?: run {
+                _uiState.value = _uiState.value.copy(
+                    notification = NotificationState.Snackbar(
+                        message = "Не удалось определить исходную папку",
+                        duration = com.mobilemail.ui.common.SnackbarDuration.Short
+                    )
+                )
+                return
+            }
+
+        if (sourceFolderId == toFolderId) {
+            _uiState.value = _uiState.value.copy(
+                notification = NotificationState.Snackbar(
+                    message = "Письмо уже находится в выбранной папке",
+                    duration = com.mobilemail.ui.common.SnackbarDuration.Short
+                )
+            )
+            return
+        }
+
+        val destinationFolder = _uiState.value.folders.firstOrNull { it.id == toFolderId }
+        viewModelScope.launch {
+            messageActionsRepository.moveMessage(messageId, sourceFolderId, toFolderId).fold(
+                onError = { e ->
+                    _uiState.value = _uiState.value.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Не удалось переместить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
+                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                        )
+                    )
+                },
+                onSuccess = {
+                    onMessageRemoved?.invoke(messageId)
+                    _uiState.value = _uiState.value.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Письмо перемещено в ${destinationFolder?.name ?: "другую папку"}",
+                            duration = com.mobilemail.ui.common.SnackbarDuration.Short
+                        )
+                    )
+                    onSuccess()
+                }
+            )
+        }
+    }
+
+    private fun moveMessageToRole(
+        role: FolderRole,
+        onSuccess: () -> Unit,
+        onMessageRemoved: ((String) -> Unit)? = null
+    ) {
+        val destination = _uiState.value.folders.firstOrNull { it.role == role }
+        if (destination == null) {
+            _uiState.value = _uiState.value.copy(
+                notification = NotificationState.Snackbar(
+                    message = when (role) {
+                        FolderRole.ARCHIVE -> "Папка Архив недоступна"
+                        FolderRole.SPAM -> "Папка Спам недоступна"
+                        else -> "Целевая папка недоступна"
+                    },
+                    duration = com.mobilemail.ui.common.SnackbarDuration.Short
+                )
+            )
+            return
+        }
+        moveMessage(destination.id, onSuccess, onMessageRemoved)
     }
 
     fun clearNotification() {

@@ -6,6 +6,9 @@ import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.ClickableText
@@ -44,12 +47,14 @@ fun MessageDetailScreen(
     viewModel: MessageDetailViewModel,
     onBack: () -> Unit,
     onMessageDeleted: ((String) -> Unit)? = null,
-    onReadStatusChanged: ((String, Boolean) -> Unit)? = null
+    onReadStatusChanged: ((String, Boolean) -> Unit)? = null,
+    onMessageMoved: ((String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var showMoveDialog by remember { mutableStateOf(false) }
 
     // Обработка уведомлений
     LaunchedEffect(uiState.notification) {
@@ -101,6 +106,40 @@ fun MessageDetailScreen(
         )
     }
 
+    if (showMoveDialog) {
+        val currentMailboxIds = uiState.message?.mailboxIds.orEmpty()
+        AlertDialog(
+            onDismissRequest = { showMoveDialog = false },
+            title = { Text("Переместить в папку") },
+            text = {
+                LazyColumn(modifier = Modifier.heightIn(max = 360.dp)) {
+                    items(
+                        uiState.folders.filter { it.id !in currentMailboxIds },
+                        key = { it.id }
+                    ) { folder ->
+                        ListItem(
+                            headlineContent = { Text(folder.name) },
+                            modifier = Modifier.clickable {
+                                viewModel.moveMessage(
+                                    toFolderId = folder.id,
+                                    onSuccess = onBack,
+                                    onMessageRemoved = onMessageMoved
+                                )
+                                showMoveDialog = false
+                            }
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMoveDialog = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
+
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             topBar = {
@@ -137,6 +176,25 @@ fun MessageDetailScreen(
                                 },
                                 contentDescription = if (message.flags.unread) "Пометить прочитанным" else "Пометить непрочитанным"
                             )
+                        }
+                        IconButton(onClick = {
+                            viewModel.archiveMessage(
+                                onSuccess = onBack,
+                                onMessageRemoved = onMessageMoved
+                            )
+                        }) {
+                            Icon(Icons.Default.Archive, contentDescription = "Архивировать")
+                        }
+                        IconButton(onClick = {
+                            viewModel.reportSpam(
+                                onSuccess = onBack,
+                                onMessageRemoved = onMessageMoved
+                            )
+                        }) {
+                            Icon(Icons.Default.Report, contentDescription = "В спам")
+                        }
+                        IconButton(onClick = { showMoveDialog = true }) {
+                            Icon(Icons.Default.DriveFileMove, contentDescription = "Переместить")
                         }
                         // Кнопка удаления
                         IconButton(onClick = { showDeleteDialog = true }) {
