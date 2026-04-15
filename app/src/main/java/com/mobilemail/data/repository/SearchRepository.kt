@@ -12,6 +12,12 @@ import java.util.Date
 class SearchRepository(
     private val jmapClient: JmapApi
 ) {
+    data class SearchPage(
+        val items: List<MessageListItem>,
+        val nextPosition: Int?,
+        val hasMore: Boolean
+    )
+
     enum class DateRange {
         ANY,
         TODAY,
@@ -30,7 +36,31 @@ class SearchRepository(
         senderQuery: String = "",
         dateRange: DateRange = DateRange.ANY,
         limit: Int = 50
-    ): Result<List<MessageListItem>> = runCatchingSuspend {
+    ): Result<List<MessageListItem>> = searchMessagesPage(
+        query = query,
+        folderId = folderId,
+        unreadOnly = unreadOnly,
+        hasAttachments = hasAttachments,
+        starredOnly = starredOnly,
+        importantOnly = importantOnly,
+        senderQuery = senderQuery,
+        dateRange = dateRange,
+        position = 0,
+        limit = limit
+    ).map { it.items }
+
+    suspend fun searchMessagesPage(
+        query: String,
+        folderId: String? = null,
+        unreadOnly: Boolean = false,
+        hasAttachments: Boolean = false,
+        starredOnly: Boolean = false,
+        importantOnly: Boolean = false,
+        senderQuery: String = "",
+        dateRange: DateRange = DateRange.ANY,
+        position: Int = 0,
+        limit: Int = 50
+    ): Result<SearchPage> = runCatchingSuspend {
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
@@ -61,14 +91,14 @@ class SearchRepository(
         val queryResult = jmapClient.queryEmails(
             mailboxId = folderId,
             accountId = accountId,
-            position = 0,
+            position = position,
             limit = limit,
             filter = filter,
             searchText = query.takeIf { it.isNotBlank() }
         )
         
         if (queryResult.ids.isEmpty()) {
-            return@runCatchingSuspend emptyList()
+            return@runCatchingSuspend SearchPage(emptyList(), null, false)
         }
         
         val emails = jmapClient.getEmails(
@@ -81,7 +111,7 @@ class SearchRepository(
             )
         )
         
-        emails.map { email ->
+        val items = emails.map { email ->
             val from = email.from?.firstOrNull() ?: EmailAddress(email = "unknown")
             val isUnread = email.keywords?.get("\$seen") != true
             val isStarred = email.keywords?.get("\$flagged") == true
@@ -131,6 +161,11 @@ class SearchRepository(
                 (!starredOnly || message.flags.starred) &&
                 (!importantOnly || message.flags.important)
         }
+        SearchPage(
+            items = items,
+            nextPosition = (position + queryResult.ids.size).takeIf { queryResult.ids.size >= limit },
+            hasMore = queryResult.ids.size >= limit
+        )
     }
 
     private fun matchesSender(message: MessageListItem, senderQuery: String): Boolean {

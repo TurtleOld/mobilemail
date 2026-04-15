@@ -9,6 +9,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -84,6 +87,7 @@ fun MessagesScreen(
     onLogout: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val pagingItems = viewModel.pagedMessages.collectAsLazyPagingItems()
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -123,6 +127,12 @@ fun MessagesScreen(
             }
             else -> Unit
         }
+    }
+
+    LaunchedEffect(pagingItems.itemSnapshotList.items, uiState.hiddenMessageIds) {
+        viewModel.updateVisibleMessages(
+            pagingItems.itemSnapshotList.items.filterNot { it.id in uiState.hiddenMessageIds }
+        )
     }
 
     if (showMoveDialog) {
@@ -266,10 +276,8 @@ fun MessagesScreen(
             }
         ) { padding ->
             MessagesList(
-                messages = uiState.messages,
-                isLoading = uiState.isLoading,
-                isLoadingMore = uiState.isLoadingMore,
-                hasMore = uiState.hasMore,
+                pagingItems = pagingItems,
+                hiddenMessageIds = uiState.hiddenMessageIds,
                 selectedIds = uiState.selectedMessageIds,
                 selectedMessageId = uiState.selectedMessageId,
                 onMessageClick = { messageId ->
@@ -284,7 +292,6 @@ fun MessagesScreen(
                 onMessageLongClick = { messageId -> viewModel.toggleMessageSelection(messageId) },
                 onSwipeArchive = { messageId -> viewModel.archiveMessage(messageId) },
                 onSwipeDelete = { messageId -> viewModel.deleteMessageWithUndo(messageId) },
-                onLoadMore = { viewModel.loadMoreMessages() },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -570,37 +577,28 @@ fun FolderItem(
 
 @Composable
 fun MessagesList(
-    messages: List<MessageListItem>,
-    isLoading: Boolean,
-    isLoadingMore: Boolean,
-    hasMore: Boolean,
+    pagingItems: androidx.paging.compose.LazyPagingItems<MessageListItem>,
+    hiddenMessageIds: Set<String>,
     selectedIds: Set<String>,
     selectedMessageId: String?,
     onMessageClick: (String) -> Unit,
     onMessageLongClick: (String) -> Unit,
     onSwipeArchive: (String) -> Unit,
     onSwipeDelete: (String) -> Unit,
-    onLoadMore: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
-
-    LaunchedEffect(listState, messages, hasMore, isLoading, isLoadingMore) {
-        if (messages.isEmpty() || !hasMore || isLoading || isLoadingMore) return@LaunchedEffect
-        val lastVisibleIndex = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: return@LaunchedEffect
-        if (lastVisibleIndex >= messages.lastIndex) {
-            onLoadMore()
-        }
-    }
+    val refreshState = pagingItems.loadState.refresh
+    val appendState = pagingItems.loadState.append
 
     Box(
         modifier = modifier.fillMaxSize()
     ) {
-        if (isLoading && messages.isEmpty()) {
+        if (refreshState is LoadState.Loading && pagingItems.itemCount == 0) {
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center)
             )
-        } else if (messages.isEmpty()) {
+        } else if (pagingItems.itemCount == 0 && refreshState !is LoadState.Loading) {
             Text(
                 text = "Нет писем",
                 style = MaterialTheme.typography.titleMedium,
@@ -615,19 +613,25 @@ fun MessagesList(
                     .padding(8.dp),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                items(items = messages, key = { it.id }) { message ->
-                    MessageItem(
-                        message = message,
-                        isSelected = selectedIds.contains(message.id),
-                        isActive = selectedMessageId == message.id,
-                        onClick = { onMessageClick(message.id) },
-                        onLongClick = { onMessageLongClick(message.id) },
-                        onSwipeArchive = { onSwipeArchive(message.id) },
-                        onSwipeDelete = { onSwipeDelete(message.id) }
-                    )
+                items(
+                    count = pagingItems.itemCount,
+                    key = pagingItems.itemKey { it.id }
+                ) { index ->
+                    val message = pagingItems[index] ?: return@items
+                    if (message.id !in hiddenMessageIds) {
+                        MessageItem(
+                            message = message,
+                            isSelected = selectedIds.contains(message.id),
+                            isActive = selectedMessageId == message.id,
+                            onClick = { onMessageClick(message.id) },
+                            onLongClick = { onMessageLongClick(message.id) },
+                            onSwipeArchive = { onSwipeArchive(message.id) },
+                            onSwipeDelete = { onSwipeDelete(message.id) }
+                        )
+                    }
                 }
 
-                if (isLoadingMore) {
+                if (appendState is LoadState.Loading) {
                     item {
                         Box(
                             modifier = Modifier

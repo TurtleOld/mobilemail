@@ -1,8 +1,13 @@
 package com.mobilemail.ui.messages
 
 import android.app.Application
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.data.paging.MailPagingSource
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Folder
@@ -17,10 +22,16 @@ import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.util.UUID
 
@@ -35,11 +46,13 @@ data class MessagesUiState(
     val currentPosition: Int = 0,
     val pendingQueueCount: Int = 0,
     val queueAttentionCount: Int = 0,
+    val hiddenMessageIds: Set<String> = emptySet(),
     val error: AppError? = null,
     val selectedMessageIds: Set<String> = emptySet(),
     val notification: NotificationState = NotificationState.None
 )
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class MessagesViewModel(
     private val server: String,
     private val email: String,
@@ -74,6 +87,28 @@ class MessagesViewModel(
     )
     private val messageActionsRepository = MessageActionsRepository(jmapClient)
     private var pendingFolderAction: PendingFolderAction? = null
+    private val pagingRefreshTrigger = MutableStateFlow(0)
+
+    val pagedMessages: Flow<PagingData<MessageListItem>> = combine(
+        _uiState.map { it.selectedFolder?.id }.distinctUntilChanged(),
+        pagingRefreshTrigger
+    ) { folderId, refreshVersion -> folderId to refreshVersion }
+        .flatMapLatest { (folderId, _) ->
+            if (folderId == null) {
+                kotlinx.coroutines.flow.flowOf(PagingData.empty())
+            } else {
+                Pager(
+                    config = PagingConfig(
+                        pageSize = 25,
+                        initialLoadSize = 50,
+                        prefetchDistance = 10,
+                        enablePlaceholders = false
+                    ),
+                    pagingSourceFactory = { MailPagingSource(repository, folderId) }
+                ).flow
+            }
+        }
+        .cachedIn(viewModelScope)
 
     init {
         observeQueueStats()
@@ -109,8 +144,8 @@ class MessagesViewModel(
                     )
                     
                     if (inbox != null) {
-                        delay(200)
-                        loadMessages(inbox.id, reset = true)
+                        delay(50)
+                        pagingRefreshTrigger.value += 1
                     } else {
                         android.util.Log.w("MessagesViewModel", "Inbox не найден, письма не будут загружены")
                     }
@@ -124,11 +159,12 @@ class MessagesViewModel(
             selectedFolder = folder,
             messages = emptyList(),
             selectedMessageId = null,
+            hiddenMessageIds = emptySet(),
             currentPosition = 0,
             hasMore = true,
             selectedMessageIds = emptySet()
         )
-        loadMessages(folder.id, reset = true)
+        pagingRefreshTrigger.value += 1
     }
 
     private fun loadMessages(folderId: String, reset: Boolean = false) {
@@ -179,15 +215,12 @@ class MessagesViewModel(
     }
     
     fun loadMoreMessages() {
-        _uiState.value.selectedFolder?.let { folder ->
-            if (!_uiState.value.isLoadingMore && _uiState.value.hasMore) {
-                loadMessages(folder.id, reset = false)
-            }
-        }
+        // Paging handles prefetch automatically.
     }
 
     fun refresh() {
-        _uiState.value.selectedFolder?.let { loadMessages(it.id, reset = true) }
+        _uiState.value = _uiState.value.copy(hiddenMessageIds = emptySet())
+        pagingRefreshTrigger.value += 1
         refreshFoldersPreservingSelection()
     }
 
@@ -208,7 +241,8 @@ class MessagesViewModel(
     fun removeMessage(messageId: String) {
         _uiState.value = _uiState.value.copy(
             messages = _uiState.value.messages.filter { it.id != messageId },
-            selectedMessageId = _uiState.value.selectedMessageId.takeIf { it != messageId }
+            selectedMessageId = _uiState.value.selectedMessageId.takeIf { it != messageId },
+            hiddenMessageIds = _uiState.value.hiddenMessageIds + messageId
         )
     }
     
@@ -296,6 +330,13 @@ class MessagesViewModel(
 
     fun clearSelection() {
         _uiState.value = _uiState.value.copy(selectedMessageIds = emptySet())
+    }
+
+    fun updateVisibleMessages(messages: List<MessageListItem>) {
+        val hiddenIds = _uiState.value.hiddenMessageIds
+        _uiState.value = _uiState.value.copy(
+            messages = messages.filterNot { it.id in hiddenIds }
+        )
     }
 
     fun selectAll() {

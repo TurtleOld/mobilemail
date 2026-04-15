@@ -22,6 +22,14 @@ import com.mobilemail.data.repository.AttachmentParser.parseAttachments
 import java.time.Instant
 import java.util.Date
 
+data class MessagePage(
+    val items: List<MessageListItem>,
+    val nextPosition: Int?,
+    val hasMore: Boolean,
+    val queryState: String? = null,
+    val fromCache: Boolean = false
+)
+
 class MailRepository(
     private val jmapClient: JmapApi,
     private val messageDao: MessageDao? = null,
@@ -29,6 +37,7 @@ class MailRepository(
 ) {
     private val client = jmapClient
     private val messageCache = mutableMapOf<String, MessageDetail>()
+    private val cacheTtlMillis = 2 * 60 * 1000L
     
     suspend fun getAccount(): Result<Account> = runCatchingSuspend {
         Log.d("MailRepository", "Получение аккаунта...")
@@ -103,7 +112,14 @@ class MailRepository(
         folderId: String, 
         position: Int = 0,
         limit: Int = 50
-    ): Result<List<MessageListItem>> = runCatchingSuspend {
+    ): Result<List<MessageListItem>> = getMessagesPage(folderId, position, limit).map { it.items }
+
+    suspend fun getMessagesPage(
+        folderId: String,
+        position: Int = 0,
+        limit: Int = 50,
+        forceRefresh: Boolean = false
+    ): Result<MessagePage> = runCatchingSuspend {
         Log.d("MailRepository", "Загрузка писем для папки: $folderId")
         val session = client.getSession()
         val accountId = session.primaryAccounts?.mail 
@@ -113,8 +129,10 @@ class MailRepository(
             throw IllegalStateException("AccountId не найден")
         }
         
-        // Сначала пытаемся загрузить из кэша
         val cachedMessages = messageDao?.getMessagesByFolderPaged(folderId, accountId, limit, position)
+        val folderMetadata = folderDao?.getFolderById(folderId, accountId)
+        val latestCachedSync = messageDao?.getLatestSyncedAtByFolder(folderId, accountId)
+        val isCacheFresh = latestCachedSync != null && (System.currentTimeMillis() - latestCachedSync) <= cacheTtlMillis
         
         try {
             Log.d("MailRepository", "Запрос писем для accountId: $accountId, mailboxId: $folderId, position: $position, limit: $limit")
@@ -128,9 +146,28 @@ class MailRepository(
             Log.d("MailRepository", "Найдено писем: ${queryResult.ids.size}")
             if (queryResult.ids.isEmpty()) {
                 Log.d("MailRepository", "Список писем пуст")
-                // Если есть кэш, возвращаем его
-                cachedMessages?.let { return@runCatchingSuspend it.map { it.toMessageListItem() } }
-                return@runCatchingSuspend emptyList()
+                cachedMessages?.let {
+                    return@runCatchingSuspend MessagePage(
+                        items = it.map { entity -> entity.toMessageListItem() },
+                        nextPosition = null,
+                        hasMore = false,
+                        queryState = queryResult.queryState,
+                        fromCache = true
+                    )
+                }
+                return@runCatchingSuspend MessagePage(emptyList(), null, false, queryResult.queryState)
+            }
+
+            if (!forceRefresh && position == 0 && cachedMessages != null && cachedMessages.isNotEmpty() &&
+                folderMetadata?.queryState == queryResult.queryState && isCacheFresh
+            ) {
+                return@runCatchingSuspend MessagePage(
+                    items = cachedMessages.map { it.toMessageListItem() },
+                    nextPosition = cachedMessages.size.takeIf { queryResult.ids.size >= limit },
+                    hasMore = queryResult.ids.size >= limit,
+                    queryState = queryResult.queryState,
+                    fromCache = true
+                )
             }
         
         Log.d("MailRepository", "Загрузка полных данных для всех писем")
@@ -212,19 +249,20 @@ class MailRepository(
         // Сохраняем в кэш, но сохраняем обновленный статус прочитанности из Room
         messageDao?.let { dao ->
             try {
+                val now = System.currentTimeMillis()
                 val messagesToSave = mutableListOf<com.mobilemail.data.local.entity.MessageEntity>()
                 for (messageListItem in result) {
-                    // Проверяем, есть ли обновленный статус в Room
                     val existingMessage = dao.getMessageById(messageListItem.id)
                     val finalIsUnread = existingMessage?.isUnread ?: messageListItem.flags.unread
-                    
-                    // Создаем MessageEntity с сохранением обновленного статуса
                     val entity = messageListItem.toMessageEntity(folderId, accountId).copy(
-                        isUnread = finalIsUnread
+                        isUnread = finalIsUnread,
+                        syncedAt = now
                     )
                     messagesToSave.add(entity)
                 }
                 dao.insertMessages(messagesToSave)
+                trimFolderCache(folderId, accountId)
+                folderDao?.updateFolderSyncState(folderId, accountId, queryResult.queryState, now)
                 Log.d("MailRepository", "Письма сохранены в кэш: ${result.size}")
             } catch (e: Exception) {
                 Log.e("MailRepository", "Ошибка сохранения писем в кэш", e)
@@ -232,13 +270,24 @@ class MailRepository(
         }
         
             Log.d("MailRepository", "Обработано писем: ${result.size}, закэшировано: ${messageCache.size}")
-            result
+            MessagePage(
+                items = result,
+                nextPosition = (position + result.size).takeIf { result.size >= limit },
+                hasMore = result.size >= limit,
+                queryState = queryResult.queryState,
+                fromCache = false
+            )
         } catch (e: Exception) {
             Log.e("MailRepository", "Ошибка загрузки писем", e)
-            // При ошибке сети пытаемся вернуть кэш
             if (cachedMessages != null && cachedMessages.isNotEmpty()) {
                 Log.d("MailRepository", "Возвращаем кэшированные письма из-за ошибки сети")
-                return@runCatchingSuspend cachedMessages.map { it.toMessageListItem() }
+                return@runCatchingSuspend MessagePage(
+                    items = cachedMessages.map { it.toMessageListItem() },
+                    nextPosition = (position + cachedMessages.size).takeIf { cachedMessages.size >= limit },
+                    hasMore = cachedMessages.size >= limit,
+                    queryState = folderMetadata?.queryState,
+                    fromCache = true
+                )
             }
             throw e
         }
@@ -623,5 +672,14 @@ class MailRepository(
                 Log.e("MailRepository", "Ошибка обновления статуса в Room", e)
             }
         }
+    }
+
+    private suspend fun trimFolderCache(folderId: String, accountId: String, maxMessages: Int = 200) {
+        val dao = messageDao ?: return
+        val totalCount = dao.getMessageCountByFolder(folderId, accountId)
+        if (totalCount <= maxMessages) return
+        val messagesToKeep = dao.getMessagesByFolderPaged(folderId, accountId, maxMessages, 0).map { it.id }.toSet()
+        val allMessages = dao.getMessagesByFolderPaged(folderId, accountId, totalCount, 0)
+        allMessages.filterNot { it.id in messagesToKeep }.forEach { dao.deleteMessage(it) }
     }
 }

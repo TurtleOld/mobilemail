@@ -14,6 +14,9 @@ interface FolderDao {
     
     @Query("SELECT * FROM folders WHERE id = :folderId AND accountId = :accountId")
     suspend fun getFolderById(folderId: String, accountId: String): FolderEntity?
+
+    @Query("UPDATE folders SET queryState = :queryState, syncedAt = :syncedAt WHERE id = :folderId AND accountId = :accountId")
+    suspend fun updateFolderSyncState(folderId: String, accountId: String, queryState: String?, syncedAt: Long)
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFolder(folder: FolderEntity)

@@ -130,6 +130,8 @@ dependencies {
 
     implementation("androidx.browser:browser:1.8.0")
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+    implementation("androidx.paging:paging-runtime-ktx:3.3.0")
+    implementation("androidx.paging:paging-compose:3.3.0")
 
     val roomVersion = "2.7.2"
     implementation("androidx.room:room-runtime:$roomVersion")

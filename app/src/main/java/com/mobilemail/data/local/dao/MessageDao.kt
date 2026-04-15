@@ -11,6 +11,12 @@ interface MessageDao {
     
     @Query("SELECT * FROM messages WHERE folderId = :folderId AND accountId = :accountId ORDER BY date DESC LIMIT :limit OFFSET :offset")
     suspend fun getMessagesByFolderPaged(folderId: String, accountId: String, limit: Int, offset: Int): List<MessageEntity>
+
+    @Query("SELECT COUNT(*) FROM messages WHERE folderId = :folderId AND accountId = :accountId")
+    suspend fun getMessageCountByFolder(folderId: String, accountId: String): Int
+
+    @Query("SELECT MAX(syncedAt) FROM messages WHERE folderId = :folderId AND accountId = :accountId")
+    suspend fun getLatestSyncedAtByFolder(folderId: String, accountId: String): Long?
     
     @Query("SELECT * FROM messages WHERE id = :messageId")
     suspend fun getMessageById(messageId: String): MessageEntity?

@@ -6,6 +6,9 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.paging.LoadState
+import androidx.paging.compose.collectAsLazyPagingItems
+import androidx.paging.compose.itemKey
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -36,6 +39,7 @@ fun SearchScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val pagingItems = viewModel.pagedResults.collectAsLazyPagingItems()
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
@@ -297,7 +301,7 @@ fun SearchScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             // Результаты поиска
-            if (uiState.isLoading && uiState.results.isEmpty()) {
+            if (pagingItems.loadState.refresh is LoadState.Loading && pagingItems.itemCount == 0) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -306,7 +310,7 @@ fun SearchScreen(
                 ) {
                     CircularProgressIndicator()
                 }
-            } else if (uiState.results.isEmpty() && (uiState.query.isNotBlank() || uiState.hasActiveFilters)) {
+            } else if (pagingItems.itemCount == 0 && uiState.hasSearched && pagingItems.loadState.refresh !is LoadState.Loading) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -319,7 +323,7 @@ fun SearchScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-            } else if (uiState.results.isNotEmpty()) {
+            } else if (pagingItems.itemCount > 0) {
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -327,11 +331,27 @@ fun SearchScreen(
                         .padding(horizontal = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(uiState.results, key = { it.id }) { message ->
+                    items(
+                        count = pagingItems.itemCount,
+                        key = pagingItems.itemKey { it.id }
+                    ) { index ->
+                        val message = pagingItems[index] ?: return@items
                         MessageItem(
                             message = message,
                             onClick = { onMessageClick(message.id) }
                         )
+                    }
+                    if (pagingItems.loadState.append is LoadState.Loading) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                            }
+                        }
                     }
                 }
             } else {

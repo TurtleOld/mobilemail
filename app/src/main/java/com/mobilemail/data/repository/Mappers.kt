@@ -25,7 +25,8 @@ object Mappers {
             accountId = accountId,
             name = this.name,
             role = this.role,
-            unreadCount = this.unreadCount
+            unreadCount = this.unreadCount,
+            queryState = null
         )
     }
 

@@ -2,19 +2,29 @@ package com.mobilemail.ui.search
 
 import android.app.Application
 import android.util.Log
+import androidx.paging.Pager
+import androidx.paging.PagingConfig
+import androidx.paging.PagingData
+import androidx.paging.cachedIn
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Folder
 import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.data.paging.SearchPagingParams
+import com.mobilemail.data.paging.SearchPagingSource
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.SearchRepository
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.launch
 
 enum class SearchSmartFilter(
@@ -43,7 +53,7 @@ data class SearchUiState(
     val importantOnly: Boolean = false,
     val dateRange: SearchRepository.DateRange = SearchRepository.DateRange.ANY,
     val showAdvancedFilters: Boolean = false,
-    val results: List<MessageListItem> = emptyList(),
+    val hasSearched: Boolean = false,
     val isLoading: Boolean = false,
     val error: AppError? = null
 ) {
@@ -52,6 +62,7 @@ data class SearchUiState(
             dateRange != SearchRepository.DateRange.ANY || senderQuery.isNotBlank()
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class SearchViewModel(
     application: Application,
     private val server: String,
@@ -64,6 +75,25 @@ class SearchViewModel(
     private val jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
     private val mailRepository = MailRepository(jmapClient)
     private val searchRepository = SearchRepository(jmapClient)
+    private val activeSearchParams = MutableStateFlow<SearchPagingParams?>(null)
+
+    val pagedResults: Flow<PagingData<MessageListItem>> = activeSearchParams
+        .flatMapLatest { params ->
+            if (params == null) {
+                flowOf(PagingData.empty())
+            } else {
+                Pager(
+                    config = PagingConfig(
+                        pageSize = 25,
+                        initialLoadSize = 50,
+                        prefetchDistance = 10,
+                        enablePlaceholders = false
+                    ),
+                    pagingSourceFactory = { SearchPagingSource(searchRepository, params) }
+                ).flow
+            }
+        }
+        .cachedIn(viewModelScope)
 
     init {
         loadFolders()
@@ -152,8 +182,7 @@ class SearchViewModel(
             hasAttachments = false,
             starredOnly = false,
             importantOnly = false,
-            dateRange = SearchRepository.DateRange.ANY,
-            results = if (_uiState.value.query.isBlank()) emptyList() else _uiState.value.results
+            dateRange = SearchRepository.DateRange.ANY
         )
         refreshIfNeeded()
     }
@@ -172,40 +201,22 @@ class SearchViewModel(
     fun performSearch() {
         val currentQuery = _uiState.value.query.trim()
         if (currentQuery.isBlank() && !_uiState.value.hasActiveFilters) {
-            _uiState.value = _uiState.value.copy(results = emptyList())
+            activeSearchParams.value = null
+            _uiState.value = _uiState.value.copy(hasSearched = false)
             return
         }
 
-        viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-            
-            searchRepository.searchMessages(
-                query = currentQuery,
-                senderQuery = _uiState.value.senderQuery,
-                folderId = _uiState.value.selectedFolder?.id,
-                unreadOnly = _uiState.value.unreadOnly,
-                hasAttachments = _uiState.value.hasAttachments,
-                starredOnly = _uiState.value.starredOnly,
-                importantOnly = _uiState.value.importantOnly,
-                dateRange = _uiState.value.dateRange
-            ).fold(
-                onError = { e ->
-                    Log.e("SearchViewModel", "Ошибка поиска", e)
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = ErrorMapper.mapException(e),
-                        results = emptyList()
-                    )
-                },
-                onSuccess = { results ->
-                    Log.d("SearchViewModel", "Найдено результатов: ${results.size}")
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        results = results
-                    )
-                }
-            )
-        }
+        activeSearchParams.value = SearchPagingParams(
+            query = currentQuery,
+            senderQuery = _uiState.value.senderQuery,
+            folderId = _uiState.value.selectedFolder?.id,
+            unreadOnly = _uiState.value.unreadOnly,
+            hasAttachments = _uiState.value.hasAttachments,
+            starredOnly = _uiState.value.starredOnly,
+            importantOnly = _uiState.value.importantOnly,
+            dateRange = _uiState.value.dateRange
+        )
+        _uiState.value = _uiState.value.copy(hasSearched = true, error = null)
     }
 
     fun clearError() {
