@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import com.mobilemail.data.model.MessageDetail
 import com.mobilemail.data.model.MessageListItem
 import java.util.regex.Pattern
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -268,6 +269,7 @@ fun MessageDetailScreen(
                 MessageContent(
                     message = message,
                     threadMessages = uiState.threadMessages,
+                    threadDetails = uiState.threadDetails,
                     onThreadMessageClick = onThreadMessageClick,
                     onDownloadAttachment = { attachmentId, filename, mimeType ->
                         viewModel.downloadAttachment(attachmentId, filename, mimeType)
@@ -297,6 +299,7 @@ fun MessageDetailScreen(
 fun MessageContent(
     message: com.mobilemail.data.model.MessageDetail,
     threadMessages: List<MessageListItem> = emptyList(),
+    threadDetails: List<MessageDetail> = emptyList(),
     onThreadMessageClick: ((String) -> Unit)? = null,
     onDownloadAttachment: (String, String, String) -> Unit = { _, _, _ -> },
     onOpenAttachment: (String, String, String) -> Unit = { _, _, _ -> },
@@ -306,6 +309,12 @@ fun MessageContent(
     val scrollState = rememberScrollState()
     val context = LocalContext.current
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
+    val conversationMessages = remember(threadDetails, message) {
+        if (threadDetails.isNotEmpty()) threadDetails else listOf(message)
+    }
+    var expandedMessageIds by remember(conversationMessages, message.id) {
+        mutableStateOf(setOf(message.id))
+    }
 
     Column(
         modifier = modifier
@@ -372,115 +381,48 @@ fun MessageContent(
             modifier = Modifier.padding(bottom = 16.dp)
         )
 
-        if (threadMessages.size > 1) {
-            ConversationSection(
+        if (conversationMessages.size > 1) {
+            ConversationHeader(
                 threadMessages = threadMessages,
+                threadDetails = conversationMessages,
                 currentMessageId = message.id,
                 onThreadMessageClick = onThreadMessageClick,
-                modifier = Modifier.padding(bottom = 16.dp)
+                modifier = Modifier.padding(bottom = 12.dp)
             )
         }
 
-        Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-        // Отображение вложений
-        if (message.attachments.isNotEmpty()) {
-            Text(
-                text = "Вложения (${message.attachments.size}):",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-            message.attachments.forEach { attachment ->
-                AttachmentItem(
-                    attachment = attachment,
-                    onDownload = { onDownloadAttachment(attachment.id, attachment.filename, attachment.mime) },
-                    onOpen = { onOpenAttachment(attachment.id, attachment.filename, attachment.mime) }
-                )
-            }
-            Spacer(modifier = Modifier.height(16.dp))
-        }
-
-        message.body.html?.let { html ->
-            val adaptedHtml = if (html.contains("<head>", ignoreCase = true)) {
-                html.replace(
-                    "<head>",
-                    "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\">",
-                    ignoreCase = true
-                )
-            } else if (html.contains("<html>", ignoreCase = true)) {
-                html.replace(
-                    "<html>",
-                    "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"></head>",
-                    ignoreCase = true
-                )
-            } else {
-                "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"><style>body { margin: 0; padding: 8px; word-wrap: break-word; } img { max-width: 100%; height: auto; }</style></head><body>$html</body></html>"
-            }
-            
-            AndroidView(
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        webViewClient = object : WebViewClient() {
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView?,
-                                request: WebResourceRequest?
-                            ): Boolean {
-                                val url = request?.url?.toString()
-                                if (url != null && !url.startsWith("data:") && !url.startsWith("file://")) {
-                                    // Открываем ссылку в браузере
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        ctx.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки: $url", e)
-                                    }
-                                    return true
-                                }
-                                return false
-                            }
-                        }
-                        settings.apply {
-                            javaScriptEnabled = false
-                            domStorageEnabled = false
-                            useWideViewPort = true
-                            loadWithOverviewMode = true
-                            builtInZoomControls = true
-                            displayZoomControls = false
-                            setSupportZoom(true)
-                            textZoom = 100
-                            allowFileAccess = false
-                            allowContentAccess = false
-                            blockNetworkImage = true
-                            blockNetworkLoads = true
-                        }
-                        loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
+        conversationMessages.forEach { threadMessage ->
+            val isCurrent = threadMessage.id == message.id
+            val isExpanded = expandedMessageIds.contains(threadMessage.id) || isCurrent
+            ConversationMessageCard(
+                message = threadMessage,
+                isCurrent = isCurrent,
+                isExpanded = isExpanded,
+                onToggleExpanded = {
+                    expandedMessageIds = if (expandedMessageIds.contains(threadMessage.id) && !isCurrent) {
+                        expandedMessageIds - threadMessage.id
+                    } else {
+                        expandedMessageIds + threadMessage.id
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 200.dp, max = 2000.dp)
-            )
-        } ?: message.body.text?.let { text ->
-            ClickableTextWithLinks(
-                text = text,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(vertical = 8.dp),
-                context = context
-            )
-        } ?: run {
-            Text(
-                text = "Письмо не содержит текста",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                onFocusMessage = if (!isCurrent && onThreadMessageClick != null) {
+                    { onThreadMessageClick(threadMessage.id) }
+                } else {
+                    null
+                },
+                onDownloadAttachment = onDownloadAttachment,
+                onOpenAttachment = onOpenAttachment,
+                context = context,
+                isExpandedLayout = isExpandedLayout
             )
         }
     }
 }
 
 @Composable
-private fun ConversationSection(
+private fun ConversationHeader(
     threadMessages: List<MessageListItem>,
+    threadDetails: List<MessageDetail>,
     currentMessageId: String,
     onThreadMessageClick: ((String) -> Unit)?,
     modifier: Modifier = Modifier
@@ -552,11 +494,225 @@ private fun ConversationSection(
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
+                        if (threadDetails.any { it.id == threadMessage.id && it.attachments.isNotEmpty() }) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "Есть вложения",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ConversationMessageCard(
+    message: MessageDetail,
+    isCurrent: Boolean,
+    isExpanded: Boolean,
+    onToggleExpanded: () -> Unit,
+    onFocusMessage: (() -> Unit)?,
+    onDownloadAttachment: (String, String, String) -> Unit,
+    onOpenAttachment: (String, String, String) -> Unit,
+    context: Context,
+    isExpandedLayout: Boolean
+) {
+    val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
+    ElevatedCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 12.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = when {
+                isCurrent -> MaterialTheme.colorScheme.secondaryContainer
+                isExpanded -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
+                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+            }
+        )
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = message.from.name ?: message.from.email,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = if (isCurrent || message.flags.unread) FontWeight.Bold else FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = recipientSummary(message),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = if (isExpanded) 3 else 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(
+                        text = dateFormat.format(message.date),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    if (isCurrent) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = "Текущее письмо",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = message.subject,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(
+                    onClick = onToggleExpanded,
+                    label = { Text(if (isExpanded) "Свернуть" else "Развернуть") }
+                )
+                if (onFocusMessage != null) {
+                    AssistChip(
+                        onClick = onFocusMessage,
+                        label = { Text("Открыть отдельно") }
+                    )
+                }
+            }
+
+            if (isExpanded) {
+                Spacer(modifier = Modifier.height(12.dp))
+                Divider()
+                Spacer(modifier = Modifier.height(12.dp))
+                if (message.attachments.isNotEmpty()) {
+                    Text(
+                        text = "Вложения (${message.attachments.size})",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp)
+                    )
+                    message.attachments.forEach { attachment ->
+                        AttachmentItem(
+                            attachment = attachment,
+                            onDownload = { onDownloadAttachment(attachment.id, attachment.filename, attachment.mime) },
+                            onOpen = { onOpenAttachment(attachment.id, attachment.filename, attachment.mime) }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(12.dp))
+                }
+
+                MessageBodySection(
+                    message = message,
+                    context = context,
+                    isExpandedLayout = isExpandedLayout
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageBodySection(
+    message: MessageDetail,
+    context: Context,
+    isExpandedLayout: Boolean
+) {
+    message.body.html?.let { html ->
+        val adaptedHtml = if (html.contains("<head>", ignoreCase = true)) {
+            html.replace(
+                "<head>",
+                "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\">",
+                ignoreCase = true
+            )
+        } else if (html.contains("<html>", ignoreCase = true)) {
+            html.replace(
+                "<html>",
+                "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"></head>",
+                ignoreCase = true
+            )
+        } else {
+            "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"><style>body { margin: 0; padding: 8px; word-wrap: break-word; } img { max-width: 100%; height: auto; }</style></head><body>$html</body></html>"
+        }
+
+        AndroidView(
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView?,
+                            request: WebResourceRequest?
+                        ): Boolean {
+                            val url = request?.url?.toString()
+                            if (url != null && !url.startsWith("data:") && !url.startsWith("file://")) {
+                                try {
+                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                    ctx.startActivity(intent)
+                                } catch (e: Exception) {
+                                    android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки: $url", e)
+                                }
+                                return true
+                            }
+                            return false
+                        }
+                    }
+                    settings.apply {
+                        javaScriptEnabled = false
+                        domStorageEnabled = false
+                        useWideViewPort = true
+                        loadWithOverviewMode = true
+                        builtInZoomControls = true
+                        displayZoomControls = false
+                        setSupportZoom(true)
+                        textZoom = if (isExpandedLayout) 100 else 95
+                        allowFileAccess = false
+                        allowContentAccess = false
+                        blockNetworkImage = true
+                        blockNetworkLoads = true
+                    }
+                    loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
+                }
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 160.dp, max = 1600.dp)
+        )
+    } ?: message.body.text?.let { text ->
+        ClickableTextWithLinks(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(vertical = 4.dp),
+            context = context
+        )
+    } ?: run {
+        Text(
+            text = "Письмо не содержит текста",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+private fun recipientSummary(message: MessageDetail): String {
+    val recipients = buildList {
+        if (message.to.isNotEmpty()) add("Кому: ${message.to.joinToString(", ") { it.name ?: it.email }}")
+        if (!message.cc.isNullOrEmpty()) add("Копия: ${message.cc.joinToString(", ") { it.name ?: it.email }}")
+    }
+    return recipients.joinToString(" • ").ifBlank { "Без получателей" }
 }
 
 @Composable

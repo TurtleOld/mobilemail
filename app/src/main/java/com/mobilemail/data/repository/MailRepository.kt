@@ -571,6 +571,37 @@ class MailRepository(
         }.sortedBy { it.date }
     }
 
+    suspend fun getThreadDetails(threadId: String, limit: Int = 100): Result<List<MessageDetail>> = runCatchingSuspend {
+        val session = client.getSession()
+        val accountId = session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull()
+            ?: throw IllegalStateException("AccountId не найден")
+
+        val queryResult = client.queryEmails(
+            accountId = accountId,
+            position = 0,
+            limit = limit,
+            filter = mapOf("threadId" to threadId)
+        )
+
+        if (queryResult.ids.isEmpty()) {
+            return@runCatchingSuspend emptyList()
+        }
+
+        val emails = client.getEmails(
+            ids = queryResult.ids,
+            accountId = accountId,
+            properties = listOf(
+                "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
+                "subject", "receivedAt", "bodyStructure", "bodyValues", "textBody", "htmlBody",
+                "keywords", "size", "hasAttachment"
+            )
+        )
+
+        emails.mapNotNull { convertEmailToMessageDetail(it) }
+            .sortedBy { it.date }
+    }
+
     suspend fun updateMessageReadStatus(messageId: String, isUnread: Boolean) {
         Log.d("MailRepository", "Обновление статуса прочитанности в кэше: messageId=$messageId, isUnread=$isUnread")
         

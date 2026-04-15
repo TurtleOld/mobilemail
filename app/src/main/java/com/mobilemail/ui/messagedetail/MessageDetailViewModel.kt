@@ -31,6 +31,7 @@ import java.util.UUID
 data class MessageDetailUiState(
     val message: MessageDetail? = null,
     val threadMessages: List<MessageListItem> = emptyList(),
+    val threadDetails: List<MessageDetail> = emptyList(),
     val folders: List<Folder> = emptyList(),
     val isLoading: Boolean = false,
     val error: AppError? = null,
@@ -142,6 +143,14 @@ class MessageDetailViewModel(
                 },
                 onSuccess = { threadMessages ->
                     _uiState.value = _uiState.value.copy(threadMessages = threadMessages)
+                }
+            )
+            repository.getThreadDetails(threadId).fold(
+                onError = { e ->
+                    Log.e("MessageDetailViewModel", "Ошибка загрузки полной переписки", e)
+                },
+                onSuccess = { threadDetails ->
+                    _uiState.value = _uiState.value.copy(threadDetails = threadDetails)
                 }
             )
         }
