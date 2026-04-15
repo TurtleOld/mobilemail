@@ -56,6 +56,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.ui.theme.EmailShapes
+import com.mobilemail.ui.theme.EmailTypography
+import com.mobilemail.ui.theme.ExtendedTheme
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -166,6 +169,8 @@ fun MessagesScreen(
         MailNavigationContent(
             folders = uiState.folders,
             selectedFolder = uiState.selectedFolder,
+            pendingQueueCount = uiState.pendingQueueCount,
+            queueAttentionCount = uiState.queueAttentionCount,
             onComposeClick = onComposeClick,
             onOutboxClick = {
                 if (!isExpandedLayout) {
@@ -275,7 +280,7 @@ fun MessagesScreen(
                     .fillMaxHeight()
                     .width(300.dp),
                 tonalElevation = 1.dp,
-                color = MaterialTheme.colorScheme.surfaceVariant
+                color = ExtendedTheme.colors.chromeMuted
             ) {
                 navigationContent()
             }
@@ -318,16 +323,37 @@ fun MessagesScreen(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MailNavigationContent(
     folders: List<com.mobilemail.data.model.Folder>,
     selectedFolder: com.mobilemail.data.model.Folder?,
+    pendingQueueCount: Int,
+    queueAttentionCount: Int,
     onComposeClick: () -> Unit,
     onOutboxClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onFolderSelected: (com.mobilemail.data.model.Folder) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxHeight()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 20.dp)
+        ) {
+            Text(
+                text = "MobileMail",
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Focused mail for thoughtful reading",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
         NavigationDrawerItem(
             icon = {
                 Box(modifier = Modifier.size(24.dp)) {
@@ -355,7 +381,19 @@ private fun MailNavigationContent(
 
         NavigationDrawerItem(
             icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
-            label = { Text("Очередь") },
+            label = {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Очередь")
+                    when {
+                        queueAttentionCount > 0 -> Badge(containerColor = MaterialTheme.colorScheme.error) {
+                            Text(queueAttentionCount.toString(), style = EmailTypography.badgeCount)
+                        }
+                        pendingQueueCount > 0 -> Badge(containerColor = ExtendedTheme.colors.unreadBadge) {
+                            Text(pendingQueueCount.toString(), style = EmailTypography.badgeCount)
+                        }
+                    }
+                }
+            },
             selected = false,
             onClick = onOutboxClick,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
@@ -449,9 +487,9 @@ fun FolderItem(
                 }
             }
             .clickable(onClick = onClick),
-        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surface,
-        shape = MaterialTheme.shapes.small
+        color = if (isSelected) ExtendedTheme.colors.selectionHighlight else ExtendedTheme.colors.surfaceReading,
+        shape = EmailShapes.folderItem,
+        tonalElevation = if (isSelected) 1.dp else 0.dp
     ) {
         Row(
             modifier = Modifier
@@ -467,12 +505,15 @@ fun FolderItem(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = folder.name,
-                style = MaterialTheme.typography.bodyMedium,
+                style = EmailTypography.folderName,
                 modifier = Modifier.weight(1f)
             )
             if (folder.unreadCount > 0) {
-                Badge {
-                    Text(folder.unreadCount.toString())
+                Badge(
+                    containerColor = ExtendedTheme.colors.unreadBadge,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Text(folder.unreadCount.toString(), style = EmailTypography.badgeCount)
                 }
             }
         }
@@ -514,6 +555,8 @@ fun MessagesList(
         } else if (messages.isEmpty()) {
             Text(
                 text = "Нет писем",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.align(Alignment.Center)
             )
         } else {
@@ -576,7 +619,7 @@ fun MessageItem(
     val backgroundColor = when {
         offsetX > 0f -> MaterialTheme.colorScheme.secondaryContainer
         offsetX < 0f -> MaterialTheme.colorScheme.errorContainer
-        else -> MaterialTheme.colorScheme.surfaceVariant
+        else -> ExtendedTheme.colors.chromeMuted
     }
     val backgroundAlignment = when {
         offsetX > 0f -> Alignment.CenterStart
@@ -659,10 +702,10 @@ fun MessageItem(
             ),
             colors = CardDefaults.cardColors(
                 containerColor = when {
-                    isSelected -> MaterialTheme.colorScheme.primaryContainer
-                    isActive -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.9f)
-                    isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f)
-                    else -> MaterialTheme.colorScheme.surface
+                    isSelected -> ExtendedTheme.colors.selectionHighlight
+                    isActive -> ExtendedTheme.colors.threadHighlight
+                    isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
+                    else -> ExtendedTheme.colors.surfaceReading
                 }
             )
         ) {
@@ -704,8 +747,7 @@ fun MessageItem(
                             }
                             Text(
                                 text = message.from.name ?: message.from.email,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                                style = if (isUnread) EmailTypography.emailSenderUnread else EmailTypography.emailSender,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -713,7 +755,7 @@ fun MessageItem(
                         }
                         Text(
                             text = dateFormat.format(message.date),
-                            style = MaterialTheme.typography.bodySmall,
+                            style = EmailTypography.emailTimestamp,
                             fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -723,8 +765,7 @@ fun MessageItem(
 
                     Text(
                         text = message.subject,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (isUnread) FontWeight.Bold else FontWeight.Normal,
+                        style = if (isUnread) EmailTypography.emailSubjectUnread else EmailTypography.emailSubject,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -733,7 +774,7 @@ fun MessageItem(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = message.snippet,
-                            style = MaterialTheme.typography.bodySmall,
+                            style = EmailTypography.emailPreview,
                             fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -743,10 +784,20 @@ fun MessageItem(
 
                     if (message.flags.hasAttachments) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "📎",
-                            style = MaterialTheme.typography.bodySmall
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.DriveFileMove,
+                                contentDescription = null,
+                                tint = ExtendedTheme.colors.attachment,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Есть вложения",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = ExtendedTheme.colors.attachment
+                            )
+                        }
                     }
                 }
             }

@@ -162,10 +162,16 @@ class MessageDetailViewModel(
             messageActionsRepository.markAsRead(messageId, true).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка автоматической пометки как прочитанного", e)
-                    // В случае ошибки возвращаем исходный статус
-                    _uiState.value = _uiState.value.copy(
-                        message = initialMessage
-                    )
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        viewModelScope.launch {
+                            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, true)
+                        }
+                        onReadStatusChangedCallback?.invoke(messageId, false)
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            message = initialMessage
+                        )
+                    }
                 },
                 onSuccess = {
                     Log.d("MessageDetailViewModel", "Письмо автоматически помечено как прочитанное на сервере")
@@ -210,12 +216,26 @@ class MessageDetailViewModel(
             messageActionsRepository.markAsRead(messageId, !newReadStatus).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка изменения статуса прочитанности", e)
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось изменить статус: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        viewModelScope.launch {
+                            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, !newReadStatus)
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            message = currentMessage.copy(flags = currentMessage.flags.copy(unread = newReadStatus)),
+                            notification = NotificationState.Snackbar(
+                                message = "Нет сети. Изменение прочитанности поставлено в очередь.",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
                         )
-                    )
+                        onReadStatusChanged?.invoke(messageId, newReadStatus)
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            notification = NotificationState.Snackbar(
+                                message = "Не удалось изменить статус: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
+                        )
+                    }
                 },
                 onSuccess = {
                     Log.d("MessageDetailViewModel", "Статус прочитанности изменен: $newReadStatus")
@@ -245,12 +265,25 @@ class MessageDetailViewModel(
             messageActionsRepository.toggleStarred(messageId, newStarredStatus).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка изменения статуса звездочки", e)
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось изменить статус: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        viewModelScope.launch {
+                            OfflineQueueManager.enqueueToggleStar(app, server, email, accountId, messageId, newStarredStatus)
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            message = currentMessage.copy(flags = currentMessage.flags.copy(starred = newStarredStatus)),
+                            notification = NotificationState.Snackbar(
+                                message = "Нет сети. Изменение избранного поставлено в очередь.",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
                         )
-                    )
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            notification = NotificationState.Snackbar(
+                                message = "Не удалось изменить статус: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
+                        )
+                    }
                 },
                 onSuccess = {
                     Log.d("MessageDetailViewModel", "Статус звездочки изменен: $newStarredStatus")

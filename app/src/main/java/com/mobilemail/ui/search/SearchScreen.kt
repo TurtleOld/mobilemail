@@ -21,6 +21,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.ui.theme.EmailShapes
+import com.mobilemail.ui.theme.EmailTypography
+import com.mobilemail.ui.theme.ExtendedTheme
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -153,7 +156,8 @@ fun SearchScreen(
                     .fillMaxWidth()
                     .padding(16.dp),
                 tonalElevation = if (isExpandedLayout) 1.dp else 0.dp,
-                color = if (isExpandedLayout) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface
+                color = if (isExpandedLayout) ExtendedTheme.colors.chromeMuted else ExtendedTheme.colors.surfaceReading,
+                shape = EmailShapes.searchBar
             ) {
                 Column(
                     modifier = Modifier.padding(if (isExpandedLayout) 20.dp else 0.dp),
@@ -380,7 +384,9 @@ fun MessageItem(
                 }
             }
             .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(containerColor = ExtendedTheme.colors.surfaceReading),
+        shape = EmailShapes.emailCard
     ) {
         Column(
             modifier = Modifier
@@ -393,14 +399,14 @@ fun MessageItem(
             ) {
                 Text(
                     text = message.from.name ?: message.from.email,
-                    style = MaterialTheme.typography.titleSmall,
+                    style = EmailTypography.emailSender,
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
                     text = dateFormat.format(message.date),
-                    style = MaterialTheme.typography.bodySmall,
+                    style = EmailTypography.emailTimestamp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
@@ -409,7 +415,7 @@ fun MessageItem(
 
             Text(
                 text = message.subject,
-                style = MaterialTheme.typography.titleMedium,
+                style = EmailTypography.emailSubject,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -418,7 +424,7 @@ fun MessageItem(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = message.snippet,
-                    style = MaterialTheme.typography.bodySmall,
+                    style = EmailTypography.emailPreview,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -428,8 +434,9 @@ fun MessageItem(
             if (message.flags.hasAttachments) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "📎",
-                    style = MaterialTheme.typography.bodySmall
+                    text = "Есть вложения",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = ExtendedTheme.colors.attachment
                 )
             }
         }

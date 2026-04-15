@@ -143,7 +143,12 @@ data class ExtendedColors(
     val sent: Color,
     val spam: Color,
     val surfaceElevated: Color,
-    val surfaceHighest: Color
+    val surfaceHighest: Color,
+    val surfaceCanvas: Color,
+    val surfaceReading: Color,
+    val chromeMuted: Color,
+    val threadHighlight: Color,
+    val selectionHighlight: Color
 )
 
 private val LightExtendedColors = ExtendedColors(
@@ -162,7 +167,12 @@ private val LightExtendedColors = ExtendedColors(
     sent = Success50,
     spam = Error50,
     surfaceElevated = Neutral96,
-    surfaceHighest = Neutral94
+    surfaceHighest = Neutral94,
+    surfaceCanvas = Neutral98,
+    surfaceReading = Neutral100,
+    chromeMuted = NeutralVariant95,
+    threadHighlight = Teal95,
+    selectionHighlight = Blue95
 )
 
 private val DarkExtendedColors = ExtendedColors(
@@ -181,7 +191,12 @@ private val DarkExtendedColors = ExtendedColors(
     sent = Success70,
     spam = Error70,
     surfaceElevated = Neutral17,
-    surfaceHighest = Neutral22
+    surfaceHighest = Neutral22,
+    surfaceCanvas = Neutral10,
+    surfaceReading = Neutral12,
+    chromeMuted = NeutralVariant20,
+    threadHighlight = Teal20,
+    selectionHighlight = Blue20
 )
 
 val LocalExtendedColors = staticCompositionLocalOf { LightExtendedColors }
@@ -205,7 +220,7 @@ object ExtendedTheme {
 @Composable
 fun MobileMailTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

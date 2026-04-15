@@ -28,12 +28,11 @@ val InterFontFamily = FontFamily(
 )
 */
 
-// Using system default which is typically Roboto on Android
-// This provides the best native feel and performance
-val AppFontFamily = FontFamily.Default
+// Clean sans for controls and navigation
+val AppFontFamily = FontFamily.SansSerif
 
-// For email body content - system serif for long-form reading comfort
-val ReadingFontFamily = FontFamily.Default
+// Serif for long-form mail reading and quoted content
+val ReadingFontFamily = FontFamily.Serif
 
 /**
  * Typography scale following Material Design 3 with enhanced readability.
@@ -101,10 +100,10 @@ val AppTypography = Typography(
     ),
     titleMedium = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 16.sp,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 17.sp,
         lineHeight = 24.sp,
-        letterSpacing = 0.15.sp
+        letterSpacing = 0.05.sp
     ),
     titleSmall = TextStyle(
         fontFamily = AppFontFamily,
@@ -119,16 +118,16 @@ val AppTypography = Typography(
     bodyLarge = TextStyle(
         fontFamily = ReadingFontFamily,
         fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 26.sp, // 1.625 ratio for comfortable reading
-        letterSpacing = 0.5.sp
+        fontSize = 17.sp,
+        lineHeight = 29.sp,
+        letterSpacing = 0.2.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = ReadingFontFamily,
+        fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 14.sp,
-        lineHeight = 22.sp, // ~1.57 ratio
-        letterSpacing = 0.25.sp
+        lineHeight = 21.sp,
+        letterSpacing = 0.15.sp
     ),
     bodySmall = TextStyle(
         fontFamily = ReadingFontFamily,
@@ -169,37 +168,37 @@ object EmailTypography {
     // Email subject in list - slightly bolder for scannability
     val emailSubject = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.Medium,
-        fontSize = 15.sp,
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 16.sp,
         lineHeight = 22.sp,
-        letterSpacing = 0.1.sp
+        letterSpacing = 0.05.sp
     )
 
     // Unread email subject - bolder to stand out
     val emailSubjectUnread = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 15.sp,
+        fontWeight = FontWeight.Bold,
+        fontSize = 16.sp,
         lineHeight = 22.sp,
-        letterSpacing = 0.1.sp
+        letterSpacing = 0.05.sp
     )
 
     // Email sender name
     val emailSender = TextStyle(
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Medium,
-        fontSize = 14.sp,
+        fontSize = 15.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.15.sp
+        letterSpacing = 0.05.sp
     )
 
     // Unread email sender - bolder
     val emailSenderUnread = TextStyle(
         fontFamily = AppFontFamily,
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp,
+        fontWeight = FontWeight.Bold,
+        fontSize = 15.sp,
         lineHeight = 20.sp,
-        letterSpacing = 0.15.sp
+        letterSpacing = 0.05.sp
     )
 
     // Email preview snippet
@@ -207,8 +206,8 @@ object EmailTypography {
         fontFamily = AppFontFamily,
         fontWeight = FontWeight.Normal,
         fontSize = 13.sp,
-        lineHeight = 18.sp,
-        letterSpacing = 0.25.sp
+        lineHeight = 19.sp,
+        letterSpacing = 0.15.sp
     )
 
     // Email timestamp
@@ -224,9 +223,9 @@ object EmailTypography {
     val emailBody = TextStyle(
         fontFamily = ReadingFontFamily,
         fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 28.sp, // 1.75 ratio for long-form reading
-        letterSpacing = 0.3.sp
+        fontSize = 17.sp,
+        lineHeight = 30.sp,
+        letterSpacing = 0.15.sp
     )
 
     // Folder name in navigation drawer

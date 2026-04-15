@@ -9,46 +9,46 @@ import androidx.compose.ui.graphics.Color
  * Follows Material Design 3 principles with enhanced contrast ratios.
  */
 
-// Primary - Calm Blue (professional, trustworthy for email)
-val Blue10 = Color(0xFF001F2A)
-val Blue20 = Color(0xFF003544)
-val Blue30 = Color(0xFF004D61)
-val Blue40 = Color(0xFF006780)
-val Blue50 = Color(0xFF0081A1)
-val Blue60 = Color(0xFF009BC2)
-val Blue70 = Color(0xFF3DB6DA)
-val Blue80 = Color(0xFF6DD2F5)
-val Blue90 = Color(0xFFBDE9FF)
-val Blue95 = Color(0xFFDFF4FF)
-val Blue99 = Color(0xFFF6FBFF)
+// Primary - Ink blue for calm editorial mail UI
+val Blue10 = Color(0xFF101C28)
+val Blue20 = Color(0xFF203243)
+val Blue30 = Color(0xFF31495E)
+val Blue40 = Color(0xFF45627A)
+val Blue50 = Color(0xFF597C97)
+val Blue60 = Color(0xFF7396B2)
+val Blue70 = Color(0xFF90B2CD)
+val Blue80 = Color(0xFFB1CEE7)
+val Blue90 = Color(0xFFD3E7F8)
+val Blue95 = Color(0xFFE9F2FA)
+val Blue99 = Color(0xFFF7FAFD)
 
-// Secondary - Warm Teal (complementary accent)
-val Teal10 = Color(0xFF002020)
-val Teal20 = Color(0xFF003737)
-val Teal30 = Color(0xFF004F4F)
-val Teal40 = Color(0xFF006969)
-val Teal50 = Color(0xFF008585)
-val Teal60 = Color(0xFF00A1A1)
-val Teal70 = Color(0xFF2DBDBD)
-val Teal80 = Color(0xFF5DD9D9)
-val Teal90 = Color(0xFFA0F0F0)
-val Teal95 = Color(0xFFCCF8F8)
-val Teal99 = Color(0xFFF0FDFD)
+// Secondary - Sea glass teal for active mail states
+val Teal10 = Color(0xFF112523)
+val Teal20 = Color(0xFF1D3B39)
+val Teal30 = Color(0xFF2A5450)
+val Teal40 = Color(0xFF396E69)
+val Teal50 = Color(0xFF4C8983)
+val Teal60 = Color(0xFF65A59F)
+val Teal70 = Color(0xFF85C1BA)
+val Teal80 = Color(0xFFAADAD4)
+val Teal90 = Color(0xFFD2EEE8)
+val Teal95 = Color(0xFFE8F7F3)
+val Teal99 = Color(0xFFF8FDFC)
 
-// Tertiary - Soft Violet (for highlights and special actions)
-val Violet10 = Color(0xFF1D1035)
-val Violet20 = Color(0xFF32254B)
-val Violet30 = Color(0xFF493B63)
-val Violet40 = Color(0xFF61527C)
-val Violet50 = Color(0xFF7A6A96)
-val Violet60 = Color(0xFF9484B1)
-val Violet70 = Color(0xFFAF9FCC)
-val Violet80 = Color(0xFFCBBAE9)
-val Violet90 = Color(0xFFE8DDF7)
-val Violet95 = Color(0xFFF5EEFB)
-val Violet99 = Color(0xFFFCFAFF)
+// Tertiary - Brass amber for editorial highlights and stars
+val Violet10 = Color(0xFF271A0B)
+val Violet20 = Color(0xFF402C16)
+val Violet30 = Color(0xFF5A4021)
+val Violet40 = Color(0xFF76552E)
+val Violet50 = Color(0xFF926B3D)
+val Violet60 = Color(0xFFAF8450)
+val Violet70 = Color(0xFFCC9E67)
+val Violet80 = Color(0xFFE7BC8D)
+val Violet90 = Color(0xFFF6DEBF)
+val Violet95 = Color(0xFFFBEEE0)
+val Violet99 = Color(0xFFFFFBF6)
 
-// Neutral - Warm grays for text and backgrounds
+// Neutral - Paper and ink neutrals for reading comfort
 val Neutral0 = Color(0xFF000000)
 val Neutral4 = Color(0xFF0D0E0F)
 val Neutral6 = Color(0xFF121314)
@@ -70,8 +70,8 @@ val Neutral92 = Color(0xFFE7E8EA)
 val Neutral94 = Color(0xFFEDEEF0)
 val Neutral95 = Color(0xFFF0F1F3)
 val Neutral96 = Color(0xFFF3F4F6)
-val Neutral98 = Color(0xFFF9FAFB)
-val Neutral99 = Color(0xFFFCFDFD)
+val Neutral98 = Color(0xFFF8F6F1)
+val Neutral99 = Color(0xFFFCFAF6)
 val Neutral100 = Color(0xFFFFFFFF)
 
 // Neutral Variant - For surfaces with subtle color
@@ -83,9 +83,9 @@ val NeutralVariant50 = Color(0xFF727879)
 val NeutralVariant60 = Color(0xFF8C9293)
 val NeutralVariant70 = Color(0xFFA7ADAE)
 val NeutralVariant80 = Color(0xFFC2C8C9)
-val NeutralVariant90 = Color(0xFFDEE4E5)
-val NeutralVariant95 = Color(0xFFEDF2F3)
-val NeutralVariant99 = Color(0xFFF9FEFF)
+val NeutralVariant90 = Color(0xFFE1E4E0)
+val NeutralVariant95 = Color(0xFFEFEFE9)
+val NeutralVariant99 = Color(0xFFF9F8F3)
 
 // Error - Red tones
 val Error10 = Color(0xFF410002)
@@ -127,9 +127,9 @@ val Warning95 = Color(0xFFFFEFCF)
 val Warning99 = Color(0xFFFFFBFF)
 
 // Semantic colors for email states
-val UnreadBadge = Blue60
+val UnreadBadge = Teal50
 val StarredColor = Color(0xFFFFB800)
-val AttachmentIcon = Teal60
+val AttachmentIcon = Blue50
 val DraftColor = Warning60
 val SentColor = Success60
 val SpamColor = Error60

@@ -22,16 +22,28 @@ import javax.net.ssl.SSLException
 data class OfflineQueueSummary(
     val processedCount: Int,
     val failedCount: Int,
-    val pendingCount: Int
+    val pendingCount: Int,
+    val permanentFailedCount: Int = 0
+)
+
+data class OfflineQueueStats(
+    val pendingCount: Int,
+    val failedCount: Int,
+    val permanentFailedCount: Int,
+    val totalCount: Int
 )
 
 object OfflineQueueManager {
-    private const val TYPE_SEND = "send"
-    private const val TYPE_DELETE = "delete"
-    private const val TYPE_MOVE = "move"
-    private const val STATUS_PENDING = "pending"
-    private const val STATUS_FAILED = "failed"
-    private const val STATUS_RUNNING = "running"
+    const val TYPE_SEND = "send"
+    const val TYPE_DELETE = "delete"
+    const val TYPE_MOVE = "move"
+    const val TYPE_MARK_READ = "mark_read"
+    const val TYPE_TOGGLE_STAR = "toggle_star"
+
+    const val STATUS_PENDING = "pending"
+    const val STATUS_FAILED = "failed"
+    const val STATUS_RUNNING = "running"
+    const val STATUS_PERMANENT_FAILED = "permanent_failed"
 
     private val mutex = Mutex()
 
@@ -111,6 +123,50 @@ object OfflineQueueManager {
         OfflineQueueWorker.scheduleNow(application)
     }
 
+    suspend fun enqueueMarkRead(
+        application: Application,
+        server: String,
+        email: String,
+        accountId: String,
+        messageId: String,
+        isRead: Boolean
+    ) {
+        enqueue(
+            application,
+            TYPE_MARK_READ,
+            server,
+            email,
+            accountId,
+            JSONObject().apply {
+                put("messageId", messageId)
+                put("isRead", isRead)
+            }.toString()
+        )
+        OfflineQueueWorker.scheduleNow(application)
+    }
+
+    suspend fun enqueueToggleStar(
+        application: Application,
+        server: String,
+        email: String,
+        accountId: String,
+        messageId: String,
+        isStarred: Boolean
+    ) {
+        enqueue(
+            application,
+            TYPE_TOGGLE_STAR,
+            server,
+            email,
+            accountId,
+            JSONObject().apply {
+                put("messageId", messageId)
+                put("isStarred", isStarred)
+            }.toString()
+        )
+        OfflineQueueWorker.scheduleNow(application)
+    }
+
     suspend fun processPending(application: Application, limit: Int = 25): OfflineQueueSummary = mutex.withLock {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
         val operations = dao.getProcessable(limit)
@@ -132,11 +188,19 @@ object OfflineQueueManager {
                     processedCount++
                 }
                 is Result.Error -> {
-                    failedCount++
+                    val nextAttemptCount = operation.attemptCount + 1
+                    val status = when {
+                        !shouldQueue(result.exception) -> STATUS_PERMANENT_FAILED
+                        nextAttemptCount >= maxAttemptsFor(operation.type) -> STATUS_PERMANENT_FAILED
+                        else -> STATUS_FAILED
+                    }
+                    if (status == STATUS_FAILED) {
+                        failedCount++
+                    }
                     dao.updateStatus(
                         id = operation.id,
-                        status = STATUS_FAILED,
-                        attemptCount = operation.attemptCount + 1,
+                        status = status,
+                        attemptCount = nextAttemptCount,
                         lastError = result.exception.message,
                         updatedAt = System.currentTimeMillis()
                     )
@@ -144,10 +208,13 @@ object OfflineQueueManager {
             }
         }
 
+        val pendingCount = dao.getPendingCount()
+        val permanentFailedCount = dao.getPermanentFailedCount()
         OfflineQueueSummary(
             processedCount = processedCount,
             failedCount = failedCount,
-            pendingCount = dao.getPendingCount()
+            pendingCount = pendingCount,
+            permanentFailedCount = permanentFailedCount
         )
     }
 
@@ -157,8 +224,39 @@ object OfflineQueueManager {
 
     fun observeAll(application: Application) = AppDatabase.getInstance(application).pendingOperationDao().observeAll()
 
+    suspend fun getStats(application: Application): OfflineQueueStats {
+        val dao = AppDatabase.getInstance(application).pendingOperationDao()
+        val pending = dao.getPendingCount()
+        val failed = dao.getFailedCount()
+        val permanent = dao.getPermanentFailedCount()
+        return OfflineQueueStats(
+            pendingCount = pending,
+            failedCount = failed,
+            permanentFailedCount = permanent,
+            totalCount = pending + failed + permanent
+        )
+    }
+
     suspend fun remove(application: Application, id: Long) {
-        AppDatabase.getInstance(application).pendingOperationDao().delete(id)
+        val dao = AppDatabase.getInstance(application).pendingOperationDao()
+        cleanupOperationFiles(dao.getById(id))
+        dao.delete(id)
+    }
+
+    suspend fun retryOne(application: Application, id: Long) {
+        AppDatabase.getInstance(application).pendingOperationDao().retryById(id, System.currentTimeMillis())
+        OfflineQueueWorker.scheduleNow(application)
+    }
+
+    suspend fun retryAllFailed(application: Application) {
+        AppDatabase.getInstance(application).pendingOperationDao().retryAllFailed(System.currentTimeMillis())
+        OfflineQueueWorker.scheduleNow(application)
+    }
+
+    suspend fun clearFailed(application: Application) {
+        val dao = AppDatabase.getInstance(application).pendingOperationDao()
+        dao.getFailedOperations().forEach { cleanupOperationFiles(it) }
+        dao.clearFailed()
     }
 
     fun shouldQueue(error: Throwable): Boolean {
@@ -207,6 +305,8 @@ object OfflineQueueManager {
             TYPE_SEND -> executeSend(client, operation.payload, operation.email)
             TYPE_DELETE -> executeDelete(client, operation.payload)
             TYPE_MOVE -> executeMove(client, operation.payload)
+            TYPE_MARK_READ -> executeMarkRead(client, operation.payload)
+            TYPE_TOGGLE_STAR -> executeToggleStar(client, operation.payload)
             else -> Result.Error(IllegalArgumentException("Unsupported queue op: ${operation.type}"))
         }
     }
@@ -268,6 +368,26 @@ object OfflineQueueManager {
         ).mapUnit()
     }
 
+    private suspend fun executeMarkRead(
+        client: com.mobilemail.data.jmap.JmapApi,
+        payload: String
+    ): Result<Unit> {
+        val json = JSONObject(payload)
+        return MessageActionsRepository(client)
+            .markAsRead(json.getString("messageId"), json.getBoolean("isRead"))
+            .mapUnit()
+    }
+
+    private suspend fun executeToggleStar(
+        client: com.mobilemail.data.jmap.JmapApi,
+        payload: String
+    ): Result<Unit> {
+        val json = JSONObject(payload)
+        return MessageActionsRepository(client)
+            .toggleStarred(json.getString("messageId"), json.getBoolean("isStarred"))
+            .mapUnit()
+    }
+
     private fun Result<Boolean>.mapUnit(): Result<Unit> {
         return fold(
             onError = { Result.Error(it) },
@@ -305,5 +425,25 @@ object OfflineQueueManager {
             current = current.cause ?: return current
         }
         return current
+    }
+
+    private fun cleanupOperationFiles(operation: PendingOperationEntity?) {
+        if (operation == null || operation.type != TYPE_SEND) return
+        runCatching {
+            val attachments = JSONObject(operation.payload).optJSONArray("attachments") ?: return
+            val parsed = attachments.toAttachmentList()
+            parsed.forEach { attachment ->
+                if (!attachment.isUploaded) {
+                    OfflineAttachmentStorage.delete(attachment.localFilePath)
+                }
+            }
+        }
+    }
+
+    private fun maxAttemptsFor(type: String): Int = when (type) {
+        TYPE_SEND -> 8
+        TYPE_DELETE, TYPE_MOVE -> 6
+        TYPE_MARK_READ, TYPE_TOGGLE_STAR -> 4
+        else -> 4
     }
 }

@@ -13,8 +13,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -74,6 +76,11 @@ fun OutboxScreen(
                     if (uiState.isProcessing) {
                         CircularProgressIndicator(modifier = Modifier.padding(12.dp))
                     } else {
+                        if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
+                            IconButton(onClick = viewModel::retryFailed) {
+                                Icon(Icons.Default.Warning, contentDescription = "Повторить неуспешные")
+                            }
+                        }
                         IconButton(onClick = viewModel::retryNow) {
                             Icon(Icons.Default.Refresh, contentDescription = "Повторить")
                         }
@@ -95,15 +102,38 @@ fun OutboxScreen(
                 Text("Отложенные отправки и действия появятся здесь")
             }
         } else {
-            LazyColumn(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(uiState.operations, key = { it.id }) { operation ->
-                    PendingOperationCard(operation = operation, onRemove = { viewModel.remove(operation.id) })
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    QueueStatChip(label = "В очереди", count = uiState.stats.pendingCount)
+                    QueueStatChip(label = "Сбои", count = uiState.stats.failedCount)
+                    QueueStatChip(label = "Требуют внимания", count = uiState.stats.permanentFailedCount)
+                }
+                if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        AssistChip(onClick = viewModel::retryFailed, label = { Text("Повторить неуспешные") })
+                        AssistChip(onClick = viewModel::clearFailed, label = { Text("Очистить неуспешные") })
+                    }
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    items(uiState.operations, key = { it.id }) { operation ->
+                        PendingOperationCard(
+                            operation = operation,
+                            onRemove = { viewModel.remove(operation.id) },
+                            onRetry = { viewModel.retryOperation(operation.id) }
+                        )
+                    }
                 }
             }
         }
@@ -113,7 +143,8 @@ fun OutboxScreen(
 @Composable
 private fun PendingOperationCard(
     operation: PendingOperationEntity,
-    onRemove: () -> Unit
+    onRemove: () -> Unit,
+    onRetry: () -> Unit
 ) {
     val formatter = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
     Card(
@@ -123,11 +154,18 @@ private fun PendingOperationCard(
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                 Text(operationTypeLabel(operation.type), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
-                IconButton(onClick = onRemove) {
-                    Icon(Icons.Default.Delete, contentDescription = "Удалить из очереди")
+                Row {
+                    if (operation.status == "failed" || operation.status == "permanent_failed") {
+                        IconButton(onClick = onRetry) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Повторить операцию")
+                        }
+                    }
+                    IconButton(onClick = onRemove) {
+                        Icon(Icons.Default.Delete, contentDescription = "Удалить из очереди")
+                    }
                 }
             }
-            Text("Статус: ${operation.status}")
+            Text("Статус: ${operationStatusLabel(operation.status)}")
             Text("Попыток: ${operation.attemptCount}")
             Text("Создано: ${formatter.format(Date(operation.createdAt))}")
             if (!operation.lastError.isNullOrBlank()) {
@@ -138,9 +176,28 @@ private fun PendingOperationCard(
     }
 }
 
+@Composable
+private fun QueueStatChip(label: String, count: Int) {
+    AssistChip(
+        onClick = {},
+        enabled = false,
+        label = { Text("$label: $count") }
+    )
+}
+
 private fun operationTypeLabel(type: String): String = when (type) {
     "send" -> "Отправка письма"
     "move" -> "Перемещение письма"
     "delete" -> "Удаление письма"
+    "mark_read" -> "Изменение прочитанности"
+    "toggle_star" -> "Изменение избранного"
     else -> type
+}
+
+private fun operationStatusLabel(status: String): String = when (status) {
+    "pending" -> "Ожидает"
+    "running" -> "Выполняется"
+    "failed" -> "Повтор будет выполнен"
+    "permanent_failed" -> "Требует внимания"
+    else -> status
 }

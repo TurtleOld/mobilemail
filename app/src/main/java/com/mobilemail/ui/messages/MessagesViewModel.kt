@@ -18,6 +18,7 @@ import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -32,6 +33,8 @@ data class MessagesUiState(
     val isLoadingMore: Boolean = false,
     val hasMore: Boolean = true,
     val currentPosition: Int = 0,
+    val pendingQueueCount: Int = 0,
+    val queueAttentionCount: Int = 0,
     val error: AppError? = null,
     val selectedMessageIds: Set<String> = emptySet(),
     val notification: NotificationState = NotificationState.None
@@ -73,6 +76,7 @@ class MessagesViewModel(
     private var pendingFolderAction: PendingFolderAction? = null
 
     init {
+        observeQueueStats()
         try {
             loadFolders()
         } catch (e: Exception) {
@@ -185,6 +189,20 @@ class MessagesViewModel(
     fun refresh() {
         _uiState.value.selectedFolder?.let { loadMessages(it.id, reset = true) }
         refreshFoldersPreservingSelection()
+    }
+
+    fun queueMarkRead(messageId: String, isRead: Boolean) {
+        viewModelScope.launch {
+            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, isRead)
+            refreshQueueStats()
+        }
+    }
+
+    fun queueStar(messageId: String, isStarred: Boolean) {
+        viewModelScope.launch {
+            OfflineQueueManager.enqueueToggleStar(app, server, email, accountId, messageId, isStarred)
+            refreshQueueStats()
+        }
     }
     
     fun removeMessage(messageId: String) {
@@ -526,6 +544,7 @@ class MessagesViewModel(
     private fun refreshFoldersPreservingSelection() {
         viewModelScope.launch {
             val queueSummary = OfflineQueueManager.processPending(app)
+            refreshQueueStats()
             repository.getFolders().fold(
                 onError = { },
                 onSuccess = { folders ->
@@ -538,6 +557,10 @@ class MessagesViewModel(
                                 message = "Синхронизировано операций: ${queueSummary.processedCount}",
                                 duration = SnackbarDuration.Short
                             )
+                            queueSummary.permanentFailedCount > 0 -> NotificationState.Snackbar(
+                                message = "Есть операции, требующие внимания: ${queueSummary.permanentFailedCount}",
+                                duration = SnackbarDuration.Long
+                            )
                             queueSummary.pendingCount > 0 -> NotificationState.Snackbar(
                                 message = "Ожидают синхронизации: ${queueSummary.pendingCount}",
                                 duration = SnackbarDuration.Short
@@ -548,5 +571,28 @@ class MessagesViewModel(
                 }
             )
         }
+    }
+
+    private fun observeQueueStats() {
+        viewModelScope.launch {
+            OfflineQueueManager.observeAll(app).collect { operations ->
+                _uiState.value = _uiState.value.copy(
+                    pendingQueueCount = operations.count {
+                        it.status == OfflineQueueManager.STATUS_PENDING || it.status == OfflineQueueManager.STATUS_FAILED
+                    },
+                    queueAttentionCount = operations.count {
+                        it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED
+                    }
+                )
+            }
+        }
+    }
+
+    private suspend fun refreshQueueStats() {
+        val stats = OfflineQueueManager.getStats(app)
+        _uiState.value = _uiState.value.copy(
+            pendingQueueCount = stats.pendingCount + stats.failedCount,
+            queueAttentionCount = stats.permanentFailedCount
+        )
     }
 }

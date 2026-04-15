@@ -24,9 +24,30 @@ interface PendingOperationDao {
     @Query("SELECT COUNT(*) FROM pending_operations WHERE status IN ('pending', 'failed')")
     suspend fun getPendingCount(): Int
 
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'failed'")
+    suspend fun getFailedCount(): Int
+
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'permanent_failed'")
+    suspend fun getPermanentFailedCount(): Int
+
     @Query("SELECT * FROM pending_operations ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PendingOperationEntity>>
 
+    @Query("SELECT * FROM pending_operations WHERE id = :id LIMIT 1")
+    suspend fun getById(id: Long): PendingOperationEntity?
+
+    @Query("SELECT * FROM pending_operations WHERE status IN ('failed', 'permanent_failed')")
+    suspend fun getFailedOperations(): List<PendingOperationEntity>
+
     @Query("DELETE FROM pending_operations WHERE id = :id")
     suspend fun delete(id: Long)
+
+    @Query("UPDATE pending_operations SET status = 'pending', lastError = NULL, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun retryById(id: Long, updatedAt: Long)
+
+    @Query("UPDATE pending_operations SET status = 'pending', lastError = NULL, updatedAt = :updatedAt WHERE status IN ('failed', 'permanent_failed')")
+    suspend fun retryAllFailed(updatedAt: Long)
+
+    @Query("DELETE FROM pending_operations WHERE status IN ('failed', 'permanent_failed')")
+    suspend fun clearFailed()
 }

@@ -37,6 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.mobilemail.data.model.MessageDetail
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.ui.theme.EmailShapes
+import com.mobilemail.ui.theme.EmailTypography
+import com.mobilemail.ui.theme.ExtendedTheme
 import java.util.regex.Pattern
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.ui.common.NotificationState
@@ -324,7 +327,7 @@ fun MessageContent(
     ) {
         Text(
             text = message.subject,
-            style = MaterialTheme.typography.headlineSmall,
+            style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(bottom = 8.dp)
         )
@@ -376,7 +379,7 @@ fun MessageContent(
 
         Text(
             text = dateFormat.format(message.date),
-            style = MaterialTheme.typography.bodySmall,
+            style = EmailTypography.emailTimestamp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 16.dp)
         )
@@ -450,11 +453,11 @@ private fun ConversationHeader(
                             onThreadMessageClick?.invoke(threadMessage.id)
                         },
                     color = if (isCurrent) {
-                        MaterialTheme.colorScheme.secondaryContainer
+                        ExtendedTheme.colors.threadHighlight
                     } else {
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)
+                        ExtendedTheme.colors.surfaceElevated
                     },
-                    shape = MaterialTheme.shapes.medium
+                    shape = EmailShapes.emailCard
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(
@@ -528,11 +531,12 @@ private fun ConversationMessageCard(
             .padding(bottom = 12.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = when {
-                isCurrent -> MaterialTheme.colorScheme.secondaryContainer
-                isExpanded -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.8f)
+                isCurrent -> ExtendedTheme.colors.threadHighlight
+                isExpanded -> ExtendedTheme.colors.surfaceElevated
+                else -> ExtendedTheme.colors.surfaceReading
             }
-        )
+        ),
+        shape = EmailShapes.emailCard
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -543,13 +547,13 @@ private fun ConversationMessageCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = message.from.name ?: message.from.email,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = EmailTypography.emailSenderUnread,
                         fontWeight = if (isCurrent || message.flags.unread) FontWeight.Bold else FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = recipientSummary(message),
-                        style = MaterialTheme.typography.bodySmall,
+                        style = EmailTypography.emailPreview,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = if (isExpanded) 3 else 1,
                         overflow = TextOverflow.Ellipsis
@@ -559,7 +563,7 @@ private fun ConversationMessageCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = dateFormat.format(message.date),
-                        style = MaterialTheme.typography.labelSmall,
+                        style = EmailTypography.emailTimestamp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (isCurrent) {
@@ -577,7 +581,7 @@ private fun ConversationMessageCard(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = message.subject,
-                style = MaterialTheme.typography.titleSmall,
+                style = EmailTypography.emailSubject,
                 fontWeight = FontWeight.Medium
             )
 
@@ -694,7 +698,7 @@ private fun MessageBodySection(
     } ?: message.body.text?.let { text ->
         ClickableTextWithLinks(
             text = text,
-            style = MaterialTheme.typography.bodyLarge,
+            style = EmailTypography.emailBody,
             modifier = Modifier.padding(vertical = 4.dp),
             context = context
         )
