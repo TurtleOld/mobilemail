@@ -34,9 +34,12 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavDeepLinkRequest
 import androidx.navigation.navOptions
+import com.mobilemail.notifications.PushMessageTarget
+import com.mobilemail.notifications.PushNavigationStore
 import com.mobilemail.ui.login.LoginScreen
 import com.mobilemail.ui.login.LoginViewModel
 import com.mobilemail.ui.messagedetail.MessageDetailScreen
@@ -99,6 +102,26 @@ class MainActivity : FragmentActivity() {
         return "messages/${Uri.encode(session.server)}/${Uri.encode(session.email)}/${Uri.encode(session.accountId)}"
     }
 
+    private fun buildMessageRoute(session: SavedSession, messageId: String): String {
+        return "message/${Uri.encode(session.server)}/${Uri.encode(session.email)}/${Uri.encode(session.accountId)}/${Uri.encode(messageId)}"
+    }
+
+    private fun matchesPushSession(target: PushMessageTarget, session: SavedSession): Boolean {
+        return (target.server == null || target.server == session.server) &&
+            (target.email == null || target.email == session.email) &&
+            (target.accountId == null || target.accountId == session.accountId)
+    }
+
+    private fun resolvePushSession(
+        target: PushMessageTarget,
+        currentSession: SavedSession?,
+        savedAccounts: List<SavedSession>
+    ): SavedSession? {
+        currentSession?.takeIf { matchesPushSession(target, it) }?.let { return it }
+        savedAccounts.firstOrNull { matchesPushSession(target, it) }?.let { return it }
+        return currentSession ?: savedAccounts.lastOrNull()
+    }
+
     private suspend fun logoutAccount(session: SavedSession): SavedSession? {
         tokenStore.clearTokens(session.server, session.email)
         return preferencesManager.removeSavedAccount(session.server, session.email)
@@ -113,7 +136,9 @@ class MainActivity : FragmentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
+                    val currentBackStackEntry by navController.currentBackStackEntryAsState()
                     val privacyScreenProtection by preferencesManager.privacyScreenProtection.collectAsState(initial = true)
+                    val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsState()
                     val startDestination = if (pinManager.isPinEnabled()) "pin-lock" else "login"
 
                     LaunchedEffect(privacyScreenProtection) {
@@ -121,6 +146,26 @@ class MainActivity : FragmentActivity() {
                             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
                         } else {
                             window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        }
+                    }
+
+                    LaunchedEffect(pendingPushTarget, currentBackStackEntry?.destination?.route) {
+                        val target = pendingPushTarget ?: return@LaunchedEffect
+                        val currentRoute = currentBackStackEntry?.destination?.route
+                        if (currentRoute == null || currentRoute == "pin-lock" || currentRoute == "messages/{server}/{email}/{accountId}") {
+                            return@LaunchedEffect
+                        }
+
+                        val activeSession = preferencesManager.getSavedSession()
+                        val savedAccounts = preferencesManager.getSavedAccounts()
+                        val resolvedSession = resolvePushSession(target, activeSession, savedAccounts) ?: return@LaunchedEffect
+
+                        if (activeSession != resolvedSession) {
+                            preferencesManager.setActiveSession(resolvedSession)
+                        }
+
+                        navController.navigate(buildMessagesRoute(resolvedSession)) {
+                            launchSingleTop = true
                         }
                     }
 
@@ -222,6 +267,7 @@ class MainActivity : FragmentActivity() {
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+                            val currentSession = remember(server, email, accountId) { SavedSession(server, email, accountId) }
                             val savedAccounts by preferencesManager.savedAccounts.collectAsState(initial = emptyList())
 
                             val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -255,6 +301,24 @@ class MainActivity : FragmentActivity() {
                                 key = "messages_${server}_${email}_${accountId}",
                                 factory = MessagesViewModelFactory(server, email, accountId, database, application)
                             )
+
+                            LaunchedEffect(pendingPushTarget, currentSession, savedAccounts) {
+                                val target = pendingPushTarget ?: return@LaunchedEffect
+                                val resolvedSession = resolvePushSession(target, currentSession, savedAccounts) ?: return@LaunchedEffect
+
+                                if (resolvedSession != currentSession) {
+                                    preferencesManager.setActiveSession(resolvedSession)
+                                    navController.navigate(buildMessagesRoute(resolvedSession)) {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                    return@LaunchedEffect
+                                }
+
+                                PushNavigationStore.clear(target)
+                                navController.navigate(buildMessageRoute(currentSession, target.messageId)) {
+                                    launchSingleTop = true
+                                }
+                            }
 
                             MessagesScreen(
                                 viewModel = viewModel,
