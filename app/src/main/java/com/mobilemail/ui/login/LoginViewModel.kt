@@ -1,6 +1,7 @@
 package com.mobilemail.ui.login
 
 import android.app.Application
+import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -368,6 +369,7 @@ class LoginViewModel(
                         "Сохранение сессии: server=$server, accountEmail=$accountEmail, tempEmail=$tempEmail, accountId=${account.id}"
                     )
                     preferencesManager.saveSession(server, accountEmail, account.id)
+                    bringAppToForeground()
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         account = account,
@@ -430,6 +432,21 @@ class LoginViewModel(
         )
     }
     
+    private fun bringAppToForeground() {
+        try {
+            val pkg = app.packageName
+            val launchIntent = app.packageManager.getLaunchIntentForPackage(pkg) ?: return
+            launchIntent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+            app.startActivity(launchIntent)
+        } catch (e: Exception) {
+            Log.w("LoginViewModel", "Не удалось вернуть приложение на передний план", e)
+        }
+    }
+
     fun cancelOAuthLogin() {
         deviceFlowClient?.cancel()
         _uiState.value = _uiState.value.copy(

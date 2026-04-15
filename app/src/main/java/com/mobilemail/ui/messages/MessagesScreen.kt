@@ -756,7 +756,7 @@ fun MessageItem(
                 containerColor = when {
                     isSelected -> ExtendedTheme.colors.selectionHighlight
                     isActive -> ExtendedTheme.colors.threadHighlight
-                    isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
+                    isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
                     else -> ExtendedTheme.colors.surfaceReading
                 }
             )
@@ -764,9 +764,22 @@ fun MessageItem(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.Top
+                    .height(IntrinsicSize.Min)
             ) {
+                if (isUnread && !isSelected) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(4.dp)
+                            .background(ExtendedTheme.colors.unreadBadge)
+                    )
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.Top
+                ) {
                 if (isSelected) {
                     Icon(
                         Icons.Default.CheckCircle,
@@ -789,17 +802,18 @@ fun MessageItem(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             if (isUnread && !isSelected) {
-                                Icon(
-                                    Icons.Default.Email,
-                                    contentDescription = "Непрочитанное",
-                                    modifier = Modifier.size(16.dp),
-                                    tint = MaterialTheme.colorScheme.primary
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(androidx.compose.foundation.shape.CircleShape)
+                                        .background(ExtendedTheme.colors.unreadBadge)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
                             Text(
                                 text = message.from.name ?: message.from.email,
                                 style = if (isUnread) EmailTypography.emailSenderUnread else EmailTypography.emailSender,
+                                color = if (isUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -808,8 +822,8 @@ fun MessageItem(
                         Text(
                             text = dateFormat.format(message.date),
                             style = EmailTypography.emailTimestamp,
-                            fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (isUnread) ExtendedTheme.colors.unreadBadge else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
@@ -851,6 +865,7 @@ fun MessageItem(
                             )
                         }
                     }
+                }
                 }
             }
         }

@@ -66,6 +66,7 @@ class SearchRepository(
             ?: session.accounts.keys.firstOrNull()
             ?: throw IllegalStateException("AccountId не найден")
         
+        val trimmedQuery = query.trim()
         val conditions = mutableListOf<Map<String, Any>>()
         if (folderId != null) {
             conditions += mapOf("inMailbox" to folderId)
@@ -82,19 +83,29 @@ class SearchRepository(
         if (importantOnly) {
             conditions += mapOf("hasKeyword" to "\$important")
         }
+        if (trimmedQuery.isNotBlank()) {
+            conditions += mapOf("text" to trimmedQuery)
+        }
+        if (senderQuery.isNotBlank()) {
+            conditions += mapOf("from" to senderQuery.trim())
+        }
+        val dateFrom = dateRangeStart(dateRange)
+        if (dateFrom != null) {
+            conditions += mapOf("after" to dateFrom)
+        }
         val filter = when (conditions.size) {
             0 -> null
             1 -> conditions.first()
             else -> mapOf("operator" to "AND", "conditions" to conditions)
         }
-        
+
         val queryResult = jmapClient.queryEmails(
             mailboxId = folderId,
             accountId = accountId,
             position = position,
             limit = limit,
             filter = filter,
-            searchText = query.takeIf { it.isNotBlank() }
+            searchText = null
         )
         
         if (queryResult.ids.isEmpty()) {
@@ -173,6 +184,20 @@ class SearchRepository(
         val normalized = senderQuery.trim().lowercase()
         return (message.from.name ?: "").lowercase().contains(normalized) ||
             message.from.email.lowercase().contains(normalized)
+    }
+
+    private fun dateRangeStart(dateRange: DateRange): String? {
+        if (dateRange == DateRange.ANY) return null
+        val day = 24L * 60L * 60L * 1000L
+        val now = System.currentTimeMillis()
+        val fromMillis = when (dateRange) {
+            DateRange.ANY -> return null
+            DateRange.TODAY -> now - day
+            DateRange.LAST_7_DAYS -> now - day * 7
+            DateRange.LAST_30_DAYS -> now - day * 30
+            DateRange.LAST_365_DAYS -> now - day * 365
+        }
+        return Instant.ofEpochMilli(fromMillis).toString()
     }
 
     private fun matchesDateRange(date: Date, dateRange: DateRange): Boolean {
