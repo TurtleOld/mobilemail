@@ -34,7 +34,10 @@ data class LoginUiState(
     val oauthExpiresAt: Long? = null
 )
 
-class LoginViewModel(application: Application) : AndroidViewModel(application) {
+class LoginViewModel(
+    application: Application,
+    private val autoLoginEnabled: Boolean = true
+) : AndroidViewModel(application) {
     private val app = getApplication<Application>()
     private val preferencesManager = PreferencesManager(app)
     private val tokenStore = TokenStore(app)
@@ -49,25 +52,34 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     init {
-        viewModelScope.launch {
-            val savedSession = preferencesManager.getSavedSession()
-            if (savedSession != null) {
-                val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
-                if (tokens != null && tokens.isValid()) {
-                    Log.d("LoginViewModel", "Найдена сохраненная OAuth сессия: ${savedSession.email}")
-                    _uiState.value = _uiState.value.copy(server = savedSession.server)
-                    autoOAuthLogin(savedSession.server, savedSession.email, savedSession.accountId)
-                } else {
-                    Log.d("LoginViewModel", "Сохраненная сессия найдена, но OAuth токены отсутствуют")
-                    _uiState.value = _uiState.value.copy(server = savedSession.server)
-                }
-            } else {
+        if (!autoLoginEnabled) {
+            viewModelScope.launch {
                 val savedServer = preferencesManager.getServerUrl()
                 if (!savedServer.isNullOrBlank()) {
                     _uiState.value = _uiState.value.copy(server = savedServer)
-                    Log.d("LoginViewModel", "Загружен сохраненный адрес сервера: $savedServer")
+                }
+            }
+        } else {
+            viewModelScope.launch {
+                val savedSession = preferencesManager.getSavedSession()
+                if (savedSession != null) {
+                    val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
+                    if (tokens != null && tokens.isValid()) {
+                        Log.d("LoginViewModel", "Найдена сохраненная OAuth сессия: ${savedSession.email}")
+                        _uiState.value = _uiState.value.copy(server = savedSession.server)
+                        autoOAuthLogin(savedSession.server, savedSession.email, savedSession.accountId)
+                    } else {
+                        Log.d("LoginViewModel", "Сохраненная сессия найдена, но OAuth токены отсутствуют")
+                        _uiState.value = _uiState.value.copy(server = savedSession.server)
+                    }
                 } else {
-                    Log.d("LoginViewModel", "Сохраненный адрес сервера не найден")
+                    val savedServer = preferencesManager.getServerUrl()
+                    if (!savedServer.isNullOrBlank()) {
+                        _uiState.value = _uiState.value.copy(server = savedServer)
+                        Log.d("LoginViewModel", "Загружен сохраненный адрес сервера: $savedServer")
+                    } else {
+                        Log.d("LoginViewModel", "Сохраненный адрес сервера не найден")
+                    }
                 }
             }
         }
@@ -130,7 +142,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                             error = ErrorMapper.mapException(e)
                         )
                         if (e is com.mobilemail.data.jmap.OAuthTokenExpiredException) {
-                            preferencesManager.clearSession()
+                            preferencesManager.removeSavedAccount(server, email)
                             tokenStore.clearTokens(server, email)
                         }
                     },
@@ -149,7 +161,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     error = ErrorMapper.mapException(e)
                 )
                 if (e is com.mobilemail.data.jmap.OAuthTokenExpiredException) {
-                    preferencesManager.clearSession()
+                    preferencesManager.removeSavedAccount(server, email)
                     tokenStore.clearTokens(server, email)
                 }
             }

@@ -3,6 +3,7 @@ package com.mobilemail
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -94,6 +95,15 @@ class MainActivity : FragmentActivity() {
         return buildComposeRoute(server, email, accountId, token)
     }
 
+    private fun buildMessagesRoute(session: SavedSession): String {
+        return "messages/${Uri.encode(session.server)}/${Uri.encode(session.email)}/${Uri.encode(session.accountId)}"
+    }
+
+    private suspend fun logoutAccount(session: SavedSession): SavedSession? {
+        tokenStore.clearTokens(session.server, session.email)
+        return preferencesManager.removeSavedAccount(session.server, session.email)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -103,7 +113,16 @@ class MainActivity : FragmentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     val navController = rememberNavController()
+                    val privacyScreenProtection by preferencesManager.privacyScreenProtection.collectAsState(initial = true)
                     val startDestination = if (pinManager.isPinEnabled()) "pin-lock" else "login"
+
+                    LaunchedEffect(privacyScreenProtection) {
+                        if (privacyScreenProtection) {
+                            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        } else {
+                            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+                        }
+                    }
 
                     NavHost(
                         navController = navController,
@@ -122,7 +141,8 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onLogout = {
                                     activityScope.launch {
-                                        preferencesManager.clearSession()
+                                        preferencesManager.clearAllSessions()
+                                        tokenStore.clearAllTokens()
                                         JmapOAuthClient.clearCache()
                                         JmapClient.clearCache()
                                         navController.navigate("login") {
@@ -136,25 +156,23 @@ class MainActivity : FragmentActivity() {
                         composable("login") {
                             // Автовход через OAuth (только после прохождения PIN, если он включён)
                             LaunchedEffect(Unit) {
-                                val savedSession = preferencesManager.getSavedSession()
-                                if (savedSession != null) {
-                                    val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
-                                    if (tokens != null) {
-                                        val hasRefreshToken = tokens.refreshToken != null
-                                        val isAccessTokenValid = tokens.isValid()
-                                        if (isAccessTokenValid || hasRefreshToken) {
-                                            val route = "messages/${Uri.encode(savedSession.server)}/${Uri.encode(savedSession.email)}/${Uri.encode(savedSession.accountId)}"
-                                            navController.navigate(route) {
-                                                popUpTo(0) { inclusive = true }
-                                            }
-                                        } else {
-                                            android.util.Log.w("MainActivity", "OAuth токены истекли и нет refresh token, требуется повторная авторизация")
-                                            preferencesManager.clearSession()
-                                            tokenStore.clearTokens(savedSession.server, savedSession.email)
-                                        }
-                                    } else {
-                                        android.util.Log.w("MainActivity", "OAuth токены не найдены, авто-вход отключен")
-                                        preferencesManager.clearSession()
+                                val activeSession = preferencesManager.getSavedSession()
+                                val savedAccounts = preferencesManager.getSavedAccounts()
+                                val orderedCandidates = buildList {
+                                    if (activeSession != null) add(activeSession)
+                                    addAll(savedAccounts.filterNot {
+                                        it.server == activeSession?.server && it.email == activeSession?.email
+                                    })
+                                }
+                                val validSession = orderedCandidates.firstOrNull { session ->
+                                    val tokens = tokenStore.getTokens(session.server, session.email)
+                                    tokens != null && (tokens.isValid() || tokens.refreshToken != null)
+                                }
+
+                                if (validSession != null) {
+                                    preferencesManager.setActiveSession(validSession)
+                                    navController.navigate(buildMessagesRoute(validSession)) {
+                                        popUpTo(0) { inclusive = true }
                                     }
                                 }
                             }
@@ -163,7 +181,7 @@ class MainActivity : FragmentActivity() {
                                 factory = object : ViewModelProvider.Factory {
                                     override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
                                         @Suppress("UNCHECKED_CAST")
-                                        return LoginViewModel(application) as T
+                                        return LoginViewModel(application, autoLoginEnabled = true) as T
                                     }
                                 }
                             )
@@ -180,10 +198,31 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
+                        composable("add-account") {
+                            val viewModel: LoginViewModel = viewModel(
+                                key = "add_account_login",
+                                factory = object : ViewModelProvider.Factory {
+                                    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                                        @Suppress("UNCHECKED_CAST")
+                                        return LoginViewModel(application, autoLoginEnabled = false) as T
+                                    }
+                                }
+                            )
+                            LoginScreen(
+                                viewModel = viewModel,
+                                onLoginSuccess = { server, email, _, accountId ->
+                                    navController.navigate(buildMessagesRoute(SavedSession(server, email, accountId))) {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
+
                         composable("messages/{server}/{email}/{accountId}") { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+                            val savedAccounts by preferencesManager.savedAccounts.collectAsState(initial = emptyList())
 
                             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                                 ActivityResultContracts.RequestPermission()
@@ -219,6 +258,8 @@ class MainActivity : FragmentActivity() {
 
                             MessagesScreen(
                                 viewModel = viewModel,
+                                accounts = savedAccounts,
+                                activeAccountEmail = email,
                                 onMessageClick = { messageId ->
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
@@ -291,6 +332,19 @@ class MainActivity : FragmentActivity() {
                                 onComposeClick = {
                                     navController.navigate(buildComposeRoute(server, email, accountId))
                                 },
+                                onAddAccountClick = {
+                                    navController.navigate("add-account")
+                                },
+                                onSwitchAccount = { session ->
+                                    if (session.server != server || session.email != email || session.accountId != accountId) {
+                                        activityScope.launch {
+                                            preferencesManager.setActiveSession(session)
+                                            navController.navigate(buildMessagesRoute(session)) {
+                                                popUpTo(0) { inclusive = true }
+                                            }
+                                        }
+                                    }
+                                },
                                 onOutboxClick = {
                                     val encodedServer = Uri.encode(server)
                                     val encodedEmail = Uri.encode(email)
@@ -304,11 +358,11 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onLogout = {
                                     activityScope.launch {
-                                        preferencesManager.clearSession()
-                                        tokenStore.clearTokens(server, email)
+                                        val nextSession = logoutAccount(SavedSession(server, email, accountId))
                                         JmapOAuthClient.clearCache()
                                         JmapClient.clearCache()
-                                        navController.navigate("login") {
+                                        val target = nextSession?.let { buildMessagesRoute(it) } ?: "login"
+                                        navController.navigate(target) {
                                             popUpTo(0) { inclusive = true }
                                         }
                                     }
@@ -359,8 +413,13 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("outbox/{server}/{email}/{accountId}") {
-                            val viewModel: OutboxViewModel = viewModel(factory = OutboxViewModelFactory(application))
+                        composable("outbox/{server}/{email}/{accountId}") { backStackEntry ->
+                            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
+                            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
+                            val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+                            val viewModel: OutboxViewModel = viewModel(
+                                factory = OutboxViewModelFactory(application, server, email, accountId)
+                            )
                             OutboxScreen(
                                 viewModel = viewModel,
                                 onBack = { navController.popBackStack() }

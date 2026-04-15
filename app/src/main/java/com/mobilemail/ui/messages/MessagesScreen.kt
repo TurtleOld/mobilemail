@@ -56,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.ui.theme.EmailShapes
 import com.mobilemail.ui.theme.EmailTypography
 import com.mobilemail.ui.theme.ExtendedTheme
@@ -72,8 +73,12 @@ fun MessagesScreen(
     viewModel: MessagesViewModel,
     onMessageClick: (String) -> Unit,
     detailPane: @Composable (String?) -> Unit = {},
+    accounts: List<SavedSession> = emptyList(),
+    activeAccountEmail: String = "",
     onSearchClick: () -> Unit = {},
     onComposeClick: () -> Unit = {},
+    onAddAccountClick: () -> Unit = {},
+    onSwitchAccount: (SavedSession) -> Unit = {},
     onOutboxClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
     onLogout: () -> Unit = {}
@@ -167,11 +172,25 @@ fun MessagesScreen(
 
     val navigationContent: @Composable () -> Unit = {
         MailNavigationContent(
+            accounts = accounts,
+            activeAccountEmail = activeAccountEmail,
             folders = uiState.folders,
             selectedFolder = uiState.selectedFolder,
             pendingQueueCount = uiState.pendingQueueCount,
             queueAttentionCount = uiState.queueAttentionCount,
             onComposeClick = onComposeClick,
+            onAddAccountClick = {
+                if (!isExpandedLayout) {
+                    scope.launch { drawerState.close() }
+                }
+                onAddAccountClick()
+            },
+            onSwitchAccount = { account ->
+                if (!isExpandedLayout) {
+                    scope.launch { drawerState.close() }
+                }
+                onSwitchAccount(account)
+            },
             onOutboxClick = {
                 if (!isExpandedLayout) {
                     scope.launch { drawerState.close() }
@@ -326,31 +345,60 @@ fun MessagesScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MailNavigationContent(
+    accounts: List<SavedSession>,
+    activeAccountEmail: String,
     folders: List<com.mobilemail.data.model.Folder>,
     selectedFolder: com.mobilemail.data.model.Folder?,
     pendingQueueCount: Int,
     queueAttentionCount: Int,
     onComposeClick: () -> Unit,
+    onAddAccountClick: () -> Unit,
+    onSwitchAccount: (SavedSession) -> Unit,
     onOutboxClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onFolderSelected: (com.mobilemail.data.model.Folder) -> Unit
 ) {
+    var showAccountMenu by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxHeight()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp, vertical = 20.dp)
+                .clickable { showAccountMenu = true }
         ) {
             Text(
-                text = "MobileMail",
+                text = accounts.firstOrNull { it.email == activeAccountEmail }?.email ?: "MobileMail",
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.SemiBold
             )
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Focused mail for thoughtful reading",
+                text = "Переключить аккаунт",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        DropdownMenu(
+            expanded = showAccountMenu,
+            onDismissRequest = { showAccountMenu = false }
+        ) {
+            accounts.forEach { account ->
+                DropdownMenuItem(
+                    text = { Text(account.email) },
+                    onClick = {
+                        showAccountMenu = false
+                        onSwitchAccount(account)
+                    }
+                )
+            }
+            Divider()
+            DropdownMenuItem(
+                text = { Text("Добавить аккаунт") },
+                onClick = {
+                    showAccountMenu = false
+                    onAddAccountClick()
+                }
             )
         }
 

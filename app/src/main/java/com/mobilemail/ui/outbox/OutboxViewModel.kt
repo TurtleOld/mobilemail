@@ -21,20 +21,28 @@ data class OutboxUiState(
     val isProcessing: Boolean = false
 )
 
-class OutboxViewModel(application: Application) : AndroidViewModel(application) {
+class OutboxViewModel(
+    application: Application,
+    private val server: String,
+    private val email: String,
+    private val accountId: String
+) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(OutboxUiState())
     val uiState: StateFlow<OutboxUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
             OfflineQueueManager.observeAll(getApplication()).collect { operations ->
+                val accountOperations = operations.filter {
+                    it.server == server && it.email == email && it.accountId == accountId
+                }
                 val stats = OfflineQueueStats(
-                    pendingCount = operations.count { it.status == OfflineQueueManager.STATUS_PENDING },
-                    failedCount = operations.count { it.status == OfflineQueueManager.STATUS_FAILED },
-                    permanentFailedCount = operations.count { it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED },
-                    totalCount = operations.size
+                    pendingCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_PENDING },
+                    failedCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_FAILED },
+                    permanentFailedCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED },
+                    totalCount = accountOperations.size
                 )
-                _uiState.value = _uiState.value.copy(operations = operations, stats = stats)
+                _uiState.value = _uiState.value.copy(operations = accountOperations, stats = stats)
             }
         }
     }

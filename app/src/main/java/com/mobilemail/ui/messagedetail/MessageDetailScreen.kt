@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.mobilemail.data.model.MessageDetail
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.ui.theme.EmailShapes
 import com.mobilemail.ui.theme.EmailTypography
 import com.mobilemail.ui.theme.ExtendedTheme
@@ -636,6 +637,12 @@ private fun MessageBodySection(
     context: Context,
     isExpandedLayout: Boolean
 ) {
+    val preferencesManager = remember(context) { PreferencesManager(context) }
+    val blockRemoteContent by produceState(initialValue = true, context) {
+        value = preferencesManager.isBlockRemoteContentEnabled()
+    }
+    var allowRemoteContentForMessage by remember(message.id) { mutableStateOf(false) }
+
     message.body.html?.let { html ->
         val adaptedHtml = if (html.contains("<head>", ignoreCase = true)) {
             html.replace(
@@ -651,6 +658,40 @@ private fun MessageBodySection(
             )
         } else {
             "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"><style>body { margin: 0; padding: 8px; word-wrap: break-word; } img { max-width: 100%; height: auto; }</style></head><body>$html</body></html>"
+        }
+
+        if (blockRemoteContent && !allowRemoteContentForMessage) {
+            ElevatedCard(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 12.dp),
+                colors = CardDefaults.elevatedCardColors(containerColor = ExtendedTheme.colors.chromeMuted)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Удалённый контент заблокирован",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Text(
+                            text = "Внешние изображения и трекеры отключены для защиты конфиденциальности.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    TextButton(onClick = { allowRemoteContentForMessage = true }) {
+                        Text("Показать")
+                    }
+                }
+            }
         }
 
         AndroidView(
@@ -685,11 +726,16 @@ private fun MessageBodySection(
                         textZoom = if (isExpandedLayout) 100 else 95
                         allowFileAccess = false
                         allowContentAccess = false
-                        blockNetworkImage = true
-                        blockNetworkLoads = true
+                        blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
+                        blockNetworkLoads = blockRemoteContent && !allowRemoteContentForMessage
                     }
                     loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
                 }
+            },
+            update = { webView ->
+                webView.settings.blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
+                webView.settings.blockNetworkLoads = blockRemoteContent && !allowRemoteContentForMessage
+                webView.loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
             },
             modifier = Modifier
                 .fillMaxWidth()

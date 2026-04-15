@@ -1,5 +1,4 @@
 package com.mobilemail.data.preferences
-import android.util.Log
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
@@ -11,6 +10,7 @@ import com.mobilemail.data.oauth.OAuthServerMetadata
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
 import org.json.JSONObject
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
@@ -21,7 +21,10 @@ class PreferencesManager(private val context: Context) {
         private val SAVED_EMAIL_KEY = stringPreferencesKey("saved_email")
         private val SAVED_ACCOUNT_ID_KEY = stringPreferencesKey("saved_account_id")
         private val SESSION_SAVED_KEY = booleanPreferencesKey("session_saved")
+        private val SAVED_ACCOUNTS_KEY = stringPreferencesKey("saved_accounts")
         private val NOTIFICATION_PERMISSION_REQUESTED_KEY = booleanPreferencesKey("notification_permission_requested")
+        private val BLOCK_REMOTE_CONTENT_KEY = booleanPreferencesKey("block_remote_content")
+        private val PRIVACY_SCREEN_PROTECTION_KEY = booleanPreferencesKey("privacy_screen_protection")
     }
 
     private fun signatureKey(server: String, email: String) =
@@ -29,6 +32,10 @@ class PreferencesManager(private val context: Context) {
 
     val serverUrl: Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[SERVER_URL_KEY]
+    }
+
+    val savedAccounts: Flow<List<SavedSession>> = context.dataStore.data.map { preferences ->
+        parseAccounts(preferences[SAVED_ACCOUNTS_KEY])
     }
 
     suspend fun saveServerUrl(url: String) {
@@ -47,6 +54,32 @@ class PreferencesManager(private val context: Context) {
             preferences[SAVED_EMAIL_KEY] = email
             preferences[SAVED_ACCOUNT_ID_KEY] = accountId
             preferences[SESSION_SAVED_KEY] = true
+            val updatedAccounts = parseAccounts(preferences[SAVED_ACCOUNTS_KEY]).toMutableList().apply {
+                removeAll { it.server == server && it.email == email }
+                add(SavedSession(server, email, accountId))
+            }
+            preferences[SAVED_ACCOUNTS_KEY] = serializeAccounts(updatedAccounts)
+        }
+    }
+
+    suspend fun getSavedAccounts(): List<SavedSession> {
+        val preferences = context.dataStore.data.first()
+        return parseAccounts(preferences[SAVED_ACCOUNTS_KEY])
+    }
+
+    suspend fun setActiveSession(session: SavedSession?) {
+        context.dataStore.edit { preferences ->
+            if (session == null) {
+                preferences.remove(SAVED_EMAIL_KEY)
+                preferences.remove(SAVED_ACCOUNT_ID_KEY)
+                preferences.remove(SERVER_URL_KEY)
+                preferences[SESSION_SAVED_KEY] = false
+            } else {
+                preferences[SERVER_URL_KEY] = session.server
+                preferences[SAVED_EMAIL_KEY] = session.email
+                preferences[SAVED_ACCOUNT_ID_KEY] = session.accountId
+                preferences[SESSION_SAVED_KEY] = true
+            }
         }
     }
 
@@ -80,6 +113,73 @@ class PreferencesManager(private val context: Context) {
             preferences.remove(SAVED_ACCOUNT_ID_KEY)
             preferences.remove(SERVER_URL_KEY)
             preferences[SESSION_SAVED_KEY] = false
+        }
+    }
+
+    suspend fun removeSavedAccount(server: String, email: String): SavedSession? {
+        var nextActive: SavedSession? = null
+        context.dataStore.edit { preferences ->
+            val updatedAccounts = parseAccounts(preferences[SAVED_ACCOUNTS_KEY])
+                .filterNot { it.server == server && it.email == email }
+            preferences[SAVED_ACCOUNTS_KEY] = serializeAccounts(updatedAccounts)
+
+            val currentServer = preferences[SERVER_URL_KEY]
+            val currentEmail = preferences[SAVED_EMAIL_KEY]
+            val removingCurrent = currentServer == server && currentEmail == email
+            nextActive = updatedAccounts.lastOrNull()
+
+            if (removingCurrent) {
+                if (nextActive != null) {
+                    preferences[SERVER_URL_KEY] = nextActive!!.server
+                    preferences[SAVED_EMAIL_KEY] = nextActive!!.email
+                    preferences[SAVED_ACCOUNT_ID_KEY] = nextActive!!.accountId
+                    preferences[SESSION_SAVED_KEY] = true
+                } else {
+                    preferences.remove(SAVED_EMAIL_KEY)
+                    preferences.remove(SAVED_ACCOUNT_ID_KEY)
+                    preferences.remove(SERVER_URL_KEY)
+                    preferences[SESSION_SAVED_KEY] = false
+                }
+            }
+        }
+        return nextActive
+    }
+
+    suspend fun clearAllSessions() {
+        context.dataStore.edit { preferences ->
+            preferences.remove(SAVED_EMAIL_KEY)
+            preferences.remove(SAVED_ACCOUNT_ID_KEY)
+            preferences.remove(SERVER_URL_KEY)
+            preferences.remove(SAVED_ACCOUNTS_KEY)
+            preferences[SESSION_SAVED_KEY] = false
+        }
+    }
+
+    val blockRemoteContent: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[BLOCK_REMOTE_CONTENT_KEY] ?: true
+    }
+
+    suspend fun isBlockRemoteContentEnabled(): Boolean {
+        return context.dataStore.data.first()[BLOCK_REMOTE_CONTENT_KEY] ?: true
+    }
+
+    suspend fun setBlockRemoteContent(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[BLOCK_REMOTE_CONTENT_KEY] = enabled
+        }
+    }
+
+    val privacyScreenProtection: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[PRIVACY_SCREEN_PROTECTION_KEY] ?: true
+    }
+
+    suspend fun isPrivacyScreenProtectionEnabled(): Boolean {
+        return context.dataStore.data.first()[PRIVACY_SCREEN_PROTECTION_KEY] ?: true
+    }
+
+    suspend fun setPrivacyScreenProtection(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[PRIVACY_SCREEN_PROTECTION_KEY] = enabled
         }
     }
 
@@ -118,34 +218,25 @@ class PreferencesManager(private val context: Context) {
     suspend fun getOAuthMetadata(server: String): OAuthServerMetadata? {
         val key = stringPreferencesKey("oauth_metadata_$server")
         val jsonStr = context.dataStore.data.first()[key] ?: run {
-            Log.w("PreferencesManager", "No cached OAuth metadata found for server: $server")
             return null
         }
-
-        Log.d("PreferencesManager", "Found cached OAuth metadata for server: $server")
-        Log.d("PreferencesManager", "Cached metadata JSON: $jsonStr")
 
         return try {
             val json = JSONObject(jsonStr)
             val issuer = json.getString("issuer")
             val deviceAuthorizationEndpoint = json.getString("deviceAuthorizationEndpoint")
             val tokenEndpoint = json.getString("tokenEndpoint")
-            val authorizationEndpoint = json.optString("authorizationEndpoint", null)
-            val registrationEndpoint = json.optString("registrationEndpoint", null)
-            val introspectionEndpoint = json.optString("introspectionEndpoint", null)
+            val authorizationEndpoint = json.optNullableString("authorizationEndpoint")
+            val registrationEndpoint = json.optNullableString("registrationEndpoint")
+            val introspectionEndpoint = json.optNullableString("introspectionEndpoint")
             val grantTypesSupported = json.optString("grantTypesSupported", "").split(",").filter { it.isNotBlank() }
-            val responseTypesSupported = json.optString("responseTypesSupported", null)?.split(",")?.filter { it.isNotBlank() }
-            val scopesSupported = json.optString("scopesSupported", null)?.split(",")?.filter { it.isNotBlank() }
+            val responseTypesSupported = json.optNullableString("responseTypesSupported")?.split(",")?.filter { it.isNotBlank() }
+            val scopesSupported = json.optNullableString("scopesSupported")?.split(",")?.filter { it.isNotBlank() }
 
             // Validate that critical endpoints are present
             if (deviceAuthorizationEndpoint.isBlank() || tokenEndpoint.isBlank()) {
-                Log.w("PreferencesManager", "Cached OAuth metadata is incomplete - missing critical endpoints")
-                Log.w("PreferencesManager", "Device auth endpoint: '$deviceAuthorizationEndpoint'")
-                Log.w("PreferencesManager", "Token endpoint: '$tokenEndpoint'")
                 return null
             }
-
-            Log.d("PreferencesManager", "Cached OAuth metadata is valid and complete")
             OAuthServerMetadata(
                 issuer = issuer,
                 deviceAuthorizationEndpoint = deviceAuthorizationEndpoint,
@@ -158,7 +249,6 @@ class PreferencesManager(private val context: Context) {
                 scopesSupported = scopesSupported
             )
         } catch (e: Exception) {
-            Log.e("PreferencesManager", "Error parsing cached OAuth metadata", e)
             null
         }
     }
@@ -169,3 +259,40 @@ data class SavedSession(
     val email: String,
     val accountId: String
 )
+
+private fun parseAccounts(raw: String?): List<SavedSession> {
+    if (raw.isNullOrBlank()) return emptyList()
+    return runCatching {
+        val array = JSONArray(raw)
+        buildList {
+            for (index in 0 until array.length()) {
+                val item = array.getJSONObject(index)
+                val server = item.optString("server")
+                val email = item.optString("email")
+                val accountId = item.optString("accountId")
+                if (server.isNotBlank() && email.isNotBlank() && accountId.isNotBlank()) {
+                    add(SavedSession(server, email, accountId))
+                }
+            }
+        }
+    }.getOrDefault(emptyList())
+}
+
+private fun serializeAccounts(accounts: List<SavedSession>): String {
+    return JSONArray().apply {
+        accounts.forEach { account ->
+            put(
+                JSONObject().apply {
+                    put("server", account.server)
+                    put("email", account.email)
+                    put("accountId", account.accountId)
+                }
+            )
+        }
+    }.toString()
+}
+
+private fun JSONObject.optNullableString(key: String): String? {
+    val value = optString(key, "")
+    return value.takeIf { it.isNotBlank() }
+}

@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Card
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -55,9 +56,13 @@ fun SettingsScreen(
     val scope = rememberCoroutineScope()
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var signature by remember { mutableStateOf("") }
+    var blockRemoteContent by remember { mutableStateOf(true) }
+    var privacyScreenProtection by remember { mutableStateOf(true) }
 
     LaunchedEffect(server, email) {
         signature = preferencesManager.getSignature(server, email).orEmpty()
+        blockRemoteContent = preferencesManager.isBlockRemoteContentEnabled()
+        privacyScreenProtection = preferencesManager.isPrivacyScreenProtectionEnabled()
     }
 
     Scaffold(
@@ -89,6 +94,22 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     SecuritySection(onPinSetupClick = onPinSetupClick)
+                    PrivacySection(
+                        blockRemoteContent = blockRemoteContent,
+                        privacyScreenProtection = privacyScreenProtection,
+                        onBlockRemoteContentChange = { enabled ->
+                            blockRemoteContent = enabled
+                            scope.launch {
+                                preferencesManager.setBlockRemoteContent(enabled)
+                            }
+                        },
+                        onPrivacyScreenProtectionChange = { enabled ->
+                            privacyScreenProtection = enabled
+                            scope.launch {
+                                preferencesManager.setPrivacyScreenProtection(enabled)
+                            }
+                        }
+                    )
                 }
                 Column(
                     modifier = Modifier.weight(1.1f),
@@ -112,6 +133,22 @@ fun SettingsScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 SecuritySection(onPinSetupClick = onPinSetupClick)
+                PrivacySection(
+                    blockRemoteContent = blockRemoteContent,
+                    privacyScreenProtection = privacyScreenProtection,
+                    onBlockRemoteContentChange = { enabled ->
+                        blockRemoteContent = enabled
+                        scope.launch {
+                            preferencesManager.setBlockRemoteContent(enabled)
+                        }
+                    },
+                    onPrivacyScreenProtectionChange = { enabled ->
+                        privacyScreenProtection = enabled
+                        scope.launch {
+                            preferencesManager.setPrivacyScreenProtection(enabled)
+                        }
+                    }
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 SignatureSection(
                     signature = signature,
@@ -125,6 +162,62 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun PrivacySection(
+    blockRemoteContent: Boolean,
+    privacyScreenProtection: Boolean,
+    onBlockRemoteContentChange: (Boolean) -> Unit,
+    onPrivacyScreenProtectionChange: (Boolean) -> Unit
+) {
+    Text(
+        text = "Конфиденциальность",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium
+    )
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(vertical = 8.dp)) {
+            PrivacyToggleRow(
+                title = "Блокировать удалённый контент",
+                subtitle = "Не загружать внешние изображения и трекеры в письмах",
+                checked = blockRemoteContent,
+                onCheckedChange = onBlockRemoteContentChange
+            )
+            PrivacyToggleRow(
+                title = "Защита экрана приложения",
+                subtitle = "Скрывать содержимое приложения в переключателе задач и на скриншотах",
+                checked = privacyScreenProtection,
+                onCheckedChange = onPrivacyScreenProtectionChange
+            )
+        }
+    }
+}
+
+@Composable
+private fun PrivacyToggleRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
 
