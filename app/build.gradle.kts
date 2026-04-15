@@ -56,7 +56,7 @@ android {
 
     signingConfigs {
     create("release") {
-        storeFile = file("../release/mobilemail.jks")
+        storeFile = file("../.keystore/release.jks")
         storePassword = secret("KEYSTORE_PASSWORD")
         keyAlias = secret("KEY_ALIAS")
         keyPassword = secret("KEY_PASSWORD")
