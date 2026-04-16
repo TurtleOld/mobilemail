@@ -286,6 +286,7 @@ fun MessagesScreen(
                     } else if (isExpandedLayout) {
                         viewModel.selectMessage(messageId)
                     } else {
+                        viewModel.updateMessageReadStatus(messageId, isUnread = false)
                         onMessageClick(messageId)
                     }
                 },

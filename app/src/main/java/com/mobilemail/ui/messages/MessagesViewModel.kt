@@ -320,6 +320,12 @@ class MessagesViewModel(
 
     fun selectMessage(messageId: String?) {
         _uiState.value = _uiState.value.copy(selectedMessageId = messageId)
+        if (messageId != null) {
+            val selectedMessage = _uiState.value.messages.find { it.id == messageId }
+            if (selectedMessage?.flags?.unread == true) {
+                updateMessageReadStatus(messageId, isUnread = false)
+            }
+        }
     }
 
     fun toggleMessageSelection(messageId: String) {
@@ -530,6 +536,7 @@ class MessagesViewModel(
             messages = currentState.messages.filterNot { it.id in messageIds },
             selectedMessageIds = currentState.selectedMessageIds - messageIds,
             selectedMessageId = currentState.selectedMessageId.takeIf { it !in messageIds },
+            hiddenMessageIds = currentState.hiddenMessageIds + messageIds,
             selectedFolder = updatedSelectedFolder,
             folders = updatedFolders,
             notification = NotificationState.Snackbar(
