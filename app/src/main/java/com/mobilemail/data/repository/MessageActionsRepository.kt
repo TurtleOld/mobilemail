@@ -7,13 +7,21 @@ import com.mobilemail.data.jmap.JmapApi
 class MessageActionsRepository(
     private val jmapClient: JmapApi
 ) {
+    private fun requireSuccess(success: Boolean, actionName: String): Boolean {
+        check(success) { "JMAP operation failed: $actionName" }
+        return true
+    }
+
     suspend fun updateKeywords(messageId: String, keywords: Map<String, Boolean>): Result<Boolean> = runCatchingSuspend {
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
             ?: throw IllegalStateException("AccountId не найден")
 
-        jmapClient.updateEmailKeywords(messageId, keywords, accountId)
+        requireSuccess(
+            success = jmapClient.updateEmailKeywords(messageId, keywords, accountId),
+            actionName = "update keywords for $messageId"
+        )
     }
 
     suspend fun markAsRead(messageId: String, isRead: Boolean): Result<Boolean> = runCatchingSuspend {
@@ -30,7 +38,10 @@ class MessageActionsRepository(
             ?: session.accounts.keys.firstOrNull()
             ?: throw IllegalStateException("AccountId не найден")
         
-        jmapClient.deleteEmail(messageId, accountId)
+        requireSuccess(
+            success = jmapClient.deleteEmail(messageId, accountId),
+            actionName = "delete message $messageId"
+        )
     }
     
     suspend fun moveMessage(
@@ -43,6 +54,9 @@ class MessageActionsRepository(
             ?: session.accounts.keys.firstOrNull()
             ?: throw IllegalStateException("AccountId не найден")
         
-        jmapClient.moveEmail(messageId, fromMailboxId, toMailboxId, accountId)
+        requireSuccess(
+            success = jmapClient.moveEmail(messageId, fromMailboxId, toMailboxId, accountId),
+            actionName = "move message $messageId"
+        )
     }
 }
