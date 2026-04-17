@@ -45,6 +45,11 @@ class MessageDetailViewModel(
     private val accountId: String,
     private val messageId: String
 ) : AndroidViewModel(application) {
+    private data class PendingReadStatusUpdate(
+        val messageId: String,
+        val isUnread: Boolean
+    )
+
     private data class PendingDetailAction(
         val id: String,
         val job: Job,
@@ -64,6 +69,7 @@ class MessageDetailViewModel(
     
     private var onReadStatusChangedCallback: ((String, Boolean) -> Unit)? = null
     private var pendingDetailAction: PendingDetailAction? = null
+    private var pendingReadStatusUpdate: PendingReadStatusUpdate? = null
 
     init {
         Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=$accountId")
@@ -80,6 +86,12 @@ class MessageDetailViewModel(
     
     fun setOnReadStatusChanged(callback: ((String, Boolean) -> Unit)?) {
         onReadStatusChangedCallback = callback
+        if (callback != null) {
+            pendingReadStatusUpdate?.let { pendingUpdate ->
+                callback(pendingUpdate.messageId, pendingUpdate.isUnread)
+                pendingReadStatusUpdate = null
+            }
+        }
     }
 
     private fun loadFolders() {
@@ -166,7 +178,7 @@ class MessageDetailViewModel(
                         viewModelScope.launch {
                             OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, true)
                         }
-                        onReadStatusChangedCallback?.invoke(messageId, false)
+                        notifyReadStatusChanged(messageId, isUnread = false)
                     } else {
                         _uiState.value = _uiState.value.copy(
                             message = initialMessage
@@ -175,21 +187,26 @@ class MessageDetailViewModel(
                 },
                 onSuccess = {
                     Log.d("MessageDetailViewModel", "Письмо автоматически помечено как прочитанное на сервере")
-                    // Обновляем UI с прочитанным статусом
-                    val currentMessage = _uiState.value.message
-                    if (currentMessage != null) {
-                        _uiState.value = _uiState.value.copy(
-                            message = currentMessage.copy(
-                                flags = currentMessage.flags.copy(unread = false)
-                            )
+                    val currentMessage = _uiState.value.message ?: initialMessage
+                    _uiState.value = _uiState.value.copy(
+                        message = currentMessage.copy(
+                            flags = currentMessage.flags.copy(unread = false)
                         )
-                        Log.d("MessageDetailViewModel", "UI обновлен, статус: unread=false")
-                    }
-                    // Уведомляем о изменении статуса для обновления счетчика
-                    Log.d("MessageDetailViewModel", "Вызов callback для обновления счетчика")
-                    onReadStatusChangedCallback?.invoke(messageId, false)
+                    )
+                    Log.d("MessageDetailViewModel", "UI обновлен, статус: unread=false")
+                    Log.d("MessageDetailViewModel", "Отправка обновления статуса прочитанности")
+                    notifyReadStatusChanged(messageId, isUnread = false)
                 }
             )
+        }
+    }
+
+    private fun notifyReadStatusChanged(messageId: String, isUnread: Boolean) {
+        val callback = onReadStatusChangedCallback
+        if (callback != null) {
+            callback(messageId, isUnread)
+        } else {
+            pendingReadStatusUpdate = PendingReadStatusUpdate(messageId, isUnread)
         }
     }
 
