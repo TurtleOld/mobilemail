@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("com.google.gms.google-services")
     id("kotlin-parcelize")
     id("com.google.devtools.ksp")
     id("org.jetbrains.dokka")
@@ -46,7 +47,9 @@ android {
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
-        buildConfigField("String", "ONESIGNAL_APP_ID", "\"${secret("ONESIGNAL_APP_ID")}\"")
+        buildConfigField("String", "NTFY_URL", "\"${secret("NTFY_URL")}\"")
+        buildConfigField("String", "NTFY_TOKEN", "\"${secret("NTFY_TOKEN")}\"")
+        buildConfigField("String", "NTFY_TOPIC_PATTERN", "\"${secret("NTFY_TOPIC_PATTERN")}\"")
     }
 
     buildFeatures {
@@ -138,7 +141,8 @@ dependencies {
     implementation("androidx.room:room-ktx:$roomVersion")
     ksp("androidx.room:room-compiler:$roomVersion")
     
-    implementation("com.onesignal:OneSignal:5.6.2")
+    implementation(platform("com.google.firebase:firebase-bom:33.12.0"))
+    implementation("com.google.firebase:firebase-messaging-ktx")
 
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")

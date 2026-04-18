@@ -1,5 +1,6 @@
 package com.mobilemail
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -25,7 +26,6 @@ import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.ui.theme.MobileMailTheme
-import com.onesignal.OneSignal
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -38,8 +38,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavDeepLinkRequest
 import androidx.navigation.navOptions
+import com.mobilemail.notifications.NtfyTopics
 import com.mobilemail.notifications.PushMessageTarget
 import com.mobilemail.notifications.PushNavigationStore
+import com.mobilemail.notifications.PushNotificationParser
 import com.mobilemail.ui.login.LoginScreen
 import com.mobilemail.ui.login.LoginViewModel
 import com.mobilemail.ui.messagedetail.MessageDetailScreen
@@ -106,6 +108,18 @@ class MainActivity : FragmentActivity() {
         return "message/${Uri.encode(session.server)}/${Uri.encode(session.email)}/${Uri.encode(session.accountId)}/${Uri.encode(messageId)}"
     }
 
+    private fun handlePushIntent(intent: Intent?) {
+        PushNavigationStore.publish(PushNotificationParser.fromIntent(intent))
+    }
+
+    private fun subscribeToAccountTopic(accountId: String) {
+        NtfyTopics.subscribe(accountId)
+    }
+
+    private fun unsubscribeFromAccountTopic(accountId: String) {
+        NtfyTopics.unsubscribe(accountId)
+    }
+
     private fun matchesPushSession(target: PushMessageTarget, session: SavedSession): Boolean {
         return (target.server == null || target.server == session.server) &&
             (target.email == null || target.email == session.email) &&
@@ -123,12 +137,20 @@ class MainActivity : FragmentActivity() {
     }
 
     private suspend fun logoutAccount(session: SavedSession): SavedSession? {
+        unsubscribeFromAccountTopic(session.accountId)
         tokenStore.clearTokens(session.server, session.email)
         return preferencesManager.removeSavedAccount(session.server, session.email)
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handlePushIntent(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        handlePushIntent(intent)
         setContent {
             MobileMailTheme {
                 Surface(
@@ -186,6 +208,7 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onLogout = {
                                     activityScope.launch {
+                                        preferencesManager.getSavedAccounts().forEach { unsubscribeFromAccountTopic(it.accountId) }
                                         preferencesManager.clearAllSessions()
                                         tokenStore.clearAllTokens()
                                         JmapOAuthClient.clearCache()
@@ -272,28 +295,19 @@ class MainActivity : FragmentActivity() {
 
                             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                                 ActivityResultContracts.RequestPermission()
-                            ) { granted ->
-                                if (granted) {
-                                    OneSignal.User.pushSubscription.optIn()
-                                }
-                                OneSignal.login(email)
+                            ) {
+                                subscribeToAccountTopic(accountId)
                             }
 
-                            LaunchedEffect(email) {
+                            LaunchedEffect(accountId) {
                                 OfflineQueueManager.processPending(application)
+                                subscribeToAccountTopic(accountId)
                                 val alreadyRequested = preferencesManager.isNotificationPermissionRequested()
                                 if (!alreadyRequested) {
                                     preferencesManager.markNotificationPermissionRequested()
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                         notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                                    } else {
-                                        OneSignal.User.pushSubscription.optIn()
-                                        OneSignal.login(email)
                                     }
-                                } else {
-                                    // Always ensure push subscription is active on app relaunch
-                                    OneSignal.User.pushSubscription.optIn()
-                                    OneSignal.login(email)
                                 }
                             }
 
