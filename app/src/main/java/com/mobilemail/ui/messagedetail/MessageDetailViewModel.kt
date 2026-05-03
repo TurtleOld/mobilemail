@@ -212,17 +212,28 @@ class MessageDetailViewModel(
 
     fun deleteMessage(onSuccess: () -> Unit, onMessageDeleted: ((String) -> Unit)? = null) {
         _uiState.value.message ?: return
-        scheduleDeferredAction(
-            pendingMessage = "Письмо будет удалено",
-            commitAction = { messageActionsRepository.deleteMessage(messageId) },
-            onCommitted = {
-                onMessageDeleted?.invoke(messageId)
-                onSuccess()
-            },
-            onQueued = {
-                OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
-            }
-        )
+        viewModelScope.launch {
+            messageActionsRepository.deleteMessage(messageId).fold(
+                onError = { e ->
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
+                        onMessageDeleted?.invoke(messageId)
+                        onSuccess()
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            notification = NotificationState.Snackbar(
+                                message = "Не удалось удалить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
+                        )
+                    }
+                },
+                onSuccess = {
+                    onMessageDeleted?.invoke(messageId)
+                    onSuccess()
+                }
+            )
+        }
     }
 
     fun toggleReadStatus(onReadStatusChanged: ((String, Boolean) -> Unit)? = null) {

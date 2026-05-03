@@ -278,6 +278,7 @@ fun MessagesScreen(
             MessagesList(
                 pagingItems = pagingItems,
                 hiddenMessageIds = uiState.hiddenMessageIds,
+                readStatusOverrides = uiState.readStatusOverrides,
                 selectedIds = uiState.selectedMessageIds,
                 selectedMessageId = uiState.selectedMessageId,
                 onMessageClick = { messageId ->
@@ -580,6 +581,7 @@ fun FolderItem(
 fun MessagesList(
     pagingItems: androidx.paging.compose.LazyPagingItems<MessageListItem>,
     hiddenMessageIds: Set<String>,
+    readStatusOverrides: Map<String, Boolean>,
     selectedIds: Set<String>,
     selectedMessageId: String?,
     onMessageClick: (String) -> Unit,
@@ -620,8 +622,11 @@ fun MessagesList(
                 ) { index ->
                     val message = pagingItems[index] ?: return@items
                     if (message.id !in hiddenMessageIds) {
+                        val displayedMessage = readStatusOverrides[message.id]?.let { isUnread ->
+                            message.copy(flags = message.flags.copy(unread = isUnread))
+                        } ?: message
                         MessageItem(
-                            message = message,
+                            message = displayedMessage,
                             isSelected = selectedIds.contains(message.id),
                             isActive = selectedMessageId == message.id,
                             onClick = { onMessageClick(message.id) },

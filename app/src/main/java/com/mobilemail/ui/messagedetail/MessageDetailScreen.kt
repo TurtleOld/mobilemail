@@ -101,7 +101,7 @@ fun MessageDetailScreen(
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
             title = { Text("Удалить письмо?") },
-            text = { Text("Письмо будет удалено после короткой задержки. Действие можно отменить через Undo.") },
+            text = { Text("Письмо будет удалено и вы вернетесь к списку входящих.") },
             confirmButton = {
                 TextButton(
                     onClick = {

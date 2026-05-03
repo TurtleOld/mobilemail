@@ -47,6 +47,7 @@ data class MessagesUiState(
     val pendingQueueCount: Int = 0,
     val queueAttentionCount: Int = 0,
     val hiddenMessageIds: Set<String> = emptySet(),
+    val readStatusOverrides: Map<String, Boolean> = emptyMap(),
     val error: AppError? = null,
     val selectedMessageIds: Set<String> = emptySet(),
     val notification: NotificationState = NotificationState.None
@@ -160,6 +161,7 @@ class MessagesViewModel(
             messages = emptyList(),
             selectedMessageId = null,
             hiddenMessageIds = emptySet(),
+            readStatusOverrides = emptyMap(),
             currentPosition = 0,
             hasMore = true,
             selectedMessageIds = emptySet()
@@ -219,7 +221,10 @@ class MessagesViewModel(
     }
 
     fun refresh() {
-        _uiState.value = _uiState.value.copy(hiddenMessageIds = emptySet())
+        _uiState.value = _uiState.value.copy(
+            hiddenMessageIds = emptySet(),
+            readStatusOverrides = emptyMap()
+        )
         pagingRefreshTrigger.value += 1
         refreshFoldersPreservingSelection()
     }
@@ -287,12 +292,14 @@ class MessagesViewModel(
             _uiState.value = currentState.copy(
                 messages = updatedMessages,
                 folders = updatedFolders,
-                selectedFolder = updatedSelectedFolder
+                selectedFolder = updatedSelectedFolder,
+                readStatusOverrides = currentState.readStatusOverrides + (messageId to isUnread)
             )
         } else {
             android.util.Log.w("MessagesViewModel", "Выбранная папка не найдена, обновляем только список писем")
             _uiState.value = currentState.copy(
-                messages = updatedMessages
+                messages = updatedMessages,
+                readStatusOverrides = currentState.readStatusOverrides + (messageId to isUnread)
             )
         }
     }
@@ -339,9 +346,16 @@ class MessagesViewModel(
     }
 
     fun updateVisibleMessages(messages: List<MessageListItem>) {
-        val hiddenIds = _uiState.value.hiddenMessageIds
+        val currentState = _uiState.value
+        val hiddenIds = currentState.hiddenMessageIds
+        val readStatusOverrides = currentState.readStatusOverrides
         _uiState.value = _uiState.value.copy(
-            messages = messages.filterNot { it.id in hiddenIds }
+            messages = messages
+                .filterNot { it.id in hiddenIds }
+                .map { message ->
+                    val isUnread = readStatusOverrides[message.id]
+                    if (isUnread == null) message else message.copy(flags = message.flags.copy(unread = isUnread))
+                }
         )
     }
 
