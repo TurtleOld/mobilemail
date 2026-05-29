@@ -213,26 +213,43 @@ class MessageDetailViewModel(
     fun deleteMessage(onSuccess: () -> Unit, onMessageDeleted: ((String) -> Unit)? = null) {
         _uiState.value.message ?: return
         viewModelScope.launch {
-            messageActionsRepository.deleteMessage(messageId).fold(
-                onError = { e ->
-                    if (OfflineQueueManager.shouldQueue(e)) {
-                        OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
-                        onMessageDeleted?.invoke(messageId)
-                        onSuccess()
-                    } else {
-                        _uiState.value = _uiState.value.copy(
-                            notification = NotificationState.Snackbar(
-                                message = "Не удалось удалить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
-                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+            var navigated = false
+            val deleteRequest = launch {
+                messageActionsRepository.deleteMessage(messageId).fold(
+                    onError = { e ->
+                        if (OfflineQueueManager.shouldQueue(e)) {
+                            OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
+                            if (!navigated) {
+                                navigated = true
+                                onMessageDeleted?.invoke(messageId)
+                                onSuccess()
+                            }
+                        } else if (!navigated) {
+                            _uiState.value = _uiState.value.copy(
+                                notification = NotificationState.Snackbar(
+                                    message = "Не удалось удалить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                    duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                                )
                             )
-                        )
+                        }
+                    },
+                    onSuccess = {
+                        if (!navigated) {
+                            navigated = true
+                            onMessageDeleted?.invoke(messageId)
+                            onSuccess()
+                        }
                     }
-                },
-                onSuccess = {
-                    onMessageDeleted?.invoke(messageId)
-                    onSuccess()
-                }
-            )
+                )
+            }
+
+            // Не блокируем экран детали, если сеть отвечает медленно.
+            delay(400)
+            if (!navigated && deleteRequest.isActive) {
+                navigated = true
+                onMessageDeleted?.invoke(messageId)
+                onSuccess()
+            }
         }
     }
 

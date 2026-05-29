@@ -30,7 +30,6 @@ dist/
 .env
 .env.local
 *.env.*
-app/google-services.json
 
 # Coverage reports
 coverage/
@@ -50,3 +49,5 @@ Thumbs.db
 .github/instructions/codacy.instructions.md
 .claude
 .
+
+app/src/google-services.json

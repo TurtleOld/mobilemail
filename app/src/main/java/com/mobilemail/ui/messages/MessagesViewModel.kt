@@ -22,6 +22,7 @@ import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
@@ -317,11 +318,13 @@ class MessagesViewModel(
         if (selectedIds.isEmpty()) return
         scheduleFolderAction(
             messageIds = selectedIds,
-            pendingMessage = if (selectedIds.size == 1) "Письмо будет удалено" else "Писем будет удалено: ${selectedIds.size}",
+            pendingMessage = if (selectedIds.size == 1) "Письмо удалено" else "Удалено писем: ${selectedIds.size}",
             commitAction = { messageId -> messageActionsRepository.deleteMessage(messageId) },
             enqueueAction = { messageId ->
                 OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
-            }
+            },
+            allowUndo = false,
+            commitDelayMs = 0L
         )
     }
 
@@ -429,11 +432,13 @@ class MessagesViewModel(
     fun deleteMessageWithUndo(messageId: String) {
         scheduleFolderAction(
             messageIds = setOf(messageId),
-            pendingMessage = "Письмо будет удалено",
+            pendingMessage = "Письмо удалено",
             commitAction = { id -> messageActionsRepository.deleteMessage(id) },
             enqueueAction = { id ->
                 OfflineQueueManager.enqueueDelete(app, server, email, accountId, id)
-            }
+            },
+            allowUndo = false,
+            commitDelayMs = 0L
         )
     }
 
@@ -490,7 +495,9 @@ class MessagesViewModel(
         messageIds: Set<String>,
         pendingMessage: String,
         commitAction: suspend (String) -> com.mobilemail.data.common.Result<Boolean>,
-        enqueueAction: suspend (String) -> Unit
+        enqueueAction: suspend (String) -> Unit,
+        allowUndo: Boolean = true,
+        commitDelayMs: Long = 5000L
     ) {
         if (messageIds.isEmpty()) return
 
@@ -516,15 +523,15 @@ class MessagesViewModel(
         val restoreState = currentState.copy(notification = NotificationState.None)
         val actionId = UUID.randomUUID().toString()
 
-        val job = viewModelScope.launch {
-            delay(5000)
-            pendingFolderAction?.takeIf { it.id == actionId }?.let { finalizePendingAction(it) }
-        }
-
         pendingFolderAction = PendingFolderAction(
             id = actionId,
             restoreState = restoreState,
-            job = job,
+            job = viewModelScope.launch(start = CoroutineStart.LAZY) {
+                if (commitDelayMs > 0) {
+                    delay(commitDelayMs)
+                }
+                pendingFolderAction?.takeIf { it.id == actionId }?.let { finalizePendingAction(it) }
+            },
             commit = {
                 var failure: Throwable? = null
                 messageIds.forEach { messageId ->
@@ -545,6 +552,7 @@ class MessagesViewModel(
                 messageIds.forEach { enqueueAction(it) }
             }
         )
+        pendingFolderAction?.job?.start()
 
         _uiState.value = currentState.copy(
             messages = currentState.messages.filterNot { it.id in messageIds },
@@ -553,12 +561,19 @@ class MessagesViewModel(
             hiddenMessageIds = currentState.hiddenMessageIds + messageIds,
             selectedFolder = updatedSelectedFolder,
             folders = updatedFolders,
-            notification = NotificationState.Snackbar(
-                message = pendingMessage,
-                actionLabel = "Отменить",
-                onAction = { undoPendingAction(actionId) },
-                duration = SnackbarDuration.Long
-            )
+            notification = if (allowUndo && commitDelayMs > 0) {
+                NotificationState.Snackbar(
+                    message = pendingMessage,
+                    actionLabel = "Отменить",
+                    onAction = { undoPendingAction(actionId) },
+                    duration = SnackbarDuration.Long
+                )
+            } else {
+                NotificationState.Snackbar(
+                    message = pendingMessage,
+                    duration = SnackbarDuration.Short
+                )
+            }
         )
     }
 
