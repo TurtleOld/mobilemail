@@ -1,6 +1,8 @@
 package com.mobilemail.data.oauth
 
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.runBlocking
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -110,6 +112,97 @@ class DeviceFlowClientIntegrationTest {
             } catch (error: OAuthException) {
                 assertTrue(error.message.orEmpty().contains("Ошибка парсинга device code"))
             }
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `pollForToken emits AccessDenied on oauth denial`() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(400)
+                .setBody("""{"error":"access_denied","error_description":"denied by user"}""")
+        )
+        try {
+            val client = DeviceFlowClient(
+                metadata = metadata(server),
+                clientId = "mobilemail-test",
+                client = OkHttpClient()
+            )
+
+            val deferred = kotlinx.coroutines.CompletableDeferred<DeviceFlowState>()
+            client.pollForToken(
+                deviceCode = "device-1",
+                interval = 0,
+                expiresAt = System.currentTimeMillis() + 30_000
+            ) { state ->
+                if (state is DeviceFlowState.Error) {
+                    deferred.complete(state)
+                }
+            }
+
+            val result = withTimeout(2_000) { deferred.await() }
+            assertTrue(result is DeviceFlowState.Error)
+            val error = (result as DeviceFlowState.Error).error
+            assertTrue(error is OAuthDeviceFlowError.AccessDenied)
+
+            client.cancel()
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `pollForToken retries on authorization pending and then succeeds`() = runBlocking {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(400)
+                .setBody("""{"error":"authorization_pending"}""")
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody(
+                    """
+                    {
+                      "access_token": "token-after-pending",
+                      "token_type": "Bearer",
+                      "expires_in": 3600,
+                      "refresh_token": "refresh-after-pending"
+                    }
+                    """.trimIndent()
+                )
+        )
+        try {
+            val client = DeviceFlowClient(
+                metadata = metadata(server),
+                clientId = "mobilemail-test",
+                client = OkHttpClient()
+            )
+
+            val deferred = kotlinx.coroutines.CompletableDeferred<DeviceFlowState>()
+            client.pollForToken(
+                deviceCode = "device-2",
+                interval = 0,
+                expiresAt = System.currentTimeMillis() + 30_000
+            ) { state ->
+                if (state is DeviceFlowState.Success) {
+                    deferred.complete(state)
+                }
+            }
+
+            val result = withTimeout(2_000) { deferred.await() }
+            assertTrue(result is DeviceFlowState.Success)
+            val token = (result as DeviceFlowState.Success).tokenResponse
+            assertEquals("token-after-pending", token.accessToken)
+            assertEquals("refresh-after-pending", token.refreshToken)
+
+            client.cancel()
         } finally {
             server.shutdown()
         }
