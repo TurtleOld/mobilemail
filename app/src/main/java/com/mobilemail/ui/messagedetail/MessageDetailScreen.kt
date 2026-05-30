@@ -92,6 +92,16 @@ private fun openExternalUriSafely(context: Context, uri: Uri) {
     }
 }
 
+internal fun shouldDisallowParentIntercept(actionMasked: Int): Boolean? {
+    return when (actionMasked) {
+        MotionEvent.ACTION_DOWN,
+        MotionEvent.ACTION_MOVE -> true
+        MotionEvent.ACTION_UP,
+        MotionEvent.ACTION_CANCEL -> false
+        else -> null
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessageDetailScreen(
@@ -878,11 +888,8 @@ private fun MessageBodySection(
                         }
                         // Allow WebView to handle vertical gestures inside Compose scroll container.
                         setOnTouchListener { view, event ->
-                            when (event.actionMasked) {
-                                MotionEvent.ACTION_DOWN,
-                                MotionEvent.ACTION_MOVE -> view.parent?.requestDisallowInterceptTouchEvent(true)
-                                MotionEvent.ACTION_UP,
-                                MotionEvent.ACTION_CANCEL -> view.parent?.requestDisallowInterceptTouchEvent(false)
+                            shouldDisallowParentIntercept(event.actionMasked)?.let { disallow ->
+                                view.parent?.requestDisallowInterceptTouchEvent(disallow)
                             }
                             false
                         }
