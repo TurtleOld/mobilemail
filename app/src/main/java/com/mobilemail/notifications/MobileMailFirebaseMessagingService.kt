@@ -22,14 +22,14 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
         serviceScope.launch {
             try {
                 val client = NtfyClient(applicationContext)
-                val fallbackAccountId = NtfyTopics.accountIdFromTopic(topic)
-                client.fetchPendingMessages(topic).forEach { envelope ->
-                    val payload = PushNotificationParser.fromPayloadJson(envelope.message, fallbackAccountId) ?: return@forEach
+                MobileMailPushOrchestrator
+                    .resolvePendingPayloads(topic, client.fetchPendingMessages(topic))
+                    .forEach { resolved ->
                     PushNotificationPublisher.show(
                         context = applicationContext,
-                        payload = payload,
-                        fallbackTitle = envelope.title,
-                        fallbackBody = payload.subject ?: applicationContext.getString(com.mobilemail.R.string.notification_new_message_body)
+                        payload = resolved.payload,
+                        fallbackTitle = resolved.fallbackTitle,
+                        fallbackBody = resolved.payload.subject ?: applicationContext.getString(com.mobilemail.R.string.notification_new_message_body)
                     )
                 }
             } catch (error: Exception) {
@@ -43,9 +43,10 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
         serviceScope.launch {
             runCatching {
                 val preferencesManager = PreferencesManager(applicationContext)
-                preferencesManager.getSavedAccounts()
+                val accountIds = preferencesManager.getSavedAccounts()
                     .map { it.accountId }
-                    .distinct()
+                MobileMailPushOrchestrator
+                    .accountIdsForResubscribe(accountIds)
                     .forEach { accountId -> NtfyTopics.subscribe(accountId) }
             }.onFailure { error ->
                 Log.e("MobileMailFCM", "Failed to re-subscribe topics on token refresh", error)
