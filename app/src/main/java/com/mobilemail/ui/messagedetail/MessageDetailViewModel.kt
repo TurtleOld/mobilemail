@@ -424,6 +424,10 @@ class MessageDetailViewModel(
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
     }
 
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(error = null)
+    }
+
     private fun scheduleDeferredAction(
         pendingMessage: String,
         commitAction: suspend () -> com.mobilemail.data.common.Result<Boolean>,

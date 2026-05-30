@@ -14,9 +14,6 @@ import androidx.navigation.NavDeepLinkRequest
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.mobilemail.data.preferences.PreferencesManager
-import com.mobilemail.domain.usecase.ResolvePushNavigationUseCase
-import com.mobilemail.notifications.PushMessageTarget
 import com.mobilemail.notifications.PushNavigationStore
 
 private const val TAG = "AppNavigationHost"
@@ -63,43 +60,6 @@ private fun PrivacyScreenProtectionEffect(enabled: Boolean) {
             window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         } else {
             window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        }
-    }
-}
-
-@Composable
-private fun RootPushNavigationEffect(
-    navController: NavHostController,
-    currentRoute: String?,
-    pendingPushTarget: PushMessageTarget?,
-    preferencesManager: PreferencesManager,
-    resolvePushNavigationUseCase: ResolvePushNavigationUseCase,
-) {
-    LaunchedEffect(pendingPushTarget, currentRoute) {
-        val target = pendingPushTarget ?: return@LaunchedEffect
-        val activeSession = preferencesManager.getSavedSession()
-        val savedAccounts = preferencesManager.getSavedAccounts()
-        when (
-            val action = resolvePushNavigationUseCase(
-                ResolvePushNavigationUseCase.RootInput(
-                    currentRoute = currentRoute,
-                    pinLockRoute = AppRoutes.PinLock,
-                    messagesPatternRoute = AppRoutes.MessagesPattern,
-                    target = target,
-                    activeSession = activeSession,
-                    savedAccounts = savedAccounts
-                )
-            )
-        ) {
-            ResolvePushNavigationUseCase.RootAction.NoOp -> Unit
-            is ResolvePushNavigationUseCase.RootAction.NavigateToMessages -> {
-                if (activeSession != action.session) {
-                    preferencesManager.setActiveSession(action.session)
-                }
-                navController.navigate(AppRoutes.messages(action.session)) {
-                    launchSingleTop = true
-                }
-            }
         }
     }
 }

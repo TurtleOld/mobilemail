@@ -17,7 +17,8 @@ This file freezes baseline checks before large modernization waves.
 1. `./gradlew :app:assembleDebug`
 2. `./gradlew :app:lintDebug`
 3. `./gradlew :app:testDebugUnitTest`
-4. Manual run of critical user flows.
+4. Push navigation (device/emulator): `./gradlew :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.mobilemail.ui.navigation.PushColdStartNavigationTest`
+5. Manual run of critical user flows.
 
 For release-hardening waves:
 

@@ -42,7 +42,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.util.Log
 import com.mobilemail.data.model.Attachment
 import com.mobilemail.data.preferences.PreferencesManager
-import com.mobilemail.ui.common.NotificationState
+import com.mobilemail.ui.common.FeatureScreenEffects
+import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.delay
@@ -62,7 +63,7 @@ fun NewMessageScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarHostState = rememberFeatureScreenSnackbarHostState()
     var to by remember(initialTo) { mutableStateOf(initialTo) }
     var subject by remember(initialSubject) { mutableStateOf(initialSubject) }
     var body by remember(initialBody) { mutableStateOf(initialBody) }
@@ -83,30 +84,12 @@ fun NewMessageScreen(
         }
     }
 
-    LaunchedEffect(uiState.notification) {
-        when (val notification = uiState.notification) {
-            is NotificationState.Snackbar -> {
-                val duration: androidx.compose.material3.SnackbarDuration = when (notification.duration) {
-                    com.mobilemail.ui.common.SnackbarDuration.Short -> androidx.compose.material3.SnackbarDuration.Short
-                    com.mobilemail.ui.common.SnackbarDuration.Long -> androidx.compose.material3.SnackbarDuration.Long
-                    com.mobilemail.ui.common.SnackbarDuration.Indefinite -> androidx.compose.material3.SnackbarDuration.Indefinite
-                }
-                val result = snackbarHostState.showSnackbar(
-                    message = notification.message,
-                    duration = duration,
-                    actionLabel = notification.actionLabel
-                )
-                if (result == androidx.compose.material3.SnackbarResult.ActionPerformed) {
-                    notification.onAction?.invoke()
-                }
-                viewModel.clearNotification()
-            }
-            is NotificationState.Alert -> {
-                // Alert dialog пока не используется
-            }
-            is NotificationState.None -> {}
-        }
-    }
+    FeatureScreenEffects(
+        uiState = uiState,
+        onErrorConsumed = viewModel::clearError,
+        onNotificationConsumed = viewModel::clearNotification,
+        snackbarHostState = snackbarHostState,
+    )
 
     data class DraftSnapshot(
         val to: String,

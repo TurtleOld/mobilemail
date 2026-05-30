@@ -362,6 +362,10 @@ class ComposeViewModel(
         }
     }
 
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(error = null)
+    }
+
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
     }

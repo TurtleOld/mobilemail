@@ -45,9 +45,9 @@ import com.mobilemail.ui.theme.EmailTypography
 import com.mobilemail.ui.theme.ExtendedTheme
 import java.util.regex.Pattern
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mobilemail.ui.common.NotificationState
+import com.mobilemail.ui.common.FeatureScreenEffects
+import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -116,39 +116,17 @@ fun MessageDetailScreen(
     onThreadMessageClick: ((String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val snackbarHostState = rememberFeatureScreenSnackbarHostState()
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showMoveDialog by remember { mutableStateOf(false) }
     var showReplyMenu by remember { mutableStateOf(false) }
 
-    // Обработка уведомлений
-    LaunchedEffect(uiState.notification) {
-        when (val notification = uiState.notification) {
-            is NotificationState.Snackbar -> {
-                scope.launch {
-                    val duration: androidx.compose.material3.SnackbarDuration = when (notification.duration) {
-                        com.mobilemail.ui.common.SnackbarDuration.Short -> androidx.compose.material3.SnackbarDuration.Short
-                        com.mobilemail.ui.common.SnackbarDuration.Long -> androidx.compose.material3.SnackbarDuration.Long
-                        com.mobilemail.ui.common.SnackbarDuration.Indefinite -> androidx.compose.material3.SnackbarDuration.Indefinite
-                    }
-                    val result = snackbarHostState.showSnackbar(
-                        message = notification.message,
-                        duration = duration,
-                        actionLabel = notification.actionLabel
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        notification.onAction?.invoke()
-                    }
-                    viewModel.clearNotification()
-                }
-            }
-            is NotificationState.Alert -> {
-                // Alert будет обработан через AlertDialog
-            }
-            is NotificationState.None -> {}
-        }
-    }
+    FeatureScreenEffects(
+        uiState = uiState,
+        onErrorConsumed = viewModel::clearError,
+        onNotificationConsumed = viewModel::clearNotification,
+        snackbarHostState = snackbarHostState,
+    )
 
     // Диалог подтверждения удаления
     if (showDeleteDialog) {

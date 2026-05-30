@@ -39,7 +39,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.data.local.entity.PendingOperationEntity
-import com.mobilemail.ui.common.NotificationState
+import com.mobilemail.ui.common.FeatureScreenEffects
+import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -51,17 +52,14 @@ fun OutboxScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarHostState = rememberFeatureScreenSnackbarHostState()
 
-    LaunchedEffect(uiState.notification) {
-        when (val notification = uiState.notification) {
-            is NotificationState.Snackbar -> {
-                snackbarHostState.showSnackbar(notification.message)
-                viewModel.clearNotification()
-            }
-            else -> Unit
-        }
-    }
+    FeatureScreenEffects(
+        uiState = uiState,
+        onErrorConsumed = viewModel::clearError,
+        onNotificationConsumed = viewModel::clearNotification,
+        snackbarHostState = snackbarHostState,
+    )
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
