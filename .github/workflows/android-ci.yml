@@ -84,7 +84,7 @@ jobs:
           ./gradlew --no-daemon --build-cache :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
 
   instrumentation:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     needs: checks
 
     steps:
@@ -154,17 +154,12 @@ jobs:
           NTFY_TOKEN: ci
           NTFY_TOPIC_PATTERN: mobilemail/{user}
         with:
-          api-level: 29
+          api-level: 30
           target: google_apis
-          arch: x86
-          profile: Nexus 6
-          disable-linux-hw-accel: true
+          arch: x86_64
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -no-snapshot -no-snapshot-save -wipe-data -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none -no-metrics
-          cores: 2
-          ram-size: 2048M
-          heap-size: 512M
           script: |
             chmod +x ./gradlew
             ./gradlew --no-daemon --build-cache :app:connectedDebugAndroidTest
