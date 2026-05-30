@@ -5,13 +5,15 @@ import com.mobilemail.BuildConfig
 
 object NtfyTopics {
     private val topicPattern = BuildConfig.NTFY_TOPIC_PATTERN.ifBlank { "homemail-user-{accountId}" }
+    private val supportedMarkers = listOf("{accountId}", "{user}")
 
     fun forAccount(accountId: String): String {
-        return topicPattern.replace("{accountId}", accountId)
+        val marker = topicMarker() ?: return topicPattern
+        return topicPattern.replace(marker, accountId)
     }
 
     fun accountIdFromTopic(topic: String): String? {
-        val marker = "{accountId}"
+        val marker = topicMarker() ?: return null
         val markerIndex = topicPattern.indexOf(marker)
         if (markerIndex < 0) return null
 
@@ -30,5 +32,9 @@ object NtfyTopics {
 
     fun unsubscribe(accountId: String) {
         FirebaseMessaging.getInstance().unsubscribeFromTopic(forAccount(accountId))
+    }
+
+    private fun topicMarker(): String? {
+        return supportedMarkers.firstOrNull { topicPattern.contains(it) }
     }
 }
