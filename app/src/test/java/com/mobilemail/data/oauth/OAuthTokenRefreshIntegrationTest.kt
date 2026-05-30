@@ -94,4 +94,38 @@ class OAuthTokenRefreshIntegrationTest {
             server.shutdown()
         }
     }
+
+    @Test
+    fun `refreshToken throws parse error when token payload is incomplete`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"token_type":"Bearer"}""")
+        )
+        server.start()
+        try {
+            val metadata = OAuthServerMetadata(
+                issuer = "test",
+                deviceAuthorizationEndpoint = server.url("/device").toString(),
+                tokenEndpoint = server.url("/token").toString(),
+                authorizationEndpoint = null,
+                registrationEndpoint = null,
+                introspectionEndpoint = null,
+                grantTypesSupported = emptyList(),
+                responseTypesSupported = null,
+                scopesSupported = null
+            )
+
+            val refresh = OAuthTokenRefresh(metadata, "mobilemail-test", OkHttpClient())
+            try {
+                refresh.refreshToken("old_refresh")
+                fail("Expected OAuthException for malformed token payload")
+            } catch (error: OAuthException) {
+                assertTrue(error.message.orEmpty().contains("Ошибка парсинга refresh token"))
+            }
+        } finally {
+            server.shutdown()
+        }
+    }
 }
