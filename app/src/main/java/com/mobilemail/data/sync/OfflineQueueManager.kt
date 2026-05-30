@@ -189,11 +189,11 @@ object OfflineQueueManager {
                 }
                 is Result.Error -> {
                     val nextAttemptCount = operation.attemptCount + 1
-                    val status = when {
-                        !shouldQueue(result.exception) -> STATUS_PERMANENT_FAILED
-                        nextAttemptCount >= maxAttemptsFor(operation.type) -> STATUS_PERMANENT_FAILED
-                        else -> STATUS_FAILED
-                    }
+                    val status = resolveNextStatus(
+                        operationType = operation.type,
+                        nextAttemptCount = nextAttemptCount,
+                        error = result.exception
+                    )
                     if (status == STATUS_FAILED) {
                         failedCount++
                     }
@@ -445,5 +445,17 @@ object OfflineQueueManager {
         TYPE_DELETE, TYPE_MOVE -> 6
         TYPE_MARK_READ, TYPE_TOGGLE_STAR -> 4
         else -> 4
+    }
+
+    internal fun resolveNextStatus(
+        operationType: String,
+        nextAttemptCount: Int,
+        error: Throwable
+    ): String {
+        return when {
+            !shouldQueue(error) -> STATUS_PERMANENT_FAILED
+            nextAttemptCount >= maxAttemptsFor(operationType) -> STATUS_PERMANENT_FAILED
+            else -> STATUS_FAILED
+        }
     }
 }
