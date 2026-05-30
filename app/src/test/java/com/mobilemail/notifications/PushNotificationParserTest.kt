@@ -47,4 +47,5 @@ class PushNotificationParserTest {
         assertNull(PushNotificationParser.fromPayloadJson("""{"subject":"without id"}"""))
         assertNull(PushNotificationParser.fromPayloadJson(null))
     }
+
 }
