@@ -28,7 +28,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Prepare CI files
         run: |
@@ -81,7 +81,7 @@ jobs:
           NTFY_TOPIC_PATTERN: mobilemail/{user}
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+          ./gradlew --no-daemon --build-cache :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
 
   instrumentation:
     runs-on: ubuntu-latest
@@ -101,7 +101,7 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Prepare CI files
         run: |
@@ -160,4 +160,4 @@ jobs:
           disable-animations: true
           script: |
             chmod +x ./gradlew
-            ./gradlew --no-daemon :app:connectedDebugAndroidTest
+            ./gradlew --no-daemon --build-cache :app:connectedDebugAndroidTest
