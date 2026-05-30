@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,11 +40,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.util.Log
+import com.mobilemail.data.model.Attachment
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.ui.common.NotificationState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.width
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -143,6 +144,49 @@ fun NewMessageScreen(
         lastAutosavedSnapshot = draftSnapshot
     }
 
+    NewMessageScreenContent(
+        email = email,
+        to = to,
+        onToChange = { to = it },
+        subject = subject,
+        onSubjectChange = { subject = it },
+        body = body,
+        onBodyChange = { body = it },
+        uiState = uiState,
+        snackbarHostState = snackbarHostState,
+        onBack = onBack,
+        onPickAttachments = { attachmentPicker.launch(arrayOf("*/*")) },
+        onSend = {
+            viewModel.sendMessage(
+                to = to.split(",", ";")
+                    .map { it.trim() }
+                    .filter { it.isNotBlank() },
+                subject = subject,
+                body = body,
+                onSuccess = onBack
+            )
+        },
+        onRemoveAttachment = viewModel::removeAttachment
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+internal fun NewMessageScreenContent(
+    email: String,
+    to: String,
+    onToChange: (String) -> Unit,
+    subject: String,
+    onSubjectChange: (String) -> Unit,
+    body: String,
+    onBodyChange: (String) -> Unit,
+    uiState: ComposeUiState,
+    snackbarHostState: SnackbarHostState,
+    onBack: () -> Unit,
+    onPickAttachments: () -> Unit,
+    onSend: () -> Unit,
+    onRemoveAttachment: (Attachment) -> Unit
+) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
@@ -154,20 +198,11 @@ fun NewMessageScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = { attachmentPicker.launch(arrayOf("*/*")) }) {
+                    IconButton(onClick = onPickAttachments) {
                         Icon(Icons.Filled.Attachment, contentDescription = "Добавить вложение")
                     }
                     IconButton(
-                        onClick = {
-                        viewModel.sendMessage(
-                            to = to.split(",", ";")
-                                .map { it.trim() }
-                                .filter { it.isNotBlank() },
-                            subject = subject,
-                            body = body,
-                            onSuccess = onBack
-                        )
-                        },
+                        onClick = onSend,
                         enabled = !uiState.isSending
                     ) {
                         Icon(Icons.Default.Send, contentDescription = "Отправить")
@@ -176,90 +211,118 @@ fun NewMessageScreen(
             )
         }
     ) { padding ->
-        Column(
+        NewMessageFormContent(
+            email = email,
+            to = to,
+            onToChange = onToChange,
+            subject = subject,
+            onSubjectChange = onSubjectChange,
+            body = body,
+            onBodyChange = onBodyChange,
+            uiState = uiState,
+            onRemoveAttachment = onRemoveAttachment,
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun NewMessageFormContent(
+    email: String,
+    to: String,
+    onToChange: (String) -> Unit,
+    subject: String,
+    onSubjectChange: (String) -> Unit,
+    body: String,
+    onBodyChange: (String) -> Unit,
+    uiState: ComposeUiState,
+    onRemoveAttachment: (Attachment) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "От: ${email.ifBlank { "неизвестно" }}",
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.Medium
+        )
+        OutlinedTextField(
+            value = to,
+            onValueChange = onToChange,
+            label = { Text("Кому") },
+            placeholder = { Text("example@mail.com") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = subject,
+            onValueChange = onSubjectChange,
+            label = { Text("Тема") },
+            placeholder = { Text("Тема письма") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+        OutlinedTextField(
+            value = body,
+            onValueChange = onBodyChange,
+            label = { Text("Сообщение") },
+            placeholder = { Text("Начните писать...") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(220.dp),
+            maxLines = 10
+        )
+        if (uiState.attachments.isNotEmpty()) {
+            Divider()
             Text(
-                text = "От: ${email.ifBlank { "неизвестно" }}",
+                text = "Вложения (${uiState.attachments.size}):",
                 style = MaterialTheme.typography.bodySmall,
                 fontWeight = FontWeight.Medium
             )
-            OutlinedTextField(
-                value = to,
-                onValueChange = { to = it },
-                label = { Text("Кому") },
-                placeholder = { Text("example@mail.com") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = subject,
-                onValueChange = { subject = it },
-                label = { Text("Тема") },
-                placeholder = { Text("Тема письма") },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            OutlinedTextField(
-                value = body,
-                onValueChange = { body = it },
-                label = { Text("Сообщение") },
-                placeholder = { Text("Начните писать...") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(220.dp),
-                maxLines = 10
-            )
-            if (uiState.attachments.isNotEmpty()) {
-                Divider()
-                Text(
-                    text = "Вложения (${uiState.attachments.size}):",
-                    style = MaterialTheme.typography.bodySmall,
-                    fontWeight = FontWeight.Medium
-                )
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    uiState.attachments.forEach { attachment ->
-                        AssistChip(
-                            onClick = { viewModel.removeAttachment(attachment) },
-                            label = {
-                                Text(
-                                    if (attachment.isUploaded) attachment.filename
-                                    else "${attachment.filename} (offline)"
-                                )
-                            },
-                            trailingIcon = {
-                                Icon(
-                                    imageVector = Icons.Default.Close,
-                                    contentDescription = "Удалить вложение",
-                                    modifier = Modifier.width(12.dp)
-                                )
-                            },
-                            colors = AssistChipDefaults.assistChipColors(
-                                labelColor = MaterialTheme.colorScheme.onSurface
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                uiState.attachments.forEach { attachment ->
+                    AssistChip(
+                        onClick = { onRemoveAttachment(attachment) },
+                        label = {
+                            Text(
+                                if (attachment.isUploaded) attachment.filename
+                                else "${attachment.filename} (offline)"
                             )
+                        },
+                        trailingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Удалить вложение",
+                                modifier = Modifier.width(12.dp)
+                            )
+                        },
+                        colors = AssistChipDefaults.assistChipColors(
+                            labelColor = MaterialTheme.colorScheme.onSurface
                         )
-                    }
+                    )
                 }
             }
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = when {
-                    uiState.isSending -> "Отправка..."
-                    uiState.isSavingDraft -> "Сохранение черновика..."
-                    else -> ""
-                },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
         }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = when {
+                uiState.isSending -> "Отправка..."
+                uiState.isSavingDraft -> "Сохранение черновика..."
+                else -> ""
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
