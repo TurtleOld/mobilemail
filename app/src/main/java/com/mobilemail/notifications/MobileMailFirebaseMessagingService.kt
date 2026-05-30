@@ -4,6 +4,7 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.mobilemail.data.preferences.PreferencesManager
+import com.mobilemail.util.LogRedactor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -39,7 +40,7 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
     }
 
     override fun onNewToken(token: String) {
-        Log.d("MobileMailFCM", "FCM token refreshed: ${token.take(12)}")
+        Log.d("MobileMailFCM", "FCM token refreshed: ${LogRedactor.redact("token=$token")}")
         serviceScope.launch {
             runCatching {
                 val preferencesManager = PreferencesManager(applicationContext)

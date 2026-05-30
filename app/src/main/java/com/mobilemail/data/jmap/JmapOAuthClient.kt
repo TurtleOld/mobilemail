@@ -17,6 +17,7 @@ import com.mobilemail.data.oauth.OAuthServerMetadata
 import com.mobilemail.data.oauth.OAuthTokenRefresh
 import com.mobilemail.data.oauth.StoredToken
 import com.mobilemail.data.oauth.TokenStore
+import com.mobilemail.util.LogRedactor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -202,7 +203,7 @@ class JmapOAuthClient(
                 accounts[accountId] = JmapAccount(
                     id = accountId,
                     name = accountJson.optString("name", accountId),
-                    username = accountJson.optString("username", null),
+                    username = accountJson.optStringOrNull("username"),
                     isPersonal = accountJson.optBoolean("isPersonal", true),
                     isReadOnly = accountJson.optBoolean("isReadOnly", false),
                     accountCapabilities = null
@@ -212,14 +213,14 @@ class JmapOAuthClient(
         
         val primaryAccountsJson = json.optJSONObject("primaryAccounts")
         val primaryAccounts = primaryAccountsJson?.let {
-            PrimaryAccounts(mail = it.optString("mail", null))
+            PrimaryAccounts(mail = it.optStringOrNull("mail"))
         }
         
         return JmapSession(
             apiUrl = json.getString("apiUrl"),
             downloadUrl = json.getString("downloadUrl"),
             uploadUrl = json.getString("uploadUrl"),
-            eventSourceUrl = json.optString("eventSourceUrl", null),
+            eventSourceUrl = json.optStringOrNull("eventSourceUrl"),
             accounts = accounts,
             primaryAccounts = primaryAccounts,
             capabilities = null
@@ -268,8 +269,8 @@ class JmapOAuthClient(
             mailboxes.add(JmapMailbox(
                 id = mailboxJson.getString("id"),
                 name = mailboxJson.getString("name"),
-                parentId = mailboxJson.optString("parentId", null),
-                role = mailboxJson.optString("role", null),
+                parentId = mailboxJson.optStringOrNull("parentId"),
+                role = mailboxJson.optStringOrNull("role"),
                 sortOrder = mailboxJson.optInt("sortOrder", 0),
                 totalEmails = mailboxJson.optInt("totalEmails", 0),
                 unreadEmails = mailboxJson.optInt("unreadEmails", 0),
@@ -351,7 +352,7 @@ class JmapOAuthClient(
             } else {
                 null
             },
-            queryState = queryData.optString("queryState", null)
+            queryState = queryData.optStringOrNull("queryState")
         )
     }
     
@@ -418,10 +419,8 @@ class JmapOAuthClient(
             val addresses = mutableListOf<EmailAddress>()
             for (i in 0 until array.length()) {
                 val addrJson = array.getJSONObject(i)
-                val nameValue = addrJson.optString("name", null)
-                val name = if (nameValue == null || nameValue == "null" || nameValue.isBlank()) null else nameValue
-                val emailValue = addrJson.optString("email", null)
-                val email = if (emailValue == null || emailValue == "null" || emailValue.isBlank()) "unknown" else emailValue
+                val name = addrJson.optStringOrNull("name")
+                val email = addrJson.optStringOrNull("email") ?: "unknown"
                 addresses.add(EmailAddress(name = name, email = email))
             }
             return addresses
@@ -445,7 +444,7 @@ class JmapOAuthClient(
             size = json.optLong("size", 0),
             receivedAt = json.getString("receivedAt"),
             hasAttachment = json.optBoolean("hasAttachment", false),
-            preview = json.optString("preview", null),
+            preview = json.optStringOrNull("preview"),
             subject = subject,
             from = parseEmailAddresses(json.optJSONArray("from")),
             to = parseEmailAddresses(json.optJSONArray("to")),
@@ -563,7 +562,7 @@ class JmapOAuthClient(
                     }
                     if (!retryResponse.isSuccessful) {
                         Log.e("JmapOAuthClient", "Запрос не удался после обновления токена: код ${retryResponse.code}")
-                        throw Exception("JMAP request failed после обновления токена: код ${retryResponse.code}, ответ: ${retryBody.take(200)}")
+                        throw Exception("JMAP request failed после обновления токена: код ${retryResponse.code}, ответ: ${LogRedactor.redact(retryBody.take(200))}")
                     }
                     Log.d("JmapOAuthClient", "Запрос успешен после обновления токена")
                     return JmapResponseValidator.ensureNoMethodError(JSONObject(retryBody))
@@ -572,10 +571,10 @@ class JmapOAuthClient(
                     throw e
                 } catch (e: Exception) {
                     Log.e("JmapOAuthClient", "Ошибка при повторной попытке запроса", e)
-                    throw Exception("JMAP request failed: код ${response.code}, сообщение: ${response.message}, ответ: ${responseBody.take(200)}")
+                    throw Exception("JMAP request failed: код ${response.code}, сообщение: ${response.message}, ответ: ${LogRedactor.redact(responseBody.take(200))}")
                 }
             } else {
-                throw Exception("JMAP request failed: код ${response.code}, сообщение: ${response.message}, ответ: ${responseBody.take(200)}")
+                throw Exception("JMAP request failed: код ${response.code}, сообщение: ${response.message}, ответ: ${LogRedactor.redact(responseBody.take(200))}")
             }
         }
         
@@ -838,7 +837,7 @@ class JmapOAuthClient(
         }
 
         if (!response.isSuccessful) {
-            throw Exception("Upload failed: код ${response.code}, ответ: ${responseBody.take(200)}")
+            throw Exception("Upload failed: код ${response.code}, ответ: ${LogRedactor.redact(responseBody.take(200))}")
         }
 
         val json = JSONObject(responseBody)
@@ -1151,7 +1150,7 @@ class JmapOAuthClient(
         }
 
         val obj = list.getJSONObject(0)
-        val emailId = obj.optString("emailId", null)
+        val emailId = obj.optStringOrNull("emailId")
 
         // Попытка вытащить человекочитаемую причину из deliveryStatus.*.smtpReply/smtpReply
         val deliveryStatusObj = obj.optJSONObject("deliveryStatus")
@@ -1161,9 +1160,9 @@ class JmapOAuthClient(
             while (it.hasNext()) {
                 val k = it.next()
                 val ds = deliveryStatusObj.optJSONObject(k) ?: continue
-                val reply = ds.optString("smtpReply", null)
-                    ?: ds.optString("description", null)
-                    ?: ds.optString("message", null)
+                val reply = ds.optStringOrNull("smtpReply")
+                    ?: ds.optStringOrNull("description")
+                    ?: ds.optStringOrNull("message")
                 if (!reply.isNullOrBlank()) {
                     lastStatusText = reply
                     break

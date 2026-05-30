@@ -3,6 +3,7 @@ package com.mobilemail.data.oauth
 import android.content.Context
 import android.util.Log
 import com.mobilemail.data.security.KeystoreSecureStore
+import com.mobilemail.util.LogRedactor
 
 data class StoredToken(
     val accessToken: String,
@@ -38,7 +39,7 @@ class TokenStore(private val context: Context) {
         secureStore.putLong("expires_at_${server}_$email", expiresAt)
         secureStore.putString("refresh_token_${server}_$email", tokenResponse.refreshToken)
         
-        Log.d("TokenStore", "Токены сохранены для $email на $server: expires_in=${tokenResponse.expiresIn}s (${expiresAtDays} дней), has_refresh=${tokenResponse.refreshToken != null}")
+        Log.d("TokenStore", LogRedactor.redact("Токены сохранены для $email на $server: expires_in=${tokenResponse.expiresIn}s (${expiresAtDays} дней), has_refresh=${tokenResponse.refreshToken != null}"))
     }
     
     fun getTokens(server: String, email: String): StoredToken? {
@@ -57,11 +58,11 @@ class TokenStore(private val context: Context) {
             
             val expiresAtDays = expiresAt?.let { (it - System.currentTimeMillis()) / (1000L * 60 * 60 * 24) }
             val isExpired = token.isExpired()
-            Log.d("TokenStore", "Токены загружены для $email на $server: expired=$isExpired, expires_in_days=$expiresAtDays, has_refresh=${refreshToken != null}")
+            Log.d("TokenStore", LogRedactor.redact("Токены загружены для $email на $server: expired=$isExpired, expires_in_days=$expiresAtDays, has_refresh=${refreshToken != null}"))
             
             token
         } else {
-            Log.d("TokenStore", "Токены не найдены для $email на $server")
+            Log.d("TokenStore", LogRedactor.redact("Токены не найдены для $email на $server"))
             null
         }
     }
@@ -78,7 +79,7 @@ class TokenStore(private val context: Context) {
             refreshKey
         )
         
-        Log.d("TokenStore", "Токены удалены для $email на $server: had_access=$hadAccessToken, had_refresh=$hadRefreshToken")
+        Log.d("TokenStore", LogRedactor.redact("Токены удалены для $email на $server: had_access=$hadAccessToken, had_refresh=$hadRefreshToken"))
     }
     
     fun clearAllTokens() {

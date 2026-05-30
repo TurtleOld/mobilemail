@@ -1,6 +1,8 @@
 package com.mobilemail.data.oauth
 
 import android.util.Log
+import com.mobilemail.util.LogRedactor
+import com.mobilemail.util.optStringOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
@@ -84,7 +86,7 @@ class DeviceFlowClient(
             .build()
 
         Log.d("DeviceFlowClient", "=== REQUESTING DEVICE CODE ===")
-        Log.d("DeviceFlowClient", "Device authorization endpoint: ${metadata.deviceAuthorizationEndpoint}")
+        Log.d("DeviceFlowClient", "Device authorization endpoint: ${LogRedactor.redact(metadata.deviceAuthorizationEndpoint)}")
         Log.d("DeviceFlowClient", "Client ID: $clientId")
         Log.d("DeviceFlowClient", "Scopes: ${scopes.joinToString(", ")}")
 
@@ -103,17 +105,17 @@ class DeviceFlowClient(
             val deviceCode = json.getString("device_code")
             val userCode = json.getString("user_code")
             val verificationUri = json.getString("verification_uri")
-            val verificationUriComplete = json.optString("verification_uri_complete", null)
+            val verificationUriComplete = json.optStringOrNull("verification_uri_complete")
             val expiresIn = json.getInt("expires_in")
             val interval = json.optInt("interval", 5)
             
-            Log.d("DeviceFlowClient", "Device code получен: user_code=$userCode, expires_in=$expiresIn, interval=$interval")
+            Log.d("DeviceFlowClient", "Device code получен: user_code=[REDACTED], expires_in=$expiresIn, interval=$interval")
             
             DeviceCodeResponse(
                 deviceCode = deviceCode,
                 userCode = userCode,
                 verificationUri = verificationUri,
-                verificationUriComplete = verificationUriComplete.takeIf { !it.isNullOrBlank() },
+                verificationUriComplete = verificationUriComplete,
                 expiresIn = expiresIn,
                 interval = interval
             )
@@ -135,7 +137,7 @@ class DeviceFlowClient(
         onStateChange: (DeviceFlowState) -> Unit
     ) {
         Log.d("DeviceFlowClient", "=== STARTING TOKEN POLLING ===")
-        Log.d("DeviceFlowClient", "Device code: ${deviceCode.take(8)}...")
+        Log.d("DeviceFlowClient", "Device code: [REDACTED]")
         Log.d("DeviceFlowClient", "Polling interval: ${interval}s")
         Log.d("DeviceFlowClient", "Expires at: ${expiresAt}")
 
@@ -155,7 +157,10 @@ class DeviceFlowClient(
                     val tokenResponse = try {
                         requestToken(deviceCode)
                     } catch (e: OAuthException) {
-                        Log.e("DeviceFlowClient", "OAuth error during polling: status=${e.statusCode}, body=${e.errorBody?.take(200)}")
+                        Log.e(
+                            "DeviceFlowClient",
+                            "OAuth error during polling: status=${e.statusCode}, body=${LogRedactor.redact(e.errorBody?.take(200))}"
+                        )
                         val errorBody = e.errorBody ?: e.message
                         val error = parseErrorResponse(errorBody, e.statusCode)
                         Log.d("DeviceFlowClient", "Token request error: ${error.javaClass.simpleName}")
@@ -182,13 +187,13 @@ class DeviceFlowClient(
                                 return@launch
                             }
                             else -> {
-                                Log.e("DeviceFlowClient", "Other OAuth error during polling: ${error.message}")
+                                Log.e("DeviceFlowClient", "Other OAuth error during polling: ${LogRedactor.redact(error.message)}")
                                 onStateChange(DeviceFlowState.Error(error))
                                 return@launch
                             }
                         }
                     } catch (e: IOException) {
-                        Log.w("DeviceFlowClient", "Network error during polling: ${e.message}, retrying in ${currentInterval/1000}s")
+                        Log.w("DeviceFlowClient", "Network error during polling: ${LogRedactor.redact(e.message)}, retrying in ${currentInterval/1000}s")
                         delay(currentInterval)
                         continue
                     }
@@ -224,8 +229,8 @@ class DeviceFlowClient(
             .build()
 
         val startTs = System.currentTimeMillis()
-        Log.d("DeviceFlowClient", "Requesting token from endpoint: ${metadata.tokenEndpoint} at=$startTs")
-        Log.d("DeviceFlowClient", "Device code: ${deviceCode.take(8)}...")
+        Log.d("DeviceFlowClient", "Requesting token from endpoint: ${LogRedactor.redact(metadata.tokenEndpoint)} at=$startTs")
+        Log.d("DeviceFlowClient", "Device code: [REDACTED]")
         
         val response = client.newCall(request).execute()
         val endTs = System.currentTimeMillis()
@@ -248,7 +253,7 @@ class DeviceFlowClient(
             val accessToken = json.getString("access_token")
             val tokenType = json.getString("token_type")
             val expiresIn = json.optInt("expires_in", -1).takeIf { it > 0 }
-            val refreshToken = json.optString("refresh_token", null).takeIf { !it.isNullOrBlank() }
+            val refreshToken = json.optStringOrNull("refresh_token")
             
             Log.d("DeviceFlowClient", "Токен получен: token_type=$tokenType, expires_in=$expiresIn, has_refresh=${refreshToken != null}")
             
@@ -312,7 +317,7 @@ class DeviceFlowClient(
                     OAuthDeviceFlowError.NetworkError("Ошибка клиента: код $statusCode")
                 }
                 else -> {
-                    OAuthDeviceFlowError.UnknownError("Неизвестная ошибка: ${body.take(200)}", e)
+                    OAuthDeviceFlowError.UnknownError("Неизвестная ошибка: ${LogRedactor.redact(body.take(200))}", e)
                 }
             }
         }

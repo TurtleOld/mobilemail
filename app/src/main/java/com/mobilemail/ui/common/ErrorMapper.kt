@@ -1,6 +1,7 @@
 package com.mobilemail.ui.common
 import android.util.Log
 import com.mobilemail.data.jmap.TwoFactorRequiredException
+import com.mobilemail.util.LogRedactor
 import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -17,11 +18,14 @@ object ErrorMapper {
         val fullMessage = (exception.message ?: exception.javaClass.simpleName).orEmpty()
 
         val messageForUi = chooseBestMessage(rootMessage, fullMessage)
+        val rootMessageForLog = LogRedactor.redact(rootMessage)
+        val fullMessageForLog = LogRedactor.redact(fullMessage)
+        val messageForLog = LogRedactor.redact(messageForUi)
 
         Log.e("ErrorMapper", "Mapping exception to AppError:")
-        Log.e("ErrorMapper", "  Root cause: ${root.javaClass.simpleName}: $rootMessage")
-        Log.e("ErrorMapper", "  Full exception: ${exception.javaClass.simpleName}: $fullMessage")
-        Log.e("ErrorMapper", "  Selected message for UI: $messageForUi")
+        Log.e("ErrorMapper", "  Root cause: ${root.javaClass.simpleName}: $rootMessageForLog")
+        Log.e("ErrorMapper", "  Full exception: ${exception.javaClass.simpleName}: $fullMessageForLog")
+        Log.e("ErrorMapper", "  Selected message for UI: $messageForLog")
 
         return when (root) {
 

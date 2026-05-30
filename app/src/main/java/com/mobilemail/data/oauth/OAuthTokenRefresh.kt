@@ -1,6 +1,8 @@
 package com.mobilemail.data.oauth
 
 import android.util.Log
+import com.mobilemail.util.LogRedactor
+import com.mobilemail.util.optStringOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -27,7 +29,7 @@ class OAuthTokenRefresh(
             .post(formBody)
             .build()
         
-        Log.d("OAuthTokenRefresh", "Обновление токена: ${metadata.tokenEndpoint}")
+        Log.d("OAuthTokenRefresh", "Обновление токена: ${LogRedactor.redact(metadata.tokenEndpoint)}")
         
         val response = client.newCall(request).execute()
         val body = response.body?.string() ?: ""
@@ -37,9 +39,9 @@ class OAuthTokenRefresh(
                 val json = JSONObject(body)
                 json.optString("error_description", json.optString("error", "Unknown error"))
             } catch (e: Exception) {
-                body.take(200)
+                LogRedactor.redact(body.take(200))
             }
-            throw OAuthException("Ошибка обновления токена: $error", response.code, body)
+            throw OAuthException("Ошибка обновления токена: ${LogRedactor.redact(error)}", response.code, body)
         }
         
         try {
@@ -47,7 +49,7 @@ class OAuthTokenRefresh(
             val accessToken = json.getString("access_token")
             val tokenType = json.getString("token_type")
             val expiresIn = json.optInt("expires_in", -1).takeIf { it > 0 }
-            val newRefreshToken = json.optString("refresh_token", null).takeIf { !it.isNullOrBlank() } ?: refreshToken
+            val newRefreshToken = json.optStringOrNull("refresh_token") ?: refreshToken
             
             Log.d("OAuthTokenRefresh", "Токен обновлён: token_type=$tokenType, expires_in=$expiresIn")
             

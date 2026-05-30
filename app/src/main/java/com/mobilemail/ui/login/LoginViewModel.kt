@@ -18,6 +18,7 @@ import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.common.fold
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
+import com.mobilemail.util.LogRedactor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -104,7 +105,7 @@ class LoginViewModel(
                 val normalizedServer = server.let { url ->
                     if (url.startsWith("http")) url else "https://$url"
                 }
-                Log.d("LoginViewModel", "Нормализованный URL сервера для автовхода: $normalizedServer")
+                Log.d("LoginViewModel", LogRedactor.redact("Нормализованный URL сервера для автовхода: $normalizedServer"))
 
                 val httpClient = OAuthDiscovery.createClient()
                 val discovery = OAuthDiscovery(httpClient)
@@ -112,18 +113,18 @@ class LoginViewModel(
                     val discovered = discovery.discover(normalizedServer)
                     preferencesManager.saveOAuthMetadata(normalizedServer, discovered)
                     Log.d("LoginViewModel", "OAuth metadata discovered:")
-                    Log.d("LoginViewModel", "  Issuer: ${discovered.issuer}")
-                    Log.d("LoginViewModel", "  Device Authorization Endpoint: ${discovered.deviceAuthorizationEndpoint}")
-                    Log.d("LoginViewModel", "  Token Endpoint: ${discovered.tokenEndpoint}")
-                    Log.d("LoginViewModel", "  Authorization Endpoint: ${discovered.authorizationEndpoint}")
+                    Log.d("LoginViewModel", LogRedactor.redact("  Issuer: ${discovered.issuer}"))
+                    Log.d("LoginViewModel", LogRedactor.redact("  Device Authorization Endpoint: ${discovered.deviceAuthorizationEndpoint}"))
+                    Log.d("LoginViewModel", LogRedactor.redact("  Token Endpoint: ${discovered.tokenEndpoint}"))
+                    Log.d("LoginViewModel", LogRedactor.redact("  Authorization Endpoint: ${discovered.authorizationEndpoint}"))
                     Log.d("LoginViewModel", "  Grant Types: ${discovered.grantTypesSupported.joinToString(", ")}")
                     discovered
                 }
                 
                 Log.d("LoginViewModel", "Using OAuth metadata:")
-                Log.d("LoginViewModel", "  Issuer: ${metadata.issuer}")
-                Log.d("LoginViewModel", "  Device Authorization Endpoint: ${metadata.deviceAuthorizationEndpoint}")
-                Log.d("LoginViewModel", "  Token Endpoint: ${metadata.tokenEndpoint}")
+                Log.d("LoginViewModel", LogRedactor.redact("  Issuer: ${metadata.issuer}"))
+                Log.d("LoginViewModel", LogRedactor.redact("  Device Authorization Endpoint: ${metadata.deviceAuthorizationEndpoint}"))
+                Log.d("LoginViewModel", LogRedactor.redact("  Token Endpoint: ${metadata.tokenEndpoint}"))
 
                 val jmapClient = JmapOAuthClient.getOrCreate(
                     serverUrl = server,
@@ -175,7 +176,7 @@ class LoginViewModel(
             val trimmed = server.trim()
             if (trimmed.isNotEmpty()) {
                 preferencesManager.saveServerUrl(trimmed)
-                Log.d("LoginViewModel", "Сохранен адрес сервера: $trimmed")
+                Log.d("LoginViewModel", LogRedactor.redact("Сохранен адрес сервера: $trimmed"))
             }
         }
     }
@@ -192,7 +193,7 @@ class LoginViewModel(
         val state = _uiState.value
 
         Log.d("LoginViewModel", "=== STARTING OAuth LOGIN PROCESS ===")
-        Log.d("LoginViewModel", "Current server: '${state.server}'")
+        Log.d("LoginViewModel", LogRedactor.redact("Current server: '${state.server}'"))
 
         if (state.server.isBlank()) {
             Log.w("LoginViewModel", "Server is blank, showing error")
@@ -208,7 +209,7 @@ class LoginViewModel(
                 val serverUrl = state.server.trim().let { url ->
                     if (url.startsWith("http")) url else "https://$url"
                 }
-                Log.d("LoginViewModel", "Нормализованный URL сервера: $serverUrl")
+                Log.d("LoginViewModel", LogRedactor.redact("Нормализованный URL сервера: $serverUrl"))
                 Log.d("LoginViewModel", "Creating HTTP client and discovery service")
 
                 val httpClient = OAuthDiscovery.createClient()
@@ -225,16 +226,16 @@ class LoginViewModel(
                     Log.d("LoginViewModel", "Discovery completed successfully")
                     discovered
                 }
-                Log.d("LoginViewModel", "Using metadata: ${metadata.issuer}")
-                Log.d("LoginViewModel", "Device Auth Endpoint: ${metadata.deviceAuthorizationEndpoint}")
-                Log.d("LoginViewModel", "Token Endpoint: ${metadata.tokenEndpoint}")
+                Log.d("LoginViewModel", LogRedactor.redact("Using metadata: ${metadata.issuer}"))
+                Log.d("LoginViewModel", LogRedactor.redact("Device Auth Endpoint: ${metadata.deviceAuthorizationEndpoint}"))
+                Log.d("LoginViewModel", LogRedactor.redact("Token Endpoint: ${metadata.tokenEndpoint}"))
                 Log.d("LoginViewModel", "Grant Types: ${metadata.grantTypesSupported.joinToString(", ")}")
 
                 // Validate metadata before using
                 if (metadata.deviceAuthorizationEndpoint.isBlank() || metadata.tokenEndpoint.isBlank()) {
                     Log.e("LoginViewModel", "OAuth metadata is incomplete - cannot proceed with OAuth flow")
-                    Log.e("LoginViewModel", "Device auth endpoint: '${metadata.deviceAuthorizationEndpoint}'")
-                    Log.e("LoginViewModel", "Token endpoint: '${metadata.tokenEndpoint}'")
+                    Log.e("LoginViewModel", LogRedactor.redact("Device auth endpoint: '${metadata.deviceAuthorizationEndpoint}'"))
+                    Log.e("LoginViewModel", LogRedactor.redact("Token endpoint: '${metadata.tokenEndpoint}'"))
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         error = AppError.NetworkError(
@@ -259,7 +260,7 @@ class LoginViewModel(
                         "offline_access"
                     )
                 )
-                Log.d("LoginViewModel", "Device code received: user_code=${deviceCode.userCode}, expires_in=${deviceCode.expiresIn}, interval=${deviceCode.interval}")
+                Log.d("LoginViewModel", "Device code received: user_code=[REDACTED], expires_in=${deviceCode.expiresIn}, interval=${deviceCode.interval}")
 
                 val expiresAt = System.currentTimeMillis() + (deviceCode.expiresIn * 1000L)
 
@@ -290,7 +291,7 @@ class LoginViewModel(
                         }
                         is DeviceFlowState.Error -> {
                             viewModelScope.launch {
-                                Log.e("LoginViewModel", "OAuth device flow error: ${flowState.error}")
+                                Log.e("LoginViewModel", "OAuth device flow error: ${LogRedactor.redact(flowState.error.toString())}")
                                 handleOAuthTokenError(flowState.error)
                             }
                         }

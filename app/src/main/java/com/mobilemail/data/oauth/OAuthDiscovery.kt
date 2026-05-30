@@ -3,6 +3,7 @@ package com.mobilemail.data.oauth
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.mobilemail.util.LogRedactor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
@@ -106,13 +107,13 @@ class OAuthDiscovery(private val client: OkHttpClient) {
 
                         if (!response.isSuccessful) {
                             throw OAuthException(
-                                "Discovery failed: код ${response.code}, ответ: ${body.take(200)}",
+                                "Discovery failed: код ${response.code}, ответ: ${LogRedactor.redact(body.take(200))}",
                                 response.code
                             )
                         }
 
                         try {
-                            Log.d("OAuthDiscovery", "Raw discovery response body: ${body.take(1000)}")
+                            Log.d("OAuthDiscovery", "Raw discovery response body: ${LogRedactor.redact(body.take(1000))}")
 
                             val json = JSONObject(body)
                             Log.d("OAuthDiscovery", "Parsed JSON keys: ${json.keys().asSequence().toList()}")
@@ -174,10 +175,10 @@ class OAuthDiscovery(private val client: OkHttpClient) {
                             }
 
                             Log.d("OAuthDiscovery", "Discovery successful:")
-                            Log.d("OAuthDiscovery", "  Issuer: $issuer")
-                            Log.d("OAuthDiscovery", "  Device Auth Endpoint: $deviceAuthorizationEndpoint")
-                            Log.d("OAuthDiscovery", "  Token Endpoint: $tokenEndpoint")
-                            Log.d("OAuthDiscovery", "  Authorization Endpoint: $authorizationEndpoint")
+                            Log.d("OAuthDiscovery", LogRedactor.redact("  Issuer: $issuer"))
+                            Log.d("OAuthDiscovery", LogRedactor.redact("  Device Auth Endpoint: $deviceAuthorizationEndpoint"))
+                            Log.d("OAuthDiscovery", LogRedactor.redact("  Token Endpoint: $tokenEndpoint"))
+                            Log.d("OAuthDiscovery", LogRedactor.redact("  Authorization Endpoint: $authorizationEndpoint"))
                             Log.d("OAuthDiscovery", "  Grant Types: ${grantTypesSupported.joinToString(", ")}")
 
                             return@withContext OAuthServerMetadata(
