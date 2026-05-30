@@ -38,7 +38,7 @@ class JmapOAuthClient(
     private val baseUrl: String,
     private val email: String,
     private val accountId: String,
-    private val tokenStore: TokenStore,
+    private val tokenStoreAccess: TokenStoreAccess,
     private val metadata: OAuthServerMetadata,
     private val clientId: String
 ) : JmapApi {
@@ -57,7 +57,14 @@ class JmapOAuthClient(
             val key = "$serverUrl:$email"
             synchronized(lock) {
                 return clientCache.getOrPut(key) {
-                    JmapOAuthClient(serverUrl, email, accountId, tokenStore, metadata, clientId)
+                    JmapOAuthClient(
+                        serverUrl,
+                        email,
+                        accountId,
+                        AndroidTokenStoreAccess(tokenStore),
+                        metadata,
+                        clientId
+                    )
                 }
             }
         }
@@ -92,17 +99,17 @@ class JmapOAuthClient(
     private val serverUrl = baseUrl.trimEnd('/')
     
     private suspend fun getAccessToken(): String = tokenMutex.withLock {
-        val stored = tokenStore.getTokens(serverUrl, email)
+        val stored = tokenStoreAccess.getTokens(serverUrl, email)
 
         if (stored != null && stored.isValid()) return@withLock stored.accessToken
 
         if (stored?.refreshToken != null) {
             try {
                 val newToken = tokenRefresh.refreshToken(stored.refreshToken)
-                tokenStore.saveTokens(serverUrl, email, newToken)
+                tokenStoreAccess.saveTokens(serverUrl, email, newToken)
                 return@withLock newToken.accessToken
             } catch (e: Exception) {
-                tokenStore.clearTokens(serverUrl, email)
+                tokenStoreAccess.clearTokens(serverUrl, email)
                 throw OAuthTokenExpiredException("Не удалось обновить токен: ${e.message}")
             }
         }
@@ -111,15 +118,15 @@ class JmapOAuthClient(
     }
 
     private suspend fun forceRefreshAccessToken(): String = tokenMutex.withLock {
-        val stored = tokenStore.getTokens(serverUrl, email)
+        val stored = tokenStoreAccess.getTokens(serverUrl, email)
 
         if (stored?.refreshToken != null) {
             try {
                 val newToken = tokenRefresh.refreshToken(stored.refreshToken)
-                tokenStore.saveTokens(serverUrl, email, newToken)
+                tokenStoreAccess.saveTokens(serverUrl, email, newToken)
                 return@withLock newToken.accessToken
             } catch (e: Exception) {
-                tokenStore.clearTokens(serverUrl, email)
+                tokenStoreAccess.clearTokens(serverUrl, email)
                 throw OAuthTokenExpiredException("Не удалось обновить токен: ${e.message}")
             }
         }
