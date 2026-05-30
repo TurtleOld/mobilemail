@@ -3,6 +3,7 @@ package com.mobilemail.ui.navigation
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
+import com.mobilemail.domain.port.AccountPushTopicsPort
 import com.mobilemail.domain.usecase.HandleMessagesStartupUseCase
 import com.mobilemail.domain.usecase.LogoutAccountUseCase
 import com.mobilemail.domain.usecase.LogoutAllUseCase
@@ -22,4 +23,5 @@ data class AppNavigationDependencies(
     val resolvePushNavigationUseCase: ResolvePushNavigationUseCase,
     val handleMessagesStartupUseCase: HandleMessagesStartupUseCase,
     val resolveMessagesViewModelContextUseCase: ResolveMessagesViewModelContextUseCase,
+    val accountPushTopicsPort: AccountPushTopicsPort,
 )

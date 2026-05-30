@@ -1,7 +1,6 @@
 package com.mobilemail.ui.navigation
 
 import android.app.Application
-import android.net.Uri
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -76,8 +75,6 @@ fun AppNavGraph(
     navController: NavHostController,
     startDestination: String,
     dependencies: AppNavigationDependencies,
-    subscribeToAccountTopic: (String) -> Unit,
-    unsubscribeFromAccountTopic: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val application = LocalContext.current.applicationContext as Application
@@ -92,6 +89,7 @@ fun AppNavGraph(
     val resolvePushNavigationUseCase = dependencies.resolvePushNavigationUseCase
     val handleMessagesStartupUseCase = dependencies.handleMessagesStartupUseCase
     val resolveMessagesViewModelContextUseCase = dependencies.resolveMessagesViewModelContextUseCase
+    val accountPushTopicsPort = dependencies.accountPushTopicsPort
 
     NavHost(
         navController = navController,
@@ -114,7 +112,7 @@ fun AppNavGraph(
                         val accountIds = preferencesManager.getSavedAccounts().map { it.accountId }
                         logoutAllUseCase(
                             accountIds = accountIds,
-                            unsubscribeTopic = unsubscribeFromAccountTopic,
+                            unsubscribeTopic = accountPushTopicsPort::unsubscribe,
                             clearAllSessions = { preferencesManager.clearAllSessions() },
                             clearAllTokens = { tokenStore.clearAllTokens() },
                             clearJmapCaches = {
@@ -191,16 +189,17 @@ fun AppNavGraph(
         }
 
         composable(AppRoutes.MessagesPattern) { backStackEntry ->
-            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
-            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-            val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+            val routeArgs = backStackEntry.decodeAccountRouteArgs() ?: return@composable
+            val server = routeArgs.server
+            val email = routeArgs.email
+            val accountId = routeArgs.accountId
             val currentSession = remember(server, email, accountId) { SavedSession(server, email, accountId) }
             val savedAccounts by preferencesManager.savedAccounts.collectAsState(initial = emptyList())
 
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
             ) {
-                subscribeToAccountTopic(accountId)
+                accountPushTopicsPort.subscribe(accountId)
             }
 
             LaunchedEffect(accountId) {
@@ -211,7 +210,7 @@ fun AppNavGraph(
                         tiramisuSdkInt = Build.VERSION_CODES.TIRAMISU,
                         alreadyRequestedPermission = preferencesManager.isNotificationPermissionRequested(),
                         processPending = { OfflineQueueManager.processPending(application) },
-                        subscribeToTopic = subscribeToAccountTopic,
+                        subscribeToTopic = accountPushTopicsPort::subscribe,
                         markPermissionRequested = { preferencesManager.markNotificationPermissionRequested() }
                     )
                 ) {
@@ -360,7 +359,7 @@ fun AppNavGraph(
                     activityScope.launch {
                         val nextSession = logoutAccountUseCase(
                             session = SavedSession(server, email, accountId),
-                            unsubscribeTopic = unsubscribeFromAccountTopic,
+                            unsubscribeTopic = accountPushTopicsPort::unsubscribe,
                             clearTokens = { targetServer, targetEmail ->
                                 tokenStore.clearTokens(targetServer, targetEmail)
                             },
@@ -380,10 +379,11 @@ fun AppNavGraph(
         }
 
         composable(AppRoutes.ComposePattern) { backStackEntry ->
-            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
-            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-            val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
-            val draftToken = Uri.decode(backStackEntry.arguments?.getString("draftToken") ?: "-")
+            val routeArgs = backStackEntry.decodeComposeRouteArgs() ?: return@composable
+            val server = routeArgs.server
+            val email = routeArgs.email
+            val accountId = routeArgs.accountId
+            val draftToken = routeArgs.draftToken
             val prefill = remember(draftToken) { ComposePrefillStore.consume(draftToken) }
 
             val viewModel: ComposeViewModel = viewModel(
@@ -402,9 +402,10 @@ fun AppNavGraph(
         }
 
         composable(AppRoutes.SearchPattern) { backStackEntry ->
-            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
-            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-            val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+            val routeArgs = backStackEntry.decodeAccountRouteArgs() ?: return@composable
+            val server = routeArgs.server
+            val email = routeArgs.email
+            val accountId = routeArgs.accountId
 
             val viewModel: SearchViewModel = viewModel(
                 factory = SearchViewModelFactory(application, server, email, accountId)
@@ -424,9 +425,10 @@ fun AppNavGraph(
         }
 
         composable(AppRoutes.OutboxPattern) { backStackEntry ->
-            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
-            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-            val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
+            val routeArgs = backStackEntry.decodeAccountRouteArgs() ?: return@composable
+            val server = routeArgs.server
+            val email = routeArgs.email
+            val accountId = routeArgs.accountId
             val viewModel: OutboxViewModel = viewModel(
                 factory = OutboxViewModelFactory(application, server, email, accountId)
             )
@@ -437,8 +439,9 @@ fun AppNavGraph(
         }
 
         composable(AppRoutes.SettingsPattern) { backStackEntry ->
-            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
-            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
+            val routeArgs = backStackEntry.decodeSettingsRouteArgs() ?: return@composable
+            val server = routeArgs.server
+            val email = routeArgs.email
 
             SettingsScreen(
                 server = server,
@@ -462,10 +465,11 @@ fun AppNavGraph(
         }
 
         composable(AppRoutes.MessagePattern) { backStackEntry ->
-            val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
-            val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
-            val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
-            val messageId = Uri.decode(backStackEntry.arguments?.getString("messageId") ?: return@composable)
+            val routeArgs = backStackEntry.decodeMessageRouteArgs() ?: return@composable
+            val server = routeArgs.server
+            val email = routeArgs.email
+            val accountId = routeArgs.accountId
+            val messageId = routeArgs.messageId
             val viewModel: MessageDetailViewModel = viewModel(
                 factory = MessageDetailViewModelFactory(application, server, email, accountId, messageId)
             )

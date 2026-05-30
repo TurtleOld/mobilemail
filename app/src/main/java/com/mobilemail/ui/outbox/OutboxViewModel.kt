@@ -7,6 +7,8 @@ import com.mobilemail.data.local.entity.PendingOperationEntity
 import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.data.sync.OfflineQueueStats
 import com.mobilemail.data.sync.OfflineQueueWorker
+import com.mobilemail.ui.common.AppError
+import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.SnackbarDuration
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -17,9 +19,10 @@ import kotlinx.coroutines.launch
 data class OutboxUiState(
     val operations: List<PendingOperationEntity> = emptyList(),
     val stats: OfflineQueueStats = OfflineQueueStats(0, 0, 0, 0),
-    val notification: NotificationState = NotificationState.None,
+    override val error: AppError? = null,
+    override val notification: NotificationState = NotificationState.None,
     val isProcessing: Boolean = false
-)
+) : FeatureScreenUiState
 
 class OutboxViewModel(
     application: Application,

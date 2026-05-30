@@ -19,6 +19,7 @@ import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.SnackbarDuration
 import com.mobilemail.ui.common.AppError
+import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
 import kotlinx.coroutines.Job
@@ -49,10 +50,10 @@ data class MessagesUiState(
     val queueAttentionCount: Int = 0,
     val hiddenMessageIds: Set<String> = emptySet(),
     val readStatusOverrides: Map<String, Boolean> = emptyMap(),
-    val error: AppError? = null,
+    override val error: AppError? = null,
     val selectedMessageIds: Set<String> = emptySet(),
-    val notification: NotificationState = NotificationState.None
-)
+    override val notification: NotificationState = NotificationState.None
+) : FeatureScreenUiState
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MessagesViewModel(

@@ -18,6 +18,8 @@ import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.common.fold
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
+import com.mobilemail.ui.common.FeatureScreenUiState
+import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.util.LogRedactor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,7 +28,8 @@ import kotlinx.coroutines.launch
 data class LoginUiState(
     val server: String = "",
     val isLoading: Boolean = false,
-    val error: AppError? = null,
+    override val error: AppError? = null,
+    override val notification: NotificationState = NotificationState.None,
     val account: Account? = null,
     val requiresTwoFactor: Boolean = false,
     val totpCode: String = "",
@@ -34,7 +37,7 @@ data class LoginUiState(
     val oauthVerificationUri: String? = null,
     val oauthVerificationUriComplete: String? = null,
     val oauthExpiresAt: Long? = null
-)
+) : FeatureScreenUiState
 
 class LoginViewModel(
     application: Application,
@@ -188,7 +191,11 @@ class LoginViewModel(
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
-    
+
+    fun clearNotification() {
+        _uiState.value = _uiState.value.copy(notification = NotificationState.None)
+    }
+
     fun startOAuthLogin(onSuccess: (Account) -> Unit) {
         val state = _uiState.value
 

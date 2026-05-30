@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.ui.common.FeatureScreenEffects
+import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import com.mobilemail.ui.theme.EmailShapes
 import com.mobilemail.ui.theme.EmailTypography
 import com.mobilemail.ui.theme.ExtendedTheme
@@ -50,7 +52,7 @@ fun SearchScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pagingItems = viewModel.pagedResults.collectAsLazyPagingItems()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarHostState = rememberFeatureScreenSnackbarHostState()
     val scope = rememberCoroutineScope()
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var showFolderDialog by remember { mutableStateOf(false) }
@@ -61,18 +63,12 @@ fun SearchScreen(
         runCatching { focusRequester.requestFocus() }
     }
 
-    // Обработка ошибок
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let { error ->
-            scope.launch {
-                snackbarHostState.showSnackbar(
-                    message = error.getUserMessage(),
-                    duration = SnackbarDuration.Long
-                )
-                viewModel.clearError()
-            }
-        }
-    }
+    FeatureScreenEffects(
+        uiState = uiState,
+        onErrorConsumed = viewModel::clearError,
+        onNotificationConsumed = viewModel::clearNotification,
+        snackbarHostState = snackbarHostState,
+    )
 
     // Диалог выбора папки
     if (showFolderDialog) {

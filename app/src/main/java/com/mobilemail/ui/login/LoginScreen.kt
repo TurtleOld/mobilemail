@@ -20,7 +20,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.R
-import kotlinx.coroutines.launch
+import com.mobilemail.ui.common.FeatureScreenEffects
+import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 
 @Composable
 fun LoginScreen(
@@ -28,8 +29,7 @@ fun LoginScreen(
     onLoginSuccess: (String, String, String, String) -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
+    val snackbarHostState = rememberFeatureScreenSnackbarHostState()
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var hasOpenedAuthPage by remember { mutableStateOf(false) }
     val context = LocalContext.current
@@ -46,17 +46,12 @@ fun LoginScreen(
         }
     }
 
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let { error ->
-            scope.launch {
-                snackbarHostState.showSnackbar(
-                    message = error.getUserMessage(),
-                    duration = SnackbarDuration.Long
-                )
-                viewModel.clearError()
-            }
-        }
-    }
+    FeatureScreenEffects(
+        uiState = uiState,
+        onErrorConsumed = viewModel::clearError,
+        onNotificationConsumed = viewModel::clearNotification,
+        snackbarHostState = snackbarHostState,
+    )
 
     LaunchedEffect(verificationUri, uiState.oauthUserCode) {
         if (!verificationUri.isNullOrBlank() && uiState.oauthUserCode != null && !hasOpenedAuthPage) {

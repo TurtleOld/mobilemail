@@ -18,12 +18,11 @@ import com.mobilemail.data.security.PinManager
 import com.mobilemail.domain.usecase.HandleMessagesStartupUseCase
 import com.mobilemail.domain.usecase.LogoutAccountUseCase
 import com.mobilemail.domain.usecase.LogoutAllUseCase
+import com.mobilemail.domain.usecase.PublishPushNavigationFromIntentUseCase
 import com.mobilemail.domain.usecase.ResolveMessagesViewModelContextUseCase
 import com.mobilemail.domain.usecase.ResolvePushNavigationUseCase
 import com.mobilemail.domain.usecase.ResolveValidSessionUseCase
-import com.mobilemail.notifications.NtfyTopics
-import com.mobilemail.notifications.PushNavigationStore
-import com.mobilemail.notifications.PushNotificationParser
+import com.mobilemail.notifications.NtfyAccountPushTopicsAdapter
 import com.mobilemail.ui.navigation.AppNavigationDependencies
 import com.mobilemail.ui.navigation.AppNavigationHost
 import com.mobilemail.ui.navigation.AppRoutes
@@ -40,6 +39,7 @@ class MainActivity : FragmentActivity() {
     private val tokenStore by lazy { TokenStore(applicationContext) }
     private val pinManager by lazy { PinManager(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val publishPushNavigationFromIntentUseCase = PublishPushNavigationFromIntentUseCase()
 
     private val navigationDependencies by lazy {
         AppNavigationDependencies(
@@ -53,34 +53,23 @@ class MainActivity : FragmentActivity() {
             resolvePushNavigationUseCase = ResolvePushNavigationUseCase(),
             handleMessagesStartupUseCase = HandleMessagesStartupUseCase(),
             resolveMessagesViewModelContextUseCase = ResolveMessagesViewModelContextUseCase(),
+            accountPushTopicsPort = NtfyAccountPushTopicsAdapter(),
         )
     }
 
     private var navigationIntent by mutableStateOf<Intent?>(null)
 
-    private fun handlePushIntent(intent: Intent?) {
-        PushNavigationStore.publish(PushNotificationParser.fromIntent(intent))
-    }
-
-    private fun subscribeToAccountTopic(accountId: String) {
-        NtfyTopics.subscribe(accountId)
-    }
-
-    private fun unsubscribeFromAccountTopic(accountId: String) {
-        NtfyTopics.unsubscribe(accountId)
-    }
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         navigationIntent = intent
-        handlePushIntent(intent)
+        publishPushNavigationFromIntentUseCase(intent)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         navigationIntent = intent
-        handlePushIntent(intent)
+        publishPushNavigationFromIntentUseCase(intent)
         setContent {
             MobileMailTheme {
                 Surface(
@@ -92,8 +81,6 @@ class MainActivity : FragmentActivity() {
                         dependencies = navigationDependencies,
                         startDestination = startDestination,
                         intent = navigationIntent,
-                        subscribeToAccountTopic = ::subscribeToAccountTopic,
-                        unsubscribeFromAccountTopic = ::unsubscribeFromAccountTopic,
                     )
                 }
             }

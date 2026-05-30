@@ -54,6 +54,20 @@ class AppRoutesTest {
     }
 
     @Test
+    fun `encode and decode route segments are symmetric`() {
+        val samples = listOf(
+            "mail.example.com",
+            "user@host.com",
+            "https://mail.example.com",
+            "acc/1",
+            "msg/thread/42",
+        )
+        samples.forEach { sample ->
+            assertEquals(sample, decodeRouteSegment(encodeRouteSegment(sample)))
+        }
+    }
+
+    @Test
     fun `encodeRouteSegment percent-encodes reserved characters`() {
         assertEquals("user%40host.com", encodeRouteSegment("user@host.com"))
         assertEquals("msg%2Fthread%2F42", encodeRouteSegment("msg/thread/42"))

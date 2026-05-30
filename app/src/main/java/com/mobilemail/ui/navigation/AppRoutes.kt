@@ -54,4 +54,26 @@ internal fun encodeRouteSegment(value: String): String = buildString {
     }
 }
 
+internal fun decodeRouteSegment(encoded: String): String = buildString {
+    val pendingBytes = mutableListOf<Byte>()
+    fun flushBytes() {
+        if (pendingBytes.isNotEmpty()) {
+            append(pendingBytes.toByteArray().toString(Charsets.UTF_8))
+            pendingBytes.clear()
+        }
+    }
+    var index = 0
+    while (index < encoded.length) {
+        if (encoded[index] == '%' && index + 2 < encoded.length) {
+            pendingBytes.add(encoded.substring(index + 1, index + 3).toInt(16).toByte())
+            index += 3
+        } else {
+            flushBytes()
+            append(encoded[index])
+            index++
+        }
+    }
+    flushBytes()
+}
+
 private val HEX_DIGITS = "0123456789ABCDEF".toCharArray()

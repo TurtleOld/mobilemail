@@ -17,6 +17,8 @@ import com.mobilemail.data.paging.SearchPagingSource
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.SearchRepository
 import com.mobilemail.ui.common.AppError
+import com.mobilemail.ui.common.FeatureScreenUiState
+import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
 import kotlinx.coroutines.flow.Flow
@@ -55,8 +57,9 @@ data class SearchUiState(
     val showAdvancedFilters: Boolean = false,
     val hasSearched: Boolean = false,
     val isLoading: Boolean = false,
-    val error: AppError? = null
-) {
+    override val error: AppError? = null,
+    override val notification: NotificationState = NotificationState.None,
+) : FeatureScreenUiState {
     val hasActiveFilters: Boolean
         get() = selectedFolder != null || unreadOnly || hasAttachments || starredOnly || importantOnly ||
             dateRange != SearchRepository.DateRange.ANY || senderQuery.isNotBlank()
@@ -221,6 +224,10 @@ class SearchViewModel(
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    fun clearNotification() {
+        _uiState.value = _uiState.value.copy(notification = NotificationState.None)
     }
 
     private fun refreshIfNeeded() {

@@ -26,8 +26,6 @@ fun AppNavigationHost(
     dependencies: AppNavigationDependencies,
     startDestination: String,
     intent: Intent?,
-    subscribeToAccountTopic: (String) -> Unit,
-    unsubscribeFromAccountTopic: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
@@ -50,8 +48,6 @@ fun AppNavigationHost(
         navController = navController,
         startDestination = startDestination,
         dependencies = dependencies,
-        subscribeToAccountTopic = subscribeToAccountTopic,
-        unsubscribeFromAccountTopic = unsubscribeFromAccountTopic,
         modifier = modifier,
     )
 

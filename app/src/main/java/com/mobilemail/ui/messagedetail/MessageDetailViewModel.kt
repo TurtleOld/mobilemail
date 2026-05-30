@@ -17,6 +17,7 @@ import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.MessageActionsRepository
 import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.ui.common.AppError
+import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.data.common.fold
@@ -34,9 +35,9 @@ data class MessageDetailUiState(
     val threadDetails: List<MessageDetail> = emptyList(),
     val folders: List<Folder> = emptyList(),
     val isLoading: Boolean = false,
-    val error: AppError? = null,
-    val notification: NotificationState = NotificationState.None
-)
+    override val error: AppError? = null,
+    override val notification: NotificationState = NotificationState.None
+) : FeatureScreenUiState
 
 class MessageDetailViewModel(
     application: Application,

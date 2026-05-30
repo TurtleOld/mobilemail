@@ -11,7 +11,9 @@ import com.mobilemail.data.model.Attachment
 import com.mobilemail.data.repository.ComposeRepository
 import com.mobilemail.data.sync.OfflineAttachmentStorage
 import com.mobilemail.data.sync.OfflineQueueManager
+import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
+import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.SnackbarDuration
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -30,8 +32,9 @@ data class ComposeUiState(
     val isSavingDraft: Boolean = false,
     val attachments: List<Attachment> = emptyList(),
     val draftId: String? = null,
-    val notification: NotificationState = NotificationState.None
-)
+    override val error: AppError? = null,
+    override val notification: NotificationState = NotificationState.None
+) : FeatureScreenUiState
 
 class ComposeViewModel(
     application: Application,

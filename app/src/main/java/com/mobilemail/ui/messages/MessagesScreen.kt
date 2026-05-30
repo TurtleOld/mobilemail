@@ -63,6 +63,8 @@ import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.ui.theme.EmailShapes
 import com.mobilemail.ui.theme.EmailTypography
 import com.mobilemail.ui.theme.ExtendedTheme
+import com.mobilemail.ui.common.FeatureScreenEffects
+import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -91,43 +93,15 @@ fun MessagesScreen(
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
+    val snackbarHostState = rememberFeatureScreenSnackbarHostState()
     var showMoveDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(uiState.error) {
-        uiState.error?.let { error ->
-            scope.launch {
-                snackbarHostState.showSnackbar(
-                    message = error.getUserMessage(),
-                    duration = SnackbarDuration.Long
-                )
-                viewModel.clearError()
-            }
-        }
-    }
-
-    LaunchedEffect(uiState.notification) {
-        when (val notification = uiState.notification) {
-            is com.mobilemail.ui.common.NotificationState.Snackbar -> {
-                scope.launch {
-                    val result = snackbarHostState.showSnackbar(
-                        message = notification.message,
-                        actionLabel = notification.actionLabel,
-                        duration = when (notification.duration) {
-                            com.mobilemail.ui.common.SnackbarDuration.Short -> SnackbarDuration.Short
-                            com.mobilemail.ui.common.SnackbarDuration.Long -> SnackbarDuration.Long
-                            com.mobilemail.ui.common.SnackbarDuration.Indefinite -> SnackbarDuration.Indefinite
-                        }
-                    )
-                    if (result == SnackbarResult.ActionPerformed) {
-                        notification.onAction?.invoke()
-                    }
-                    viewModel.clearNotification()
-                }
-            }
-            else -> Unit
-        }
-    }
+    FeatureScreenEffects(
+        uiState = uiState,
+        onErrorConsumed = viewModel::clearError,
+        onNotificationConsumed = viewModel::clearNotification,
+        snackbarHostState = snackbarHostState,
+    )
 
     LaunchedEffect(pagingItems.itemSnapshotList.items, uiState.hiddenMessageIds) {
         viewModel.updateVisibleMessages(
