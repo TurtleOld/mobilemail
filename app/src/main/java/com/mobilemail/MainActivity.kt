@@ -39,7 +39,6 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavDeepLinkRequest
 import androidx.navigation.navOptions
 import com.mobilemail.notifications.NtfyTopics
-import com.mobilemail.notifications.PushMessageTarget
 import com.mobilemail.notifications.PushNavigationStore
 import com.mobilemail.notifications.PushNotificationParser
 import com.mobilemail.ui.login.LoginScreen
@@ -71,6 +70,10 @@ import com.mobilemail.ui.security.PinLockViewModel
 import com.mobilemail.ui.security.PinLockViewModelFactory
 import com.mobilemail.data.security.PinManager
 import com.mobilemail.data.sync.OfflineQueueManager
+import com.mobilemail.domain.usecase.ResolvePushSessionUseCase
+import com.mobilemail.domain.usecase.ResolveValidSessionUseCase
+import com.mobilemail.domain.usecase.LogoutAccountUseCase
+import com.mobilemail.domain.usecase.LogoutAllUseCase
 
 class MainActivity : FragmentActivity() {
     private val database by lazy {
@@ -80,6 +83,10 @@ class MainActivity : FragmentActivity() {
     private val tokenStore by lazy { TokenStore(applicationContext) }
     private val pinManager by lazy { PinManager(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val resolveValidSessionUseCase = ResolveValidSessionUseCase()
+    private val resolvePushSessionUseCase = ResolvePushSessionUseCase()
+    private val logoutAccountUseCase = LogoutAccountUseCase()
+    private val logoutAllUseCase = LogoutAllUseCase()
 
     private fun buildComposeRoute(
         server: String,
@@ -121,28 +128,6 @@ class MainActivity : FragmentActivity() {
         NtfyTopics.unsubscribe(accountId)
     }
 
-    private fun matchesPushSession(target: PushMessageTarget, session: SavedSession): Boolean {
-        return (target.server == null || target.server == session.server) &&
-            (target.email == null || target.email == session.email) &&
-            (target.accountId == null || target.accountId == session.accountId)
-    }
-
-    private fun resolvePushSession(
-        target: PushMessageTarget,
-        currentSession: SavedSession?,
-        savedAccounts: List<SavedSession>
-    ): SavedSession? {
-        currentSession?.takeIf { matchesPushSession(target, it) }?.let { return it }
-        savedAccounts.firstOrNull { matchesPushSession(target, it) }?.let { return it }
-        return currentSession ?: savedAccounts.lastOrNull()
-    }
-
-    private suspend fun logoutAccount(session: SavedSession): SavedSession? {
-        unsubscribeFromAccountTopic(session.accountId)
-        tokenStore.clearTokens(session.server, session.email)
-        return preferencesManager.removeSavedAccount(session.server, session.email)
-    }
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -181,7 +166,8 @@ class MainActivity : FragmentActivity() {
 
                         val activeSession = preferencesManager.getSavedSession()
                         val savedAccounts = preferencesManager.getSavedAccounts()
-                        val resolvedSession = resolvePushSession(target, activeSession, savedAccounts) ?: return@LaunchedEffect
+                        val resolvedSession = resolvePushSessionUseCase(target, activeSession, savedAccounts)
+                            ?: return@LaunchedEffect
 
                         if (activeSession != resolvedSession) {
                             preferencesManager.setActiveSession(resolvedSession)
@@ -209,11 +195,17 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onLogout = {
                                     activityScope.launch {
-                                        preferencesManager.getSavedAccounts().forEach { unsubscribeFromAccountTopic(it.accountId) }
-                                        preferencesManager.clearAllSessions()
-                                        tokenStore.clearAllTokens()
-                                        JmapOAuthClient.clearCache()
-                                        JmapClient.clearCache()
+                                        val accountIds = preferencesManager.getSavedAccounts().map { it.accountId }
+                                        logoutAllUseCase(
+                                            accountIds = accountIds,
+                                            unsubscribeTopic = { unsubscribeFromAccountTopic(it) },
+                                            clearAllSessions = { preferencesManager.clearAllSessions() },
+                                            clearAllTokens = { tokenStore.clearAllTokens() },
+                                            clearJmapCaches = {
+                                                JmapOAuthClient.clearCache()
+                                                JmapClient.clearCache()
+                                            }
+                                        )
                                         navController.navigate(AppRoutes.Login) {
                                             popUpTo(0) { inclusive = true }
                                         }
@@ -227,15 +219,10 @@ class MainActivity : FragmentActivity() {
                             LaunchedEffect(Unit) {
                                 val activeSession = preferencesManager.getSavedSession()
                                 val savedAccounts = preferencesManager.getSavedAccounts()
-                                val activeServer = activeSession?.server
-                                val activeEmail = activeSession?.email
-                                val orderedCandidates = buildList {
-                                    if (activeSession != null) add(activeSession)
-                                    addAll(savedAccounts.filterNot {
-                                        it.server == activeServer && it.email == activeEmail
-                                    })
-                                }
-                                val validSession = orderedCandidates.firstOrNull { session ->
+                                val validSession = resolveValidSessionUseCase(
+                                    activeSession = activeSession,
+                                    savedAccounts = savedAccounts
+                                ) { session ->
                                     val tokens = tokenStore.getTokens(session.server, session.email)
                                     tokens != null && (tokens.isValid() || tokens.refreshToken != null)
                                 }
@@ -320,7 +307,8 @@ class MainActivity : FragmentActivity() {
 
                             LaunchedEffect(pendingPushTarget, currentSession, savedAccounts) {
                                 val target = pendingPushTarget ?: return@LaunchedEffect
-                                val resolvedSession = resolvePushSession(target, currentSession, savedAccounts) ?: return@LaunchedEffect
+                                val resolvedSession = resolvePushSessionUseCase(target, currentSession, savedAccounts)
+                                    ?: return@LaunchedEffect
 
                                 if (resolvedSession != currentSession) {
                                     preferencesManager.setActiveSession(resolvedSession)
@@ -431,7 +419,16 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onLogout = {
                                     activityScope.launch {
-                                        val nextSession = logoutAccount(SavedSession(server, email, accountId))
+                                        val nextSession = logoutAccountUseCase(
+                                            session = SavedSession(server, email, accountId),
+                                            unsubscribeTopic = { unsubscribeFromAccountTopic(it) },
+                                            clearTokens = { targetServer, targetEmail ->
+                                                tokenStore.clearTokens(targetServer, targetEmail)
+                                            },
+                                            removeSavedAccount = { targetServer, targetEmail ->
+                                                preferencesManager.removeSavedAccount(targetServer, targetEmail)
+                                            }
+                                        )
                                         JmapOAuthClient.clearCache()
                                         JmapClient.clearCache()
                                         val target = nextSession?.let { buildMessagesRoute(it) } ?: AppRoutes.Login
