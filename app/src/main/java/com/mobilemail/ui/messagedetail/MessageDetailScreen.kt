@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.webkit.WebResourceRequest
+import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.clickable
@@ -56,6 +57,37 @@ private object RemoteContentAllowanceStore {
 
     fun allow(messageId: String) {
         allowedMessageIds.add(messageId)
+    }
+}
+
+private val disallowedHtmlTagsRegex = Regex(
+    pattern = "(?is)<(script|iframe|object|embed|base|meta|link)(?:\\s[^>]*)?>.*?</\\1\\s*>|<(script|iframe|object|embed|base|meta|link)(?:\\s[^>]*)?/?>"
+)
+
+private val inlineEventHandlersRegex = Regex(pattern = "(?i)\\son[a-z]+\\s*=\\s*(['\"]).*?\\1")
+
+private val javascriptHrefRegex = Regex(pattern = "(?i)(href|src)\\s*=\\s*(['\"])\\s*javascript:[^'\"]*\\2")
+
+private fun sanitizeHtmlForWebView(rawHtml: String): String {
+    val withoutDangerousTags = rawHtml.replace(disallowedHtmlTagsRegex, "")
+    val withoutInlineHandlers = withoutDangerousTags.replace(inlineEventHandlersRegex, "")
+    return withoutInlineHandlers.replace(javascriptHrefRegex, "$1=\"#\"")
+}
+
+private fun isAllowedExternalUri(uri: Uri?): Boolean {
+    val scheme = uri?.scheme?.lowercase(Locale.ROOT) ?: return false
+    return scheme == "https" || scheme == "http" || scheme == "mailto"
+}
+
+private fun openExternalUriSafely(context: Context, uri: Uri) {
+    if (!isAllowedExternalUri(uri)) {
+        android.util.Log.w("MessageDetailScreen", "Blocked unsupported uri scheme: $uri")
+        return
+    }
+    runCatching {
+        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+    }.onFailure { error ->
+        android.util.Log.e("MessageDetailScreen", "Failed to open uri: $uri", error)
     }
 }
 
@@ -720,7 +752,8 @@ private fun MessageBodySection(
     }
 
     message.body.html?.let { html ->
-        val adaptedHtml = composeResponsiveHtml(html)
+        val sanitizedHtml = sanitizeHtmlForWebView(html)
+        val adaptedHtml = composeResponsiveHtml(sanitizedHtml)
         val contentKey = "${message.id}:${adaptedHtml.hashCode()}"
         LaunchedEffect(contentKey) {
             isHtmlLoading = true
@@ -817,14 +850,9 @@ private fun MessageBodySection(
                                 view: WebView?,
                                 request: WebResourceRequest?
                             ): Boolean {
-                                val url = request?.url?.toString()
-                                if (url != null && !url.startsWith("data:") && !url.startsWith("file://")) {
-                                    try {
-                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                        ctx.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки: $url", e)
-                                    }
+                                val targetUri = request?.url
+                                if (targetUri != null && targetUri.scheme != "data" && targetUri.scheme != "file") {
+                                    openExternalUriSafely(ctx, targetUri)
                                     return true
                                 }
                                 return false
@@ -841,8 +869,13 @@ private fun MessageBodySection(
                             textZoom = if (isExpandedLayout) 100 else 95
                             allowFileAccess = false
                             allowContentAccess = false
-                            blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
-                            blockNetworkLoads = false
+                            val blockRemoteLoads = blockRemoteContent && !allowRemoteContentForMessage
+                            blockNetworkImage = blockRemoteLoads
+                            blockNetworkLoads = blockRemoteLoads
+                            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                                safeBrowsingEnabled = true
+                            }
                         }
                         isHorizontalScrollBarEnabled = false
                         overScrollMode = WebView.OVER_SCROLL_NEVER
@@ -854,7 +887,7 @@ private fun MessageBodySection(
                     val shouldBlockImages = blockRemoteContent && !allowRemoteContentForMessage
                     val wasBlockingImages = webView.settings.blockNetworkImage
                     webView.settings.blockNetworkImage = shouldBlockImages
-                    webView.settings.blockNetworkLoads = false
+                    webView.settings.blockNetworkLoads = shouldBlockImages
                     if (wasBlockingImages && !shouldBlockImages) {
                         webView.reload()
                     }
@@ -1067,11 +1100,10 @@ fun ClickableTextWithLinks(
             ).firstOrNull()?.let { annotation ->
                 try {
                     var url = annotation.item
-                    if (!url.startsWith("http://") && !url.startsWith("https://") && !url.startsWith("ftp://")) {
+                    if (!url.startsWith("http://") && !url.startsWith("https://")) {
                         url = "http://$url"
                     }
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    context.startActivity(intent)
+                    openExternalUriSafely(context, Uri.parse(url))
                 } catch (e: Exception) {
                     android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки: ${annotation.item}", e)
                 }

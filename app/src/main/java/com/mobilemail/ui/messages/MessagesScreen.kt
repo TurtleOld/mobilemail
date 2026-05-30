@@ -601,6 +601,24 @@ fun MessagesList(
             CircularProgressIndicator(
                 modifier = Modifier.align(Alignment.Center)
             )
+        } else if (refreshState is LoadState.Error && pagingItems.itemCount == 0) {
+            val message = refreshState.error.message ?: "Не удалось загрузить письма"
+            Column(
+                modifier = Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = message,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.error
+                )
+                Button(onClick = { pagingItems.retry() }) {
+                    Text("Повторить")
+                }
+            }
         } else if (pagingItems.itemCount == 0 && refreshState !is LoadState.Loading) {
             Text(
                 text = "Нет писем",
@@ -646,6 +664,36 @@ fun MessagesList(
                             contentAlignment = Alignment.Center
                         ) {
                             CircularProgressIndicator()
+                        }
+                    }
+                }
+                if (appendState is LoadState.Error) {
+                    item {
+                        ElevatedCard(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 8.dp),
+                            colors = CardDefaults.elevatedCardColors(
+                                containerColor = MaterialTheme.colorScheme.errorContainer
+                            )
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = appendState.error.message ?: "Ошибка загрузки дополнительных писем",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { pagingItems.retry() }) {
+                                    Text("Повторить")
+                                }
+                            }
                         }
                     }
                 }

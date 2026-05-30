@@ -545,7 +545,7 @@ class JmapOAuthClient(
             if (response.code == 401 || response.code == 403) {
                 try {
                     Log.d("JmapOAuthClient", "Получен ${response.code}, попытка обновить токен и повторить запрос")
-                    val newToken = getAccessToken()
+                    val newToken = forceRefreshAccessToken()
                     val retryRequest = request.newBuilder()
                         .header("Authorization", getAuthHeader(newToken))
                         .build()
@@ -559,7 +559,7 @@ class JmapOAuthClient(
                         throw Exception("JMAP request failed после обновления токена: код ${retryResponse.code}, ответ: ${retryBody.take(200)}")
                     }
                     Log.d("JmapOAuthClient", "Запрос успешен после обновления токена")
-                    return JSONObject(retryBody)
+                    return ensureNoJmapMethodError(JSONObject(retryBody))
                 } catch (e: OAuthTokenExpiredException) {
                     Log.e("JmapOAuthClient", "Токен истёк и не может быть обновлён", e)
                     throw e
@@ -572,7 +572,7 @@ class JmapOAuthClient(
             }
         }
         
-        return JSONObject(responseBody)
+        return ensureNoJmapMethodError(JSONObject(responseBody))
     }
 
     private fun JSONObject.optStringOrNull(key: String): String? {
@@ -766,7 +766,7 @@ class JmapOAuthClient(
         if (!response.isSuccessful) {
             if (response.code == 401 || response.code == 403) {
                 try {
-                    val newToken = getAccessToken()
+                    val newToken = forceRefreshAccessToken()
                     val retryRequest = request.newBuilder()
                         .header("Authorization", getAuthHeader(newToken))
                         .build()
@@ -800,6 +800,21 @@ class JmapOAuthClient(
         }
         
         return@withPermit responseBody
+    }
+
+    private fun ensureNoJmapMethodError(response: JSONObject): JSONObject {
+        val methodResponses = response.optJSONArray("methodResponses") ?: return response
+        for (index in 0 until methodResponses.length()) {
+            val methodResponse = methodResponses.optJSONArray(index) ?: continue
+            val methodName = methodResponse.optString(0)
+            if (methodName == "error") {
+                val errorPayload = methodResponse.optJSONObject(1)
+                val type = errorPayload?.optString("type").orEmpty().ifBlank { "unknown" }
+                val description = errorPayload?.optString("description").orEmpty().ifBlank { "JMAP method error" }
+                throw Exception("JMAP method error [$type]: $description")
+            }
+        }
+        return response
     }
 
     override suspend fun uploadAttachment(

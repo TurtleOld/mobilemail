@@ -50,6 +50,7 @@ import com.mobilemail.ui.messagedetail.MessageDetailViewModelFactory
 import com.mobilemail.ui.messages.MessagesScreen
 import com.mobilemail.ui.messages.MessagesViewModel
 import com.mobilemail.ui.messages.MessagesViewModelFactory
+import com.mobilemail.ui.navigation.AppRoutes
 import com.mobilemail.ui.newmessage.ComposePrefillStore
 import com.mobilemail.ui.newmessage.ComposeViewModel
 import com.mobilemail.ui.newmessage.ComposeViewModelFactory
@@ -86,7 +87,7 @@ class MainActivity : FragmentActivity() {
         accountId: String,
         draftToken: String = "-"
     ): String {
-        return "compose/${Uri.encode(server)}/${Uri.encode(email)}/${Uri.encode(accountId)}/${Uri.encode(draftToken)}"
+        return AppRoutes.compose(server, email, accountId, draftToken)
     }
 
     private fun buildReplyDraftRoute(
@@ -101,11 +102,11 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun buildMessagesRoute(session: SavedSession): String {
-        return "messages/${Uri.encode(session.server)}/${Uri.encode(session.email)}/${Uri.encode(session.accountId)}"
+        return AppRoutes.messages(session)
     }
 
     private fun buildMessageRoute(session: SavedSession, messageId: String): String {
-        return "message/${Uri.encode(session.server)}/${Uri.encode(session.email)}/${Uri.encode(session.accountId)}/${Uri.encode(messageId)}"
+        return AppRoutes.message(session, messageId)
     }
 
     private fun handlePushIntent(intent: Intent?) {
@@ -161,7 +162,7 @@ class MainActivity : FragmentActivity() {
                     val currentBackStackEntry by navController.currentBackStackEntryAsState()
                     val privacyScreenProtection by preferencesManager.privacyScreenProtection.collectAsState(initial = true)
                     val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsState()
-                    val startDestination = if (pinManager.isPinEnabled()) "pin-lock" else "login"
+                    val startDestination = if (pinManager.isPinEnabled()) AppRoutes.PinLock else AppRoutes.Login
 
                     LaunchedEffect(privacyScreenProtection) {
                         if (privacyScreenProtection) {
@@ -174,7 +175,7 @@ class MainActivity : FragmentActivity() {
                     LaunchedEffect(pendingPushTarget, currentBackStackEntry?.destination?.route) {
                         val target = pendingPushTarget ?: return@LaunchedEffect
                         val currentRoute = currentBackStackEntry?.destination?.route
-                        if (currentRoute == null || currentRoute == "pin-lock" || currentRoute == "messages/{server}/{email}/{accountId}") {
+                        if (currentRoute == null || currentRoute == AppRoutes.PinLock || currentRoute == AppRoutes.MessagesPattern) {
                             return@LaunchedEffect
                         }
 
@@ -195,15 +196,15 @@ class MainActivity : FragmentActivity() {
                         navController = navController,
                         startDestination = startDestination
                     ) {
-                        composable("pin-lock") {
+                        composable(AppRoutes.PinLock) {
                             val viewModel: PinLockViewModel = viewModel(
                                 factory = PinLockViewModelFactory(application)
                             )
                             PinLockScreen(
                                 viewModel = viewModel,
                                 onUnlocked = {
-                                    navController.navigate("login") {
-                                        popUpTo("pin-lock") { inclusive = true }
+                                    navController.navigate(AppRoutes.Login) {
+                                        popUpTo(AppRoutes.PinLock) { inclusive = true }
                                     }
                                 },
                                 onLogout = {
@@ -213,7 +214,7 @@ class MainActivity : FragmentActivity() {
                                         tokenStore.clearAllTokens()
                                         JmapOAuthClient.clearCache()
                                         JmapClient.clearCache()
-                                        navController.navigate("login") {
+                                        navController.navigate(AppRoutes.Login) {
                                             popUpTo(0) { inclusive = true }
                                         }
                                     }
@@ -221,15 +222,17 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("login") {
+                        composable(AppRoutes.Login) {
                             // Автовход через OAuth (только после прохождения PIN, если он включён)
                             LaunchedEffect(Unit) {
                                 val activeSession = preferencesManager.getSavedSession()
                                 val savedAccounts = preferencesManager.getSavedAccounts()
+                                val activeServer = activeSession?.server
+                                val activeEmail = activeSession?.email
                                 val orderedCandidates = buildList {
                                     if (activeSession != null) add(activeSession)
                                     addAll(savedAccounts.filterNot {
-                                        it.server == activeSession?.server && it.email == activeSession?.email
+                                        it.server == activeServer && it.email == activeEmail
                                     })
                                 }
                                 val validSession = orderedCandidates.firstOrNull { session ->
@@ -256,17 +259,16 @@ class MainActivity : FragmentActivity() {
                             LoginScreen(
                                 viewModel = viewModel,
                                 onLoginSuccess = { server, email, _, accountId ->
-                                    val encodedServer = Uri.encode(server)
-                                    val encodedEmail = Uri.encode(email)
-                                    val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("messages/$encodedServer/$encodedEmail/$encodedAccountId") {
-                                        popUpTo("login") { inclusive = true }
+                                    navController.navigate(
+                                        AppRoutes.messages(SavedSession(server, email, accountId))
+                                    ) {
+                                        popUpTo(AppRoutes.Login) { inclusive = true }
                                     }
                                 }
                             )
                         }
 
-                        composable("add-account") {
+                        composable(AppRoutes.AddAccount) {
                             val viewModel: LoginViewModel = viewModel(
                                 key = "add_account_login",
                                 factory = object : ViewModelProvider.Factory {
@@ -286,7 +288,7 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("messages/{server}/{email}/{accountId}") { backStackEntry ->
+                        composable(AppRoutes.MessagesPattern) { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
@@ -339,11 +341,12 @@ class MainActivity : FragmentActivity() {
                                 accounts = savedAccounts,
                                 activeAccountEmail = email,
                                 onMessageClick = { messageId ->
-                                    val encodedServer = Uri.encode(server)
-                                    val encodedEmail = Uri.encode(email)
-                                    val encodedAccountId = Uri.encode(accountId)
-                                    val encodedMessageId = Uri.encode(messageId)
-                                    navController.navigate("message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId")
+                                    navController.navigate(
+                                        AppRoutes.message(
+                                            SavedSession(server, email, accountId),
+                                            messageId
+                                        )
+                                    )
                                 },
                                 detailPane = { selectedMessageId ->
                                     if (selectedMessageId == null) {
@@ -402,16 +405,13 @@ class MainActivity : FragmentActivity() {
                                     }
                                 },
                                 onSearchClick = {
-                                    val encodedServer = Uri.encode(server)
-                                    val encodedEmail = Uri.encode(email)
-                                    val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("search/$encodedServer/$encodedEmail/$encodedAccountId")
+                                    navController.navigate(AppRoutes.search(server, email, accountId))
                                 },
                                 onComposeClick = {
                                     navController.navigate(buildComposeRoute(server, email, accountId))
                                 },
                                 onAddAccountClick = {
-                                    navController.navigate("add-account")
+                                    navController.navigate(AppRoutes.AddAccount)
                                 },
                                 onSwitchAccount = { session ->
                                     if (session.server != server || session.email != email || session.accountId != accountId) {
@@ -424,22 +424,17 @@ class MainActivity : FragmentActivity() {
                                     }
                                 },
                                 onOutboxClick = {
-                                    val encodedServer = Uri.encode(server)
-                                    val encodedEmail = Uri.encode(email)
-                                    val encodedAccountId = Uri.encode(accountId)
-                                    navController.navigate("outbox/$encodedServer/$encodedEmail/$encodedAccountId")
+                                    navController.navigate(AppRoutes.outbox(server, email, accountId))
                                 },
                                 onSettingsClick = {
-                                    val encodedServer = Uri.encode(server)
-                                    val encodedEmail = Uri.encode(email)
-                                    navController.navigate("settings/$encodedServer/$encodedEmail")
+                                    navController.navigate(AppRoutes.settings(server, email))
                                 },
                                 onLogout = {
                                     activityScope.launch {
                                         val nextSession = logoutAccount(SavedSession(server, email, accountId))
                                         JmapOAuthClient.clearCache()
                                         JmapClient.clearCache()
-                                        val target = nextSession?.let { buildMessagesRoute(it) } ?: "login"
+                                        val target = nextSession?.let { buildMessagesRoute(it) } ?: AppRoutes.Login
                                         navController.navigate(target) {
                                             popUpTo(0) { inclusive = true }
                                         }
@@ -448,7 +443,7 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("compose/{server}/{email}/{accountId}/{draftToken}") { backStackEntry ->
+                        composable(AppRoutes.ComposePattern) { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
@@ -470,7 +465,7 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("search/{server}/{email}/{accountId}") { backStackEntry ->
+                        composable(AppRoutes.SearchPattern) { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
@@ -481,17 +476,18 @@ class MainActivity : FragmentActivity() {
                             SearchScreen(
                                 viewModel = viewModel,
                                 onMessageClick = { messageId ->
-                                    val encodedServer = Uri.encode(server)
-                                    val encodedEmail = Uri.encode(email)
-                                    val encodedAccountId = Uri.encode(accountId)
-                                    val encodedMessageId = Uri.encode(messageId)
-                                    navController.navigate("message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId")
+                                    navController.navigate(
+                                        AppRoutes.message(
+                                            SavedSession(server, email, accountId),
+                                            messageId
+                                        )
+                                    )
                                 },
                                 onBack = { navController.popBackStack() }
                             )
                         }
 
-                        composable("outbox/{server}/{email}/{accountId}") { backStackEntry ->
+                        composable(AppRoutes.OutboxPattern) { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
@@ -504,7 +500,7 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("settings/{server}/{email}") { backStackEntry ->
+                        composable(AppRoutes.SettingsPattern) { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
 
@@ -514,12 +510,12 @@ class MainActivity : FragmentActivity() {
                                 preferencesManager = preferencesManager,
                                 onBack = { navController.popBackStack() },
                                 onPinSetupClick = {
-                                    navController.navigate("pin-setup")
+                                    navController.navigate(AppRoutes.PinSetup)
                                 }
                             )
                         }
 
-                        composable("pin-setup") {
+                        composable(AppRoutes.PinSetup) {
                             val viewModel: PinSetupViewModel = viewModel(
                                 factory = PinSetupViewModelFactory(application)
                             )
@@ -529,7 +525,7 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        composable("message/{server}/{email}/{accountId}/{messageId}") { backStackEntry ->
+                        composable(AppRoutes.MessagePattern) { backStackEntry ->
                             val server = Uri.decode(backStackEntry.arguments?.getString("server") ?: return@composable)
                             val email = Uri.decode(backStackEntry.arguments?.getString("email") ?: return@composable)
                             val accountId = Uri.decode(backStackEntry.arguments?.getString("accountId") ?: return@composable)
@@ -538,7 +534,7 @@ class MainActivity : FragmentActivity() {
                                 factory = MessageDetailViewModelFactory(application, server, email, accountId, messageId)
                             )
 
-                            val messagesRoute = "messages/${Uri.encode(server)}/${Uri.encode(email)}/${Uri.encode(accountId)}"
+                            val messagesRoute = AppRoutes.messages(SavedSession(server, email, accountId))
                             val parentEntry = remember(messagesRoute) { navController.getBackStackEntry(messagesRoute) }
 
                             val messagesViewModel: MessagesViewModel = viewModel(
@@ -578,12 +574,11 @@ class MainActivity : FragmentActivity() {
                                 },
                                 onThreadMessageClick = { threadMessageId ->
                                     if (threadMessageId != messageId) {
-                                        val encodedServer = Uri.encode(server)
-                                        val encodedEmail = Uri.encode(email)
-                                        val encodedAccountId = Uri.encode(accountId)
-                                        val encodedMessageId = Uri.encode(threadMessageId)
                                         navController.navigate(
-                                            "message/$encodedServer/$encodedEmail/$encodedAccountId/$encodedMessageId",
+                                            AppRoutes.message(
+                                                SavedSession(server, email, accountId),
+                                                threadMessageId
+                                            ),
                                             navOptions {
                                                 launchSingleTop = true
                                             }
