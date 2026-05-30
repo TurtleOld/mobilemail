@@ -681,9 +681,7 @@ private fun MessageBodySection(
     isExpandedLayout: Boolean
 ) {
     val preferencesManager = remember(context) { PreferencesManager(context) }
-    val blockRemoteContent by produceState(initialValue = true, context) {
-        value = preferencesManager.isBlockRemoteContentEnabled()
-    }
+    val blockRemoteContent by preferencesManager.blockRemoteContent.collectAsStateWithLifecycle(initialValue = true)
     var allowRemoteContentForMessage by remember(message.id) {
         mutableStateOf(RemoteContentAllowanceStore.isAllowed(message.id))
     }

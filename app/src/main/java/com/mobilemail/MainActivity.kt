@@ -535,7 +535,9 @@ class MainActivity : FragmentActivity() {
                             )
 
                             val messagesRoute = AppRoutes.messages(SavedSession(server, email, accountId))
-                            val parentEntry = remember(messagesRoute) { navController.getBackStackEntry(messagesRoute) }
+                            val parentEntry = remember(backStackEntry, messagesRoute) {
+                                navController.getBackStackEntry(messagesRoute)
+                            }
 
                             val messagesViewModel: MessagesViewModel = viewModel(
                                 parentEntry,
