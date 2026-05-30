@@ -39,7 +39,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.mobilemail.BuildConfig
 import com.mobilemail.data.preferences.PreferencesManager
 import kotlinx.coroutines.launch
 
@@ -127,6 +129,8 @@ fun SettingsScreen(
                     )
                 }
             }
+            Spacer(modifier = Modifier.height(16.dp))
+            AppVersionFooter()
         } else {
             Column(
                 modifier = contentModifier,
@@ -160,9 +164,22 @@ fun SettingsScreen(
                         }
                     }
                 )
+                Spacer(modifier = Modifier.height(16.dp))
+                AppVersionFooter()
             }
         }
     }
+}
+
+@Composable
+private fun AppVersionFooter() {
+    Text(
+        text = "Версия ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+        modifier = Modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center
+    )
 }
 
 @Composable

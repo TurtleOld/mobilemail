@@ -35,6 +35,11 @@ fun secret(name: String): String {
     error("Missing secret $name (env or .env)")
 }
 
+fun optionalProp(name: String): String? =
+    (findProperty(name) as String?)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+
 android {
     namespace = "com.mobilemail"
     compileSdk = 34
@@ -43,8 +48,8 @@ android {
         applicationId = "com.mobilemail"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = optionalProp("VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = optionalProp("VERSION_NAME") ?: "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
         buildConfigField("String", "NTFY_URL", "\"${secret("NTFY_URL")}\"")

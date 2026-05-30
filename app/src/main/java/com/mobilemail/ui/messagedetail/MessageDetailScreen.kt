@@ -642,23 +642,66 @@ private fun MessageBodySection(
         value = preferencesManager.isBlockRemoteContentEnabled()
     }
     var allowRemoteContentForMessage by remember(message.id) { mutableStateOf(false) }
+    var webViewHeight by remember(message.id) { mutableStateOf(220.dp) }
+
+    fun composeResponsiveHtml(sourceHtml: String): String {
+        val styleBlock = """
+            <style>
+                html, body {
+                    max-width: 100% !important;
+                    overflow-x: hidden !important;
+                }
+                body {
+                    margin: 0 !important;
+                    padding: 8px !important;
+                    word-wrap: break-word !important;
+                    overflow-wrap: anywhere !important;
+                }
+                * {
+                    box-sizing: border-box !important;
+                    max-width: 100% !important;
+                }
+                img, video, iframe {
+                    max-width: 100% !important;
+                    height: auto !important;
+                }
+                table {
+                    width: 100% !important;
+                    table-layout: fixed !important;
+                }
+                td, th, pre, code, blockquote {
+                    word-break: break-word !important;
+                    white-space: pre-wrap !important;
+                }
+            </style>
+        """.trimIndent()
+        val viewportMeta = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\">"
+
+        return when {
+            sourceHtml.contains("<head>", ignoreCase = true) -> {
+                sourceHtml.replace(
+                    "<head>",
+                    "<head>$viewportMeta$styleBlock",
+                    ignoreCase = true
+                )
+            }
+
+            sourceHtml.contains("<html>", ignoreCase = true) -> {
+                sourceHtml.replace(
+                    "<html>",
+                    "<html><head>$viewportMeta$styleBlock</head>",
+                    ignoreCase = true
+                )
+            }
+
+            else -> {
+                "<html><head>$viewportMeta$styleBlock</head><body>$sourceHtml</body></html>"
+            }
+        }
+    }
 
     message.body.html?.let { html ->
-        val adaptedHtml = if (html.contains("<head>", ignoreCase = true)) {
-            html.replace(
-                "<head>",
-                "<head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\">",
-                ignoreCase = true
-            )
-        } else if (html.contains("<html>", ignoreCase = true)) {
-            html.replace(
-                "<html>",
-                "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"></head>",
-                ignoreCase = true
-            )
-        } else {
-            "<html><head><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\"><style>body { margin: 0; padding: 8px; word-wrap: break-word; } img { max-width: 100%; height: auto; }</style></head><body>$html</body></html>"
-        }
+        val adaptedHtml = composeResponsiveHtml(html)
 
         if (blockRemoteContent && !allowRemoteContentForMessage) {
             ElevatedCard(
@@ -698,6 +741,17 @@ private fun MessageBodySection(
             factory = { ctx ->
                 WebView(ctx).apply {
                     webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            super.onPageFinished(view, url)
+                            view ?: return
+                            view.post {
+                                val calculatedHeightDp = view.contentHeight.dp
+                                if (calculatedHeightDp > webViewHeight) {
+                                    webViewHeight = calculatedHeightDp + 24.dp
+                                }
+                            }
+                        }
+
                         override fun shouldOverrideUrlLoading(
                             view: WebView?,
                             request: WebResourceRequest?
@@ -739,7 +793,8 @@ private fun MessageBodySection(
             },
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(min = 160.dp, max = 1600.dp)
+                .heightIn(min = 160.dp)
+                .height(webViewHeight)
         )
     } ?: message.body.text?.let { text ->
         ClickableTextWithLinks(

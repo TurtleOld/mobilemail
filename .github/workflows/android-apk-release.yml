@@ -1,0 +1,131 @@
+name: Android APK Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release-apk:
+    runs-on: ubuntu-latest
+    if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+
+      - name: Extract app version from tag
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          APP_VERSION_NAME="${RELEASE_TAG#v}"
+
+          if [ -z "$APP_VERSION_NAME" ] || [ "$APP_VERSION_NAME" = "$RELEASE_TAG" ]; then
+            echo "Tag must look like v1.2.3, got: $RELEASE_TAG" >&2
+            exit 1
+          fi
+
+          APP_VERSION_CODE="${{ github.run_number }}"
+
+          echo "APP_VERSION_NAME=$APP_VERSION_NAME" >> "$GITHUB_ENV"
+          echo "APP_VERSION_CODE=$APP_VERSION_CODE" >> "$GITHUB_ENV"
+          echo "RELEASE_TAG=$RELEASE_TAG" >> "$GITHUB_ENV"
+
+      - name: Decode keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "ANDROID_KEYSTORE_BASE64 secret is not set" >&2
+            exit 1
+          fi
+
+          mkdir -p .keystore
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > .keystore/release.jks
+
+      - name: Restore google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "GOOGLE_SERVICES_JSON_BASE64 secret is not set" >&2
+            exit 1
+          fi
+
+          echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > app/google-services.json
+
+      - name: Build signed release APK
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          ANDROID_KEYSTORE_FILE: ${{ github.workspace }}/.keystore/release.jks
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          NTFY_URL: ${{ secrets.NTFY_URL }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          NTFY_TOPIC_PATTERN: ${{ secrets.NTFY_TOPIC_PATTERN }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew :app:assembleRelease --no-daemon \
+            -PVERSION_NAME="$APP_VERSION_NAME" \
+            -PVERSION_CODE="$APP_VERSION_CODE"
+
+      - name: Upload release APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk-${{ github.ref_name }}
+          path: app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+      - name: Generate release notes from commits
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+          GITHUB_SHA: ${{ github.sha }}
+        run: |
+          PREV_TAG="$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)"
+
+          {
+            echo "## Что вошло в релиз"
+            echo
+
+            if [ -n "$PREV_TAG" ]; then
+              echo "_Коммиты между ${PREV_TAG} и ${RELEASE_TAG}_"
+              echo
+              git log --pretty=format:'- %s (%h)' "${PREV_TAG}..${GITHUB_SHA}"
+            else
+              echo "_Предыдущий тег не найден, перечислены все доступные коммиты до ${RELEASE_TAG}_"
+              echo
+              git log --pretty=format:'- %s (%h)' "${GITHUB_SHA}"
+            fi
+          } > release-notes.md
+
+          if ! grep -q "^- " release-notes.md; then
+            echo "- Технический релиз без новых коммитов." >> release-notes.md
+          fi
+
+      - name: Create GitHub release with APK
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          gh release create "$RELEASE_TAG" \
+            --title "MobileMail ${APP_VERSION_NAME}" \
+            --notes-file release-notes.md \
+            app/build/outputs/apk/release/app-release.apk
