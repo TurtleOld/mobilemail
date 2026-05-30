@@ -1,6 +1,5 @@
 package com.mobilemail.ui.navigation
 
-import android.net.Uri
 import com.mobilemail.data.preferences.SavedSession
 
 object AppRoutes {
@@ -17,26 +16,42 @@ object AppRoutes {
     const val SettingsPattern = "settings/{server}/{email}"
 
     fun messages(session: SavedSession): String {
-        return "messages/${Uri.encode(session.server)}/${Uri.encode(session.email)}/${Uri.encode(session.accountId)}"
+        return "messages/${encodeRouteSegment(session.server)}/${encodeRouteSegment(session.email)}/${encodeRouteSegment(session.accountId)}"
     }
 
     fun message(session: SavedSession, messageId: String): String {
-        return "message/${Uri.encode(session.server)}/${Uri.encode(session.email)}/${Uri.encode(session.accountId)}/${Uri.encode(messageId)}"
+        return "message/${encodeRouteSegment(session.server)}/${encodeRouteSegment(session.email)}/${encodeRouteSegment(session.accountId)}/${encodeRouteSegment(messageId)}"
     }
 
     fun compose(server: String, email: String, accountId: String, draftToken: String = "-"): String {
-        return "compose/${Uri.encode(server)}/${Uri.encode(email)}/${Uri.encode(accountId)}/${Uri.encode(draftToken)}"
+        return "compose/${encodeRouteSegment(server)}/${encodeRouteSegment(email)}/${encodeRouteSegment(accountId)}/${encodeRouteSegment(draftToken)}"
     }
 
     fun search(server: String, email: String, accountId: String): String {
-        return "search/${Uri.encode(server)}/${Uri.encode(email)}/${Uri.encode(accountId)}"
+        return "search/${encodeRouteSegment(server)}/${encodeRouteSegment(email)}/${encodeRouteSegment(accountId)}"
     }
 
     fun outbox(server: String, email: String, accountId: String): String {
-        return "outbox/${Uri.encode(server)}/${Uri.encode(email)}/${Uri.encode(accountId)}"
+        return "outbox/${encodeRouteSegment(server)}/${encodeRouteSegment(email)}/${encodeRouteSegment(accountId)}"
     }
 
     fun settings(server: String, email: String): String {
-        return "settings/${Uri.encode(server)}/${Uri.encode(email)}"
+        return "settings/${encodeRouteSegment(server)}/${encodeRouteSegment(email)}"
     }
 }
+
+internal fun encodeRouteSegment(value: String): String = buildString {
+    value.forEach { char ->
+        if (char.isLetterOrDigit() || char in "-._~") {
+            append(char)
+        } else {
+            char.toString().toByteArray(Charsets.UTF_8).forEach { byte ->
+                append('%')
+                append(HEX_DIGITS[(byte.toInt() shr 4) and 0x0F])
+                append(HEX_DIGITS[byte.toInt() and 0x0F])
+            }
+        }
+    }
+}
+
+private val HEX_DIGITS = "0123456789ABCDEF".toCharArray()
