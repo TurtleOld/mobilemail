@@ -53,6 +53,7 @@ androidx-paging-compose = { module = "androidx.paging:paging-compose", version.r
 androidx-room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 androidx-room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
 androidx-room-compiler = { module = "androidx.room:room-compiler", version.ref = "room" }
+androidx-room-testing = { module = "androidx.room:room-testing", version.ref = "room" }
 firebase-bom = { module = "com.google.firebase:firebase-bom", version.ref = "firebase-bom" }
 firebase-messaging-ktx = { module = "com.google.firebase:firebase-messaging-ktx" }
 junit4 = { module = "junit:junit", version.ref = "junit4" }
