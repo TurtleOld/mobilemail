@@ -1,6 +1,7 @@
+import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
+
 plugins {
     id("com.android.application")
-    id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.gms.google-services")
     id("kotlin-parcelize")
@@ -42,12 +43,12 @@ fun optionalProp(name: String): String? =
 
 android {
     namespace = "com.mobilemail"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.mobilemail"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 36
         versionCode = optionalProp("VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = optionalProp("VERSION_NAME") ?: "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
@@ -62,7 +63,7 @@ android {
         buildConfig = true
     }
     sourceSets {
-        getByName("androidTest").assets.srcDir("$projectDir/schemas")
+        getByName("androidTest").assets.directories.add("$projectDir/schemas")
     }
 
     lint {
@@ -174,26 +175,23 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
-tasks.dokkaHtml {
-    outputDirectory.set(file("${project.rootDir}/docs/api"))
-    moduleName.set("MobileMail")
-    
+dokka {
+    dokkaPublications.html {
+        outputDirectory.set(rootProject.layout.projectDirectory.dir("docs/api"))
+        moduleName.set("MobileMail")
+    }
+
     dokkaSourceSets {
         configureEach {
             includes.from("${project.rootDir}/docs/package.md")
             
             sourceLink {
                 localDirectory.set(file("src/main/java"))
-                remoteUrl.set(uri("https://github.com/TurtleOld/mobilemail/tree/main/app/src/main/java").toURL())
+                remoteUrl.set(uri("https://github.com/TurtleOld/mobilemail/tree/main/app/src/main/java"))
                 remoteLineSuffix.set("#L")
             }
             
-            documentedVisibilities.set(
-                setOf(
-                    org.jetbrains.dokka.DokkaConfiguration.Visibility.PUBLIC,
-                    org.jetbrains.dokka.DokkaConfiguration.Visibility.PROTECTED
-                )
-            )
+            documentedVisibilities.set(setOf(VisibilityModifier.Public, VisibilityModifier.Protected))
             
             reportUndocumented.set(true)
             skipEmptyPackages.set(true)
