@@ -779,35 +779,31 @@ private fun MessageBodySection(
                     .padding(bottom = 12.dp),
                 colors = CardDefaults.elevatedCardColors(containerColor = ExtendedTheme.colors.chromeMuted)
             ) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(12.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
                 ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = "Удалённый контент заблокирован",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                        Text(
-                            text = "Внешние изображения и трекеры отключены для защиты конфиденциальности.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Text(
-                            text = "Можно загрузить только изображения этого письма.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TextButton(onClick = {
-                        allowRemoteContentForMessage = true
-                        RemoteContentAllowanceStore.allow(message.id)
-                    }) {
+                    Text(
+                        text = "Удалённый контент заблокирован",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = "Внешние изображения и трекеры отключены для защиты конфиденциальности.",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    TextButton(
+                        onClick = {
+                            allowRemoteContentForMessage = true
+                            RemoteContentAllowanceStore.allow(message.id)
+                        },
+                        modifier = Modifier.align(Alignment.End),
+                        contentPadding = PaddingValues(horizontal = 8.dp)
+                    ) {
                         Text("Показать изображения")
                     }
                 }
