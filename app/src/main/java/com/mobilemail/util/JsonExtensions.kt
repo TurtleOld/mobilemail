@@ -4,11 +4,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 fun JSONObject.optStringOrNull(key: String): String? {
-    return if (has(key) && !isNull(key)) {
-        optString(key, null)
-    } else {
-        null
-    }
+    if (!has(key) || isNull(key)) return null
+    return optString(key).trim().takeIf { it.isNotEmpty() && it != "null" }
 }
 
 fun JSONObject.optIntOrNull(key: String): Int? {

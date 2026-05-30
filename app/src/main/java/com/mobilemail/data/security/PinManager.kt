@@ -1,10 +1,7 @@
 package com.mobilemail.data.security
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Base64
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
@@ -27,77 +24,63 @@ class PinManager(context: Context) {
         const val MAX_FAILED_ATTEMPTS = 10
     }
 
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-
-    private val encryptedPrefs: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        PREFS_NAME,
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    private val secureStore = KeystoreSecureStore(
+        context = context,
+        prefsName = "${PREFS_NAME}_v2",
+        keyAlias = "mobilemail_pin_key"
     )
 
     fun savePin(pin: String) {
         val salt = ByteArray(SALT_LENGTH).also { SecureRandom().nextBytes(it) }
         val hash = hashPinPbkdf2(pin, salt)
-        encryptedPrefs.edit()
-            .putString(KEY_PIN_HASH, hash)
-            .putString(KEY_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
-            .putInt(KEY_PIN_VERSION, PIN_VERSION_PBKDF2)
-            .putInt(KEY_FAILED_ATTEMPTS, 0)
-            .apply()
+        secureStore.putString(KEY_PIN_HASH, hash)
+        secureStore.putString(KEY_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
+        secureStore.putInt(KEY_PIN_VERSION, PIN_VERSION_PBKDF2)
+        secureStore.putInt(KEY_FAILED_ATTEMPTS, 0)
     }
 
     fun verifyPin(pin: String): Boolean {
-        val storedHash = encryptedPrefs.getString(KEY_PIN_HASH, null) ?: return false
-        return when (encryptedPrefs.getInt(KEY_PIN_VERSION, 1)) {
+        val storedHash = secureStore.getString(KEY_PIN_HASH) ?: return false
+        return when (secureStore.getInt(KEY_PIN_VERSION) ?: 1) {
             PIN_VERSION_PBKDF2 -> verifyPbkdf2(pin, storedHash)
             else -> verifyLegacy(pin, storedHash)
         }
     }
 
     fun isPinEnabled(): Boolean {
-        return encryptedPrefs.getString(KEY_PIN_HASH, null) != null
+        return secureStore.getString(KEY_PIN_HASH) != null
     }
 
     fun clearPin() {
-        encryptedPrefs.edit()
-            .remove(KEY_PIN_HASH)
-            .remove(KEY_PIN_SALT)
-            .remove(KEY_PIN_VERSION)
-            .remove(KEY_BIOMETRIC_ENABLED)
-            .remove(KEY_FAILED_ATTEMPTS)
-            .apply()
+        secureStore.remove(
+            KEY_PIN_HASH,
+            KEY_PIN_SALT,
+            KEY_PIN_VERSION,
+            KEY_BIOMETRIC_ENABLED,
+            KEY_FAILED_ATTEMPTS
+        )
     }
 
     fun isBiometricEnabled(): Boolean {
-        return encryptedPrefs.getBoolean(KEY_BIOMETRIC_ENABLED, false)
+        return secureStore.getBoolean(KEY_BIOMETRIC_ENABLED) ?: false
     }
 
     fun setBiometricEnabled(enabled: Boolean) {
-        encryptedPrefs.edit()
-            .putBoolean(KEY_BIOMETRIC_ENABLED, enabled)
-            .apply()
+        secureStore.putBoolean(KEY_BIOMETRIC_ENABLED, enabled)
     }
 
     fun getFailedAttempts(): Int {
-        return encryptedPrefs.getInt(KEY_FAILED_ATTEMPTS, 0)
+        return secureStore.getInt(KEY_FAILED_ATTEMPTS) ?: 0
     }
 
     fun incrementFailedAttempts(): Int {
         val attempts = getFailedAttempts() + 1
-        encryptedPrefs.edit()
-            .putInt(KEY_FAILED_ATTEMPTS, attempts)
-            .apply()
+        secureStore.putInt(KEY_FAILED_ATTEMPTS, attempts)
         return attempts
     }
 
     fun resetFailedAttempts() {
-        encryptedPrefs.edit()
-            .putInt(KEY_FAILED_ATTEMPTS, 0)
-            .apply()
+        secureStore.putInt(KEY_FAILED_ATTEMPTS, 0)
     }
 
     fun hasExceededMaxAttempts(): Boolean {
@@ -105,7 +88,7 @@ class PinManager(context: Context) {
     }
 
     private fun verifyPbkdf2(pin: String, storedHash: String): Boolean {
-        val saltBase64 = encryptedPrefs.getString(KEY_PIN_SALT, null) ?: return false
+        val saltBase64 = secureStore.getString(KEY_PIN_SALT) ?: return false
         val salt = runCatching { Base64.decode(saltBase64, Base64.DEFAULT) }.getOrNull() ?: return false
         val inputHash = hashPinPbkdf2(pin, salt)
         return MessageDigest.isEqual(storedHash.toByteArray(), inputHash.toByteArray())
