@@ -35,7 +35,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.draw.alpha
 import com.mobilemail.data.model.MessageDetail
 import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.data.preferences.PreferencesManager
@@ -45,9 +44,20 @@ import com.mobilemail.ui.theme.ExtendedTheme
 import java.util.regex.Pattern
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.ui.common.NotificationState
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
+
+private object RemoteContentAllowanceStore {
+    private val allowedMessageIds = mutableSetOf<String>()
+
+    fun isAllowed(messageId: String): Boolean = allowedMessageIds.contains(messageId)
+
+    fun allow(messageId: String) {
+        allowedMessageIds.add(messageId)
+    }
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -642,8 +652,10 @@ private fun MessageBodySection(
     val blockRemoteContent by produceState(initialValue = true, context) {
         value = preferencesManager.isBlockRemoteContentEnabled()
     }
-    var allowRemoteContentForMessage by remember(message.id) { mutableStateOf(false) }
-    var webViewHeight by remember(message.id) { mutableStateOf(220.dp) }
+    var allowRemoteContentForMessage by remember(message.id) {
+        mutableStateOf(RemoteContentAllowanceStore.isAllowed(message.id))
+    }
+    var webViewHeight by remember(message.id) { mutableStateOf(420.dp) }
     var isHtmlLoading by remember(message.id) { mutableStateOf(true) }
 
     fun composeResponsiveHtml(sourceHtml: String): String {
@@ -709,7 +721,14 @@ private fun MessageBodySection(
 
     message.body.html?.let { html ->
         val adaptedHtml = composeResponsiveHtml(html)
-        val contentKey = "${message.id}:${adaptedHtml.hashCode()}:${blockRemoteContent && !allowRemoteContentForMessage}"
+        val contentKey = "${message.id}:${adaptedHtml.hashCode()}"
+        LaunchedEffect(contentKey) {
+            isHtmlLoading = true
+            delay(2500)
+            if (isHtmlLoading) {
+                isHtmlLoading = false
+            }
+        }
 
         if (blockRemoteContent && !allowRemoteContentForMessage) {
             ElevatedCard(
@@ -736,54 +755,60 @@ private fun MessageBodySection(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
+                        Text(
+                            text = "Можно загрузить только изображения этого письма.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     Spacer(modifier = Modifier.width(12.dp))
-                    TextButton(onClick = { allowRemoteContentForMessage = true }) {
-                        Text("Показать")
+                    TextButton(onClick = {
+                        allowRemoteContentForMessage = true
+                        RemoteContentAllowanceStore.allow(message.id)
+                    }) {
+                        Text("Показать изображения")
                     }
                 }
             }
         }
 
         Box(modifier = Modifier.fillMaxWidth()) {
-            if (isHtmlLoading) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 220.dp),
-                    color = ExtendedTheme.colors.surfaceReading,
-                    shape = EmailShapes.emailCard
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Загружаем содержимое письма…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-
             AndroidView(
                 factory = { ctx ->
                     WebView(ctx).apply {
+                        val recalculateHeight: (WebView) -> Unit = { currentWebView ->
+                            currentWebView.evaluateJavascript(
+                                """
+                                (function() {
+                                    var body = document.body || {};
+                                    var doc = document.documentElement || {};
+                                    return Math.max(
+                                        body.scrollHeight || 0,
+                                        body.offsetHeight || 0,
+                                        doc.clientHeight || 0,
+                                        doc.scrollHeight || 0,
+                                        doc.offsetHeight || 0
+                                    ).toString();
+                                })();
+                                """.trimIndent()
+                            ) { rawHeight ->
+                                val normalized = rawHeight.trim().replace("\"", "")
+                                val htmlHeight = normalized.toFloatOrNull()
+                                if (htmlHeight != null && htmlHeight > 0f) {
+                                    val calculatedHeight = htmlHeight.dp + 24.dp
+                                    webViewHeight = calculatedHeight.coerceAtLeast(420.dp)
+                                }
+                            }
+                        }
+
                         webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 super.onPageFinished(view, url)
                                 view ?: return
                                 view.post {
-                                    val calculatedHeightDp = view.contentHeight.dp
-                                    if (calculatedHeightDp > 0.dp) {
-                                        webViewHeight = (calculatedHeightDp + 24.dp).coerceAtLeast(220.dp)
-                                    }
+                                    recalculateHeight(view)
+                                    view.postDelayed({ recalculateHeight(view) }, 300)
+                                    view.postDelayed({ recalculateHeight(view) }, 1200)
                                     isHtmlLoading = false
                                 }
                             }
@@ -817,7 +842,7 @@ private fun MessageBodySection(
                             allowFileAccess = false
                             allowContentAccess = false
                             blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
-                            blockNetworkLoads = blockRemoteContent && !allowRemoteContentForMessage
+                            blockNetworkLoads = false
                         }
                         isHorizontalScrollBarEnabled = false
                         overScrollMode = WebView.OVER_SCROLL_NEVER
@@ -826,12 +851,17 @@ private fun MessageBodySection(
                     }
                 },
                 update = { webView ->
-                    webView.settings.blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
-                    webView.settings.blockNetworkLoads = blockRemoteContent && !allowRemoteContentForMessage
+                    val shouldBlockImages = blockRemoteContent && !allowRemoteContentForMessage
+                    val wasBlockingImages = webView.settings.blockNetworkImage
+                    webView.settings.blockNetworkImage = shouldBlockImages
+                    webView.settings.blockNetworkLoads = false
+                    if (wasBlockingImages && !shouldBlockImages) {
+                        webView.reload()
+                    }
                     if (webView.tag != contentKey) {
                         webView.tag = contentKey
                         isHtmlLoading = true
-                        webViewHeight = 220.dp
+                        webViewHeight = 420.dp
                         webView.loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
                     }
                 },
@@ -839,8 +869,33 @@ private fun MessageBodySection(
                     .fillMaxWidth()
                     .heightIn(min = 160.dp)
                     .height(webViewHeight)
-                    .alpha(if (isHtmlLoading) 0.01f else 1f)
             )
+
+            if (isHtmlLoading) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 220.dp),
+                    color = ExtendedTheme.colors.surfaceReading,
+                    shape = EmailShapes.emailCard
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Загружаем содержимое письма…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     } ?: message.body.text?.let { text ->
         ClickableTextWithLinks(
