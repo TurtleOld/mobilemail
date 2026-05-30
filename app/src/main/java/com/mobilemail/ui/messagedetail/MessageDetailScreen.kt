@@ -363,10 +363,12 @@ fun MessageContent(
     onOpenAttachment: (String, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
-    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+    val configuration = LocalConfiguration.current
+    val locale = configuration.locales[0]
+    val dateFormat = remember(locale) { SimpleDateFormat("dd.MM.yyyy HH:mm", locale) }
     val scrollState = rememberScrollState()
     val context = LocalContext.current
-    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
+    val isExpandedLayout = configuration.screenWidthDp >= 840
     val conversationMessages = remember(threadDetails, message) {
         if (threadDetails.isNotEmpty()) threadDetails else listOf(message)
     }
@@ -485,7 +487,8 @@ private fun ConversationHeader(
     onThreadMessageClick: ((String) -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    val dateFormat = remember { SimpleDateFormat("dd.MM HH:mm", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+    val dateFormat = remember(locale) { SimpleDateFormat("dd.MM HH:mm", locale) }
 
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
@@ -579,7 +582,8 @@ private fun ConversationMessageCard(
     context: Context,
     isExpandedLayout: Boolean
 ) {
-    val dateFormat = remember { SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault()) }
+    val locale = LocalConfiguration.current.locales[0]
+    val dateFormat = remember(locale) { SimpleDateFormat("dd.MM.yyyy HH:mm", locale) }
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()

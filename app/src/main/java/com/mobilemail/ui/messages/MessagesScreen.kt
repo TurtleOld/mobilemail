@@ -492,9 +492,10 @@ fun FoldersList(
     val defaultFolders = defaultOrder.mapNotNull { role ->
         folders.firstOrNull { it.role == role }
     }
+    val locale = LocalConfiguration.current.locales[0]
     val customFolders = folders
         .filter { it.role !in defaultOrder }
-        .sortedBy { it.name.lowercase(Locale.getDefault()) }
+        .sortedBy { it.name.lowercase(locale) }
 
     LazyColumn(
         modifier = modifier.padding(16.dp),
@@ -713,7 +714,8 @@ fun MessageItem(
     onSwipeArchive: () -> Unit,
     onSwipeDelete: () -> Unit
 ) {
-    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+    val locale = LocalConfiguration.current.locales[0]
+    val dateFormat = remember(locale) { SimpleDateFormat("dd.MM.yyyy HH:mm", locale) }
     val isUnread = message.flags.unread
     val haptics = LocalHapticFeedback.current
     val swipeThresholdPx = with(LocalDensity.current) { 112.dp.toPx() }

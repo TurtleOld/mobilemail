@@ -416,7 +416,8 @@ fun MessageItem(
     message: MessageListItem,
     onClick: () -> Unit
 ) {
-    val dateFormat = SimpleDateFormat("dd.MM.yyyy HH:mm", Locale.getDefault())
+    val locale = LocalConfiguration.current.locales[0]
+    val dateFormat = remember(locale) { SimpleDateFormat("dd.MM.yyyy HH:mm", locale) }
 
     Card(
         modifier = Modifier
