@@ -62,6 +62,15 @@ android {
         buildConfig = true
     }
 
+    lint {
+        // Workaround for Compose lint crashes in CI:
+        // these detectors can throw NPE in Kotlin UAST for some AGP/Kotlin combos.
+        disable += setOf(
+            "MutableCollectionMutableState",
+            "AutoboxingStateCreation"
+        )
+    }
+
     signingConfigs {
     create("release") {
         storeFile = file("../.keystore/release.jks")
