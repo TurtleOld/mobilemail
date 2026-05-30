@@ -156,8 +156,12 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          profile: pixel_6
+          profile: Nexus 6
           disable-animations: true
+          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none
+          cores: 2
+          ram-size: 2048M
+          heap-size: 512M
           script: |
             chmod +x ./gradlew
             ./gradlew --no-daemon --build-cache :app:connectedDebugAndroidTest
