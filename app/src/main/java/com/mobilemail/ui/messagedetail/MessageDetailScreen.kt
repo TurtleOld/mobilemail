@@ -35,6 +35,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.draw.alpha
 import com.mobilemail.data.model.MessageDetail
 import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.data.preferences.PreferencesManager
@@ -643,6 +644,7 @@ private fun MessageBodySection(
     }
     var allowRemoteContentForMessage by remember(message.id) { mutableStateOf(false) }
     var webViewHeight by remember(message.id) { mutableStateOf(220.dp) }
+    var isHtmlLoading by remember(message.id) { mutableStateOf(true) }
 
     fun composeResponsiveHtml(sourceHtml: String): String {
         val styleBlock = """
@@ -656,10 +658,12 @@ private fun MessageBodySection(
                     padding: 8px !important;
                     word-wrap: break-word !important;
                     overflow-wrap: anywhere !important;
+                    min-width: 0 !important;
                 }
                 * {
                     box-sizing: border-box !important;
                     max-width: 100% !important;
+                    min-width: 0 !important;
                 }
                 img, video, iframe {
                     max-width: 100% !important;
@@ -672,6 +676,9 @@ private fun MessageBodySection(
                 td, th, pre, code, blockquote {
                     word-break: break-word !important;
                     white-space: pre-wrap !important;
+                }
+                [style*="width"] {
+                    max-width: 100% !important;
                 }
             </style>
         """.trimIndent()
@@ -702,6 +709,7 @@ private fun MessageBodySection(
 
     message.body.html?.let { html ->
         val adaptedHtml = composeResponsiveHtml(html)
+        val contentKey = "${message.id}:${adaptedHtml.hashCode()}:${blockRemoteContent && !allowRemoteContentForMessage}"
 
         if (blockRemoteContent && !allowRemoteContentForMessage) {
             ElevatedCard(
@@ -737,65 +745,103 @@ private fun MessageBodySection(
             }
         }
 
-        AndroidView(
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    webViewClient = object : WebViewClient() {
-                        override fun onPageFinished(view: WebView?, url: String?) {
-                            super.onPageFinished(view, url)
-                            view ?: return
-                            view.post {
-                                val calculatedHeightDp = view.contentHeight.dp
-                                if (calculatedHeightDp > webViewHeight) {
-                                    webViewHeight = calculatedHeightDp + 24.dp
-                                }
-                            }
-                        }
-
-                        override fun shouldOverrideUrlLoading(
-                            view: WebView?,
-                            request: WebResourceRequest?
-                        ): Boolean {
-                            val url = request?.url?.toString()
-                            if (url != null && !url.startsWith("data:") && !url.startsWith("file://")) {
-                                try {
-                                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                    ctx.startActivity(intent)
-                                } catch (e: Exception) {
-                                    android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки: $url", e)
-                                }
-                                return true
-                            }
-                            return false
-                        }
+        Box(modifier = Modifier.fillMaxWidth()) {
+            if (isHtmlLoading) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 220.dp),
+                    color = ExtendedTheme.colors.surfaceReading,
+                    shape = EmailShapes.emailCard
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Загружаем содержимое письма…",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
-                    settings.apply {
-                        javaScriptEnabled = false
-                        domStorageEnabled = false
-                        useWideViewPort = true
-                        loadWithOverviewMode = true
-                        builtInZoomControls = true
-                        displayZoomControls = false
-                        setSupportZoom(true)
-                        textZoom = if (isExpandedLayout) 100 else 95
-                        allowFileAccess = false
-                        allowContentAccess = false
-                        blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
-                        blockNetworkLoads = blockRemoteContent && !allowRemoteContentForMessage
-                    }
-                    loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
                 }
-            },
-            update = { webView ->
-                webView.settings.blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
-                webView.settings.blockNetworkLoads = blockRemoteContent && !allowRemoteContentForMessage
-                webView.loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
-            },
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 160.dp)
-                .height(webViewHeight)
-        )
+            }
+
+            AndroidView(
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        webViewClient = object : WebViewClient() {
+                            override fun onPageFinished(view: WebView?, url: String?) {
+                                super.onPageFinished(view, url)
+                                view ?: return
+                                view.post {
+                                    val calculatedHeightDp = view.contentHeight.dp
+                                    if (calculatedHeightDp > 0.dp) {
+                                        webViewHeight = (calculatedHeightDp + 24.dp).coerceAtLeast(220.dp)
+                                    }
+                                    isHtmlLoading = false
+                                }
+                            }
+
+                            override fun shouldOverrideUrlLoading(
+                                view: WebView?,
+                                request: WebResourceRequest?
+                            ): Boolean {
+                                val url = request?.url?.toString()
+                                if (url != null && !url.startsWith("data:") && !url.startsWith("file://")) {
+                                    try {
+                                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                                        ctx.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки: $url", e)
+                                    }
+                                    return true
+                                }
+                                return false
+                            }
+                        }
+                        settings.apply {
+                            javaScriptEnabled = false
+                            domStorageEnabled = false
+                            useWideViewPort = false
+                            loadWithOverviewMode = true
+                            builtInZoomControls = true
+                            displayZoomControls = false
+                            setSupportZoom(true)
+                            textZoom = if (isExpandedLayout) 100 else 95
+                            allowFileAccess = false
+                            allowContentAccess = false
+                            blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
+                            blockNetworkLoads = blockRemoteContent && !allowRemoteContentForMessage
+                        }
+                        isHorizontalScrollBarEnabled = false
+                        overScrollMode = WebView.OVER_SCROLL_NEVER
+                        tag = contentKey
+                        loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
+                    }
+                },
+                update = { webView ->
+                    webView.settings.blockNetworkImage = blockRemoteContent && !allowRemoteContentForMessage
+                    webView.settings.blockNetworkLoads = blockRemoteContent && !allowRemoteContentForMessage
+                    if (webView.tag != contentKey) {
+                        webView.tag = contentKey
+                        isHtmlLoading = true
+                        webViewHeight = 220.dp
+                        webView.loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 160.dp)
+                    .height(webViewHeight)
+                    .alpha(if (isHtmlLoading) 0.01f else 1f)
+            )
+        }
     } ?: message.body.text?.let { text ->
         ClickableTextWithLinks(
             text = text,
