@@ -154,11 +154,13 @@ jobs:
           NTFY_TOKEN: ci
           NTFY_TOPIC_PATTERN: mobilemail/{user}
         with:
-          api-level: 34
-          arch: x86_64
+          api-level: 30
+          arch: x86
           profile: Nexus 6
+          disable-linux-hw-accel: true
+          emulator-boot-timeout: 900
           disable-animations: true
-          emulator-options: -no-window -no-snapshot -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none
+          emulator-options: -no-window -no-snapshot -no-snapshot-save -wipe-data -noaudio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none -no-metrics
           cores: 2
           ram-size: 2048M
           heap-size: 512M
