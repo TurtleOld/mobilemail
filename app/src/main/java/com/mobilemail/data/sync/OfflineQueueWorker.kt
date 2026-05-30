@@ -19,15 +19,16 @@ class OfflineQueueWorker(
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
         val summary = OfflineQueueManager.processPending(applicationContext as android.app.Application)
-        return when {
-            summary.failedCount > 0 -> Result.retry()
-            else -> Result.success()
-        }
+        return resolveResult(summary)
     }
 
     companion object {
         private const val UNIQUE_ONE_TIME = "offline-queue-once"
         private const val UNIQUE_PERIODIC = "offline-queue-periodic"
+
+        internal fun resolveResult(summary: OfflineQueueSummary): Result {
+            return if (summary.failedCount > 0) Result.retry() else Result.success()
+        }
 
         fun scheduleNow(context: Context) {
             val request = OneTimeWorkRequestBuilder<OfflineQueueWorker>()
