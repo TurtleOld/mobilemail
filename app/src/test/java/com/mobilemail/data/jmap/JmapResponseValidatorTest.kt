@@ -1,10 +1,7 @@
 package com.mobilemail.data.jmap
 
 import org.json.JSONObject
-import org.junit.Assert.assertSame
-import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.Assert.fail
 
 class JmapResponseValidatorTest {
 
@@ -24,7 +21,7 @@ class JmapResponseValidatorTest {
 
         val validated = JmapResponseValidator.ensureNoMethodError(response)
 
-        assertSame(response, validated)
+        assertCondition(response === validated, "Expected the original response instance")
     }
 
     @Test
@@ -33,7 +30,7 @@ class JmapResponseValidatorTest {
 
         val validated = JmapResponseValidator.ensureNoMethodError(response)
 
-        assertSame(response, validated)
+        assertCondition(response === validated, "Expected the original response instance")
     }
 
     @Test
@@ -51,10 +48,10 @@ class JmapResponseValidatorTest {
 
         try {
             JmapResponseValidator.ensureNoMethodError(response)
-            fail("Expected JMAP method error")
+            throw AssertionError("Expected JMAP method error")
         } catch (error: Exception) {
-            assertTrue(error.message.orEmpty().contains("accountNotFound"))
-            assertTrue(error.message.orEmpty().contains("Account is unavailable"))
+            assertCondition(error.message.orEmpty().contains("accountNotFound"))
+            assertCondition(error.message.orEmpty().contains("Account is unavailable"))
         }
     }
 
@@ -72,10 +69,14 @@ class JmapResponseValidatorTest {
 
         try {
             JmapResponseValidator.ensureNoMethodError(response)
-            fail("Expected JMAP method error")
+            throw AssertionError("Expected JMAP method error")
         } catch (error: Exception) {
-            assertTrue(error.message.orEmpty().contains("unknown"))
-            assertTrue(error.message.orEmpty().contains("JMAP method error"))
+            assertCondition(error.message.orEmpty().contains("unknown"))
+            assertCondition(error.message.orEmpty().contains("JMAP method error"))
         }
+    }
+
+    private fun assertCondition(condition: Boolean, message: String = "Expected condition to be true") {
+        if (!condition) throw AssertionError(message)
     }
 }
