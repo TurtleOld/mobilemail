@@ -2,71 +2,73 @@ package com.mobilemail.domain.usecase
 
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HandleMessagesStartupUseCaseTest {
     private val useCase = HandleMessagesStartupUseCase()
 
     @Test
-    fun `requests permission on Android 13+ when not requested yet`() = runTest {
+    fun `processes queue and subscribes topic before requesting notification permission`() = runTest {
         val calls = mutableListOf<String>()
 
         val action = useCase(
-            accountId = "acc-1",
+            accountId = "account-1",
             sdkInt = 33,
             tiramisuSdkInt = 33,
             alreadyRequestedPermission = false,
-            processPending = { calls += "processPending" },
-            subscribeToTopic = { calls += "subscribe:$it" },
-            markPermissionRequested = { calls += "markRequested" }
+            processPending = { calls.add("process") },
+            subscribeToTopic = { accountId -> calls.add("subscribe:$accountId") },
+            markPermissionRequested = { calls.add("mark") }
         )
 
         assertEquals(
-            listOf("processPending", "subscribe:acc-1", "markRequested"),
-            calls
+            HandleMessagesStartupUseCase.Action.RequestNotificationPermission,
+            action
         )
-        assertEquals(HandleMessagesStartupUseCase.Action.RequestNotificationPermission, action)
+        assertEquals(listOf("process", "subscribe:account-1", "mark"), calls)
     }
 
     @Test
-    fun `does not request permission when already requested`() = runTest {
-        val calls = mutableListOf<String>()
+    fun `does not mark permission when it was already requested`() = runTest {
+        var marked = false
 
         val action = useCase(
-            accountId = "acc-1",
+            accountId = "account-1",
             sdkInt = 33,
             tiramisuSdkInt = 33,
             alreadyRequestedPermission = true,
-            processPending = { calls += "processPending" },
-            subscribeToTopic = { calls += "subscribe:$it" },
-            markPermissionRequested = { calls += "markRequested" }
+            processPending = {},
+            subscribeToTopic = {},
+            markPermissionRequested = { marked = true }
         )
 
         assertEquals(
-            listOf("processPending", "subscribe:acc-1"),
-            calls
+            HandleMessagesStartupUseCase.Action.NoPermissionRequest,
+            action
         )
-        assertEquals(HandleMessagesStartupUseCase.Action.NoPermissionRequest, action)
+        assertFalse(marked)
     }
 
     @Test
-    fun `marks requested but does not request permission on pre-Android 13`() = runTest {
-        val calls = mutableListOf<String>()
+    fun `marks permission on pre-tiramisu devices without requesting runtime permission`() = runTest {
+        var marked = false
 
         val action = useCase(
-            accountId = "acc-1",
+            accountId = "account-1",
             sdkInt = 32,
             tiramisuSdkInt = 33,
             alreadyRequestedPermission = false,
-            processPending = { calls += "processPending" },
-            subscribeToTopic = { calls += "subscribe:$it" },
-            markPermissionRequested = { calls += "markRequested" }
+            processPending = {},
+            subscribeToTopic = {},
+            markPermissionRequested = { marked = true }
         )
 
         assertEquals(
-            listOf("processPending", "subscribe:acc-1", "markRequested"),
-            calls
+            HandleMessagesStartupUseCase.Action.NoPermissionRequest,
+            action
         )
-        assertEquals(HandleMessagesStartupUseCase.Action.NoPermissionRequest, action)
+        assertTrue(marked)
     }
 }

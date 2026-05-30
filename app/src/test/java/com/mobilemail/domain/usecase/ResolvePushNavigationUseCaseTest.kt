@@ -8,17 +8,19 @@ import org.junit.Test
 
 class ResolvePushNavigationUseCaseTest {
     private val useCase = ResolvePushNavigationUseCase()
+    private val current = session("current@example.com", "current")
+    private val other = session("other@example.com", "other")
 
     @Test
-    fun `root returns no-op on pin lock route`() {
+    fun `root returns no-op while app is locked`() {
         val action = useCase(
             ResolvePushNavigationUseCase.RootInput(
                 currentRoute = "pin-lock",
                 pinLockRoute = "pin-lock",
                 messagesPatternRoute = "messages/{server}/{email}/{accountId}",
-                target = PushMessageTarget(messageId = "m-1"),
-                activeSession = null,
-                savedAccounts = emptyList()
+                target = PushMessageTarget(messageId = "m-1", accountId = other.accountId),
+                activeSession = current,
+                savedAccounts = listOf(other)
             )
         )
 
@@ -26,46 +28,29 @@ class ResolvePushNavigationUseCaseTest {
     }
 
     @Test
-    fun `root returns navigate when matching session exists`() {
-        val current = SavedSession("https://mail.example.com", "a@example.com", "acc-a")
+    fun `root navigates to messages for resolved push session from non-message route`() {
         val action = useCase(
             ResolvePushNavigationUseCase.RootInput(
-                currentRoute = "settings/one/two",
+                currentRoute = "settings/{server}/{email}",
                 pinLockRoute = "pin-lock",
                 messagesPatternRoute = "messages/{server}/{email}/{accountId}",
-                target = PushMessageTarget(messageId = "m-1", email = "a@example.com"),
+                target = PushMessageTarget(messageId = "m-1", accountId = other.accountId),
                 activeSession = current,
-                savedAccounts = listOf(current)
+                savedAccounts = listOf(other)
             )
         )
 
         assertEquals(
-            ResolvePushNavigationUseCase.RootAction.NavigateToMessages(current),
+            ResolvePushNavigationUseCase.RootAction.NavigateToMessages(other),
             action
         )
     }
 
     @Test
-    fun `messages returns open message when current session matches`() {
-        val current = SavedSession("https://mail.example.com", "a@example.com", "acc-a")
+    fun `messages action switches session when push belongs to another account`() {
         val action = useCase.resolveInMessages(
             ResolvePushNavigationUseCase.MessagesInput(
-                target = PushMessageTarget(messageId = "m-1", email = "a@example.com"),
-                currentSession = current,
-                savedAccounts = listOf(current)
-            )
-        )
-
-        assertEquals(ResolvePushNavigationUseCase.MessagesAction.OpenMessage("m-1"), action)
-    }
-
-    @Test
-    fun `messages returns switch session when another session matches`() {
-        val current = SavedSession("https://mail.example.com", "a@example.com", "acc-a")
-        val other = SavedSession("https://mail.example.com", "b@example.com", "acc-b")
-        val action = useCase.resolveInMessages(
-            ResolvePushNavigationUseCase.MessagesInput(
-                target = PushMessageTarget(messageId = "m-1", email = "b@example.com"),
+                target = PushMessageTarget(messageId = "m-1", accountId = other.accountId),
                 currentSession = current,
                 savedAccounts = listOf(other)
             )
@@ -74,6 +59,30 @@ class ResolvePushNavigationUseCaseTest {
         assertEquals(
             ResolvePushNavigationUseCase.MessagesAction.SwitchSessionAndOpenInbox(other),
             action
+        )
+    }
+
+    @Test
+    fun `messages action opens message when push belongs to current account`() {
+        val action = useCase.resolveInMessages(
+            ResolvePushNavigationUseCase.MessagesInput(
+                target = PushMessageTarget(messageId = "m-1", accountId = current.accountId),
+                currentSession = current,
+                savedAccounts = listOf(other)
+            )
+        )
+
+        assertEquals(
+            ResolvePushNavigationUseCase.MessagesAction.OpenMessage("m-1"),
+            action
+        )
+    }
+
+    private fun session(email: String, accountId: String): SavedSession {
+        return SavedSession(
+            server = "https://mail.example.com",
+            email = email,
+            accountId = accountId
         )
     }
 }

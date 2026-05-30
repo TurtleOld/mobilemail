@@ -9,32 +9,67 @@ class ResolveValidSessionUseCaseTest {
     private val useCase = ResolveValidSessionUseCase()
 
     @Test
-    fun `returns active session when token is usable`() {
-        val active = SavedSession("https://mail.example.com", "active@example.com", "acc-active")
-        val other = SavedSession("https://mail.example.com", "other@example.com", "acc-other")
+    fun `returns active session when it has usable token`() {
+        val active = session("active@example.com")
+        val fallback = session("fallback@example.com")
 
-        val resolved = useCase(active, listOf(other)) { it.email == "active@example.com" }
+        val result = useCase(
+            activeSession = active,
+            savedAccounts = listOf(fallback),
+            hasUsableToken = { it == active }
+        )
 
-        assertEquals(active, resolved)
+        assertEquals(active, result)
     }
 
     @Test
-    fun `falls back to saved account when active token is not usable`() {
-        val active = SavedSession("https://mail.example.com", "active@example.com", "acc-active")
-        val other = SavedSession("https://mail.example.com", "other@example.com", "acc-other")
+    fun `falls back to first saved account with usable token`() {
+        val active = session("active@example.com")
+        val invalid = session("invalid@example.com")
+        val valid = session("valid@example.com")
 
-        val resolved = useCase(active, listOf(other)) { it.email == "other@example.com" }
+        val result = useCase(
+            activeSession = active,
+            savedAccounts = listOf(invalid, valid),
+            hasUsableToken = { it == valid }
+        )
 
-        assertEquals(other, resolved)
+        assertEquals(valid, result)
     }
 
     @Test
-    fun `returns null when no account has usable token`() {
-        val active = SavedSession("https://mail.example.com", "active@example.com", "acc-active")
-        val other = SavedSession("https://mail.example.com", "other@example.com", "acc-other")
+    fun `does not evaluate duplicated active session twice`() {
+        val active = session("active@example.com")
+        val checked = mutableListOf<SavedSession>()
 
-        val resolved = useCase(active, listOf(other)) { false }
+        useCase(
+            activeSession = active,
+            savedAccounts = listOf(active),
+            hasUsableToken = {
+                checked.add(it)
+                false
+            }
+        )
 
-        assertNull(resolved)
+        assertEquals(listOf(active), checked)
+    }
+
+    @Test
+    fun `returns null when no candidate has usable token`() {
+        val result = useCase(
+            activeSession = session("active@example.com"),
+            savedAccounts = listOf(session("fallback@example.com")),
+            hasUsableToken = { false }
+        )
+
+        assertNull(result)
+    }
+
+    private fun session(email: String): SavedSession {
+        return SavedSession(
+            server = "https://mail.example.com",
+            email = email,
+            accountId = email.substringBefore("@")
+        )
     }
 }
