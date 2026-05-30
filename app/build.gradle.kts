@@ -1,12 +1,12 @@
 import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
 
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.plugin.compose")
-    id("com.google.gms.google-services")
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.compose)
+    alias(libs.plugins.google.services)
     id("kotlin-parcelize")
-    id("com.google.devtools.ksp")
-    id("org.jetbrains.dokka")
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.dokka)
 }
 
 fun secret(name: String): String {
@@ -43,12 +43,18 @@ fun optionalProp(name: String): String? =
 
 android {
     namespace = "com.mobilemail"
-    compileSdk = 36
+    compileSdk {
+        version = release(36) {
+            minorApiLevel = 1
+        }
+    }
 
     defaultConfig {
         applicationId = "com.mobilemail"
         minSdk = 26
-        targetSdk = 36
+        targetSdk {
+            version = release(36)
+        }
         versionCode = optionalProp("VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = optionalProp("VERSION_NAME") ?: "1.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
