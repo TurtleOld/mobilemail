@@ -38,14 +38,14 @@ class PinLockViewModel(
             BiometricManager.Authenticators.BIOMETRIC_WEAK
         ) == BiometricManager.BIOMETRIC_SUCCESS
 
-        val isBiometricEnabled = pinManager.isBiometricEnabled() && canAuthenticate
-
+        // Отпечаток — основной способ входа: запрашиваем его сразу,
+        // если устройство поддерживает биометрию. PIN остаётся как fallback.
         _uiState.update {
             it.copy(
                 failedAttempts = pinManager.getFailedAttempts(),
-                isBiometricEnabled = isBiometricEnabled,
+                isBiometricEnabled = canAuthenticate,
                 isBiometricAvailable = canAuthenticate,
-                showBiometricPrompt = isBiometricEnabled
+                showBiometricPrompt = canAuthenticate
             )
         }
 

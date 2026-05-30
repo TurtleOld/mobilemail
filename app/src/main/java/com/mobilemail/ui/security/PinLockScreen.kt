@@ -69,10 +69,12 @@ fun PinLockScreen(
     val context = LocalContext.current
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
 
-    // Защищаем от скриншотов/записи экрана только пока виден экран ввода PIN.
-    DisposableEffect(Unit) {
+    // Защищаем от скриншотов/записи экрана только в момент запроса отпечатка.
+    DisposableEffect(uiState.showBiometricPrompt) {
         val window = context.findActivity()?.window
-        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        if (uiState.showBiometricPrompt) {
+            window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
         onDispose {
             window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         }
