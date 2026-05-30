@@ -120,6 +120,126 @@ class JmapOAuthClientIntegrationTest {
         }
     }
 
+    @Test
+    fun `getMailboxes refreshes token and retries JMAP api call`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(sessionResponse(server)))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"unauthorized"}"""))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "access_token": "new_access",
+                  "token_type": "Bearer",
+                  "expires_in": 3600,
+                  "refresh_token": "new_refresh"
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "methodResponses": [
+                    ["Mailbox/get", {"list":[{"id":"inbox","name":"Inbox"}]}, "0"]
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        try {
+            val tokenAccess = FakeTokenStoreAccess(
+                StoredToken(
+                    accessToken = "old_access",
+                    tokenType = "Bearer",
+                    expiresAt = System.currentTimeMillis() + 60_000,
+                    refreshToken = "old_refresh"
+                )
+            )
+            val client = JmapOAuthClient(
+                baseUrl = server.url("/").toString(),
+                email = "user@example.com",
+                accountId = "acc1",
+                tokenStoreAccess = tokenAccess,
+                metadata = metadata(server),
+                clientId = "mobilemail-test"
+            )
+
+            val mailboxes = client.getMailboxes("acc1")
+
+            assertEquals(1, mailboxes.size)
+            assertEquals("inbox", mailboxes.first().id)
+            assertEquals("Inbox", mailboxes.first().name)
+            assertEquals("new_access", tokenAccess.currentToken?.accessToken)
+
+            val sessionRequest = server.takeRequest()
+            assertEquals("/.well-known/jmap", sessionRequest.path)
+            assertEquals("Bearer old_access", sessionRequest.getHeader("Authorization"))
+
+            val firstApiRequest = server.takeRequest()
+            assertEquals("/jmap/api", firstApiRequest.path)
+            assertEquals("Bearer old_access", firstApiRequest.getHeader("Authorization"))
+
+            val refreshRequest = server.takeRequest()
+            assertEquals("/token", refreshRequest.path)
+            assertTrue(refreshRequest.body.readUtf8().contains("refresh_token=old_refresh"))
+
+            val retryApiRequest = server.takeRequest()
+            assertEquals("/jmap/api", retryApiRequest.path)
+            assertEquals("Bearer new_access", retryApiRequest.getHeader("Authorization"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `getMailboxes throws on JMAP error envelope`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(sessionResponse(server)))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "methodResponses": [
+                    ["error", {"type":"serverFail","description":"temporary issue"}, "0"]
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        try {
+            val tokenAccess = FakeTokenStoreAccess(
+                StoredToken(
+                    accessToken = "old_access",
+                    tokenType = "Bearer",
+                    expiresAt = System.currentTimeMillis() + 60_000,
+                    refreshToken = "old_refresh"
+                )
+            )
+            val client = JmapOAuthClient(
+                baseUrl = server.url("/").toString(),
+                email = "user@example.com",
+                accountId = "acc1",
+                tokenStoreAccess = tokenAccess,
+                metadata = metadata(server),
+                clientId = "mobilemail-test"
+            )
+
+            try {
+                client.getMailboxes("acc1")
+                fail("Expected JMAP method error")
+            } catch (error: Exception) {
+                assertTrue(error.message.orEmpty().contains("JMAP method error"))
+                assertTrue(error.message.orEmpty().contains("serverFail"))
+            }
+        } finally {
+            server.shutdown()
+        }
+    }
+
     private fun metadata(server: MockWebServer): OAuthServerMetadata {
         return OAuthServerMetadata(
             issuer = "test",
