@@ -3,6 +3,7 @@ package com.mobilemail.ui.messagedetail
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.view.MotionEvent
 import android.webkit.WebResourceRequest
 import android.webkit.WebSettings
 import android.webkit.WebView
@@ -875,7 +876,18 @@ private fun MessageBodySection(
                                 safeBrowsingEnabled = true
                             }
                         }
+                        // Allow WebView to handle vertical gestures inside Compose scroll container.
+                        setOnTouchListener { view, event ->
+                            when (event.actionMasked) {
+                                MotionEvent.ACTION_DOWN,
+                                MotionEvent.ACTION_MOVE -> view.parent?.requestDisallowInterceptTouchEvent(true)
+                                MotionEvent.ACTION_UP,
+                                MotionEvent.ACTION_CANCEL -> view.parent?.requestDisallowInterceptTouchEvent(false)
+                            }
+                            false
+                        }
                         isHorizontalScrollBarEnabled = false
+                        isVerticalScrollBarEnabled = true
                         overScrollMode = WebView.OVER_SCROLL_NEVER
                         tag = contentKey
                         loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
