@@ -5,6 +5,8 @@ import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class OAuthDiscoveryIntegrationTest {
@@ -70,6 +72,33 @@ class OAuthDiscoveryIntegrationTest {
             assertEquals("/.well-known/openid-configuration", server.takeRequest().path)
             assertEquals("/.well-known/openid-configuration", server.takeRequest().path)
             assertEquals("/.well-known/oauth-authorization-server", server.takeRequest().path)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `discover throws when response misses required endpoints`() = runTest {
+        val server = MockWebServer()
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"issuer":"https://mail.example.com"}""")
+        )
+        server.enqueue(
+            MockResponse()
+                .setResponseCode(200)
+                .setBody("""{"issuer":"https://mail.example.com"}""")
+        )
+        server.start()
+        try {
+            val discovery = OAuthDiscovery(OkHttpClient())
+            try {
+                discovery.discover(server.url("/").toString())
+                fail("Expected discovery to fail without required endpoints")
+            } catch (error: Exception) {
+                assertTrue(error.message.orEmpty().contains("Не удалось выполнить discovery запрос"))
+            }
         } finally {
             server.shutdown()
         }
