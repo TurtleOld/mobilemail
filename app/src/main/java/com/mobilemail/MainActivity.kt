@@ -58,6 +58,7 @@ import com.mobilemail.ui.newmessage.ReplyAction
 import com.mobilemail.ui.outbox.OutboxScreen
 import com.mobilemail.ui.outbox.OutboxViewModel
 import com.mobilemail.ui.outbox.OutboxViewModelFactory
+import com.mobilemail.ui.orchestration.MessageListBridgeCoordinator
 import com.mobilemail.ui.search.SearchScreen
 import com.mobilemail.ui.search.SearchViewModel
 import com.mobilemail.ui.search.SearchViewModelFactory
@@ -70,10 +71,12 @@ import com.mobilemail.ui.security.PinLockViewModel
 import com.mobilemail.ui.security.PinLockViewModelFactory
 import com.mobilemail.data.security.PinManager
 import com.mobilemail.data.sync.OfflineQueueManager
-import com.mobilemail.domain.usecase.ResolvePushSessionUseCase
 import com.mobilemail.domain.usecase.ResolveValidSessionUseCase
 import com.mobilemail.domain.usecase.LogoutAccountUseCase
 import com.mobilemail.domain.usecase.LogoutAllUseCase
+import com.mobilemail.domain.usecase.ResolvePushNavigationUseCase
+import com.mobilemail.domain.usecase.HandleMessagesStartupUseCase
+import com.mobilemail.domain.usecase.ResolveMessagesViewModelContextUseCase
 
 class MainActivity : FragmentActivity() {
     private val database by lazy {
@@ -84,9 +87,11 @@ class MainActivity : FragmentActivity() {
     private val pinManager by lazy { PinManager(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val resolveValidSessionUseCase = ResolveValidSessionUseCase()
-    private val resolvePushSessionUseCase = ResolvePushSessionUseCase()
     private val logoutAccountUseCase = LogoutAccountUseCase()
     private val logoutAllUseCase = LogoutAllUseCase()
+    private val resolvePushNavigationUseCase = ResolvePushNavigationUseCase()
+    private val handleMessagesStartupUseCase = HandleMessagesStartupUseCase()
+    private val resolveMessagesViewModelContextUseCase = ResolveMessagesViewModelContextUseCase()
 
     private fun buildComposeRoute(
         server: String,
@@ -159,22 +164,29 @@ class MainActivity : FragmentActivity() {
 
                     LaunchedEffect(pendingPushTarget, currentBackStackEntry?.destination?.route) {
                         val target = pendingPushTarget ?: return@LaunchedEffect
-                        val currentRoute = currentBackStackEntry?.destination?.route
-                        if (currentRoute == null || currentRoute == AppRoutes.PinLock || currentRoute == AppRoutes.MessagesPattern) {
-                            return@LaunchedEffect
-                        }
-
                         val activeSession = preferencesManager.getSavedSession()
                         val savedAccounts = preferencesManager.getSavedAccounts()
-                        val resolvedSession = resolvePushSessionUseCase(target, activeSession, savedAccounts)
-                            ?: return@LaunchedEffect
-
-                        if (activeSession != resolvedSession) {
-                            preferencesManager.setActiveSession(resolvedSession)
-                        }
-
-                        navController.navigate(buildMessagesRoute(resolvedSession)) {
-                            launchSingleTop = true
+                        when (
+                            val action = resolvePushNavigationUseCase(
+                                ResolvePushNavigationUseCase.RootInput(
+                                    currentRoute = currentBackStackEntry?.destination?.route,
+                                    pinLockRoute = AppRoutes.PinLock,
+                                    messagesPatternRoute = AppRoutes.MessagesPattern,
+                                    target = target,
+                                    activeSession = activeSession,
+                                    savedAccounts = savedAccounts
+                                )
+                            )
+                        ) {
+                            ResolvePushNavigationUseCase.RootAction.NoOp -> Unit
+                            is ResolvePushNavigationUseCase.RootAction.NavigateToMessages -> {
+                                if (activeSession != action.session) {
+                                    preferencesManager.setActiveSession(action.session)
+                                }
+                                navController.navigate(buildMessagesRoute(action.session)) {
+                                    launchSingleTop = true
+                                }
+                            }
                         }
                     }
 
@@ -289,38 +301,60 @@ class MainActivity : FragmentActivity() {
                             }
 
                             LaunchedEffect(accountId) {
-                                OfflineQueueManager.processPending(application)
-                                subscribeToAccountTopic(accountId)
-                                val alreadyRequested = preferencesManager.isNotificationPermissionRequested()
-                                if (!alreadyRequested) {
-                                    preferencesManager.markNotificationPermissionRequested()
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                when (
+                                    handleMessagesStartupUseCase(
+                                        accountId = accountId,
+                                        sdkInt = Build.VERSION.SDK_INT,
+                                        tiramisuSdkInt = Build.VERSION_CODES.TIRAMISU,
+                                        alreadyRequestedPermission = preferencesManager.isNotificationPermissionRequested(),
+                                        processPending = { OfflineQueueManager.processPending(application) },
+                                        subscribeToTopic = { subscribeToAccountTopic(it) },
+                                        markPermissionRequested = { preferencesManager.markNotificationPermissionRequested() }
+                                    )
+                                ) {
+                                    HandleMessagesStartupUseCase.Action.RequestNotificationPermission -> {
                                         notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                                     }
+                                    HandleMessagesStartupUseCase.Action.NoPermissionRequest -> Unit
                                 }
                             }
 
+                            val messagesViewModelContext = remember(server, email, accountId) {
+                                resolveMessagesViewModelContextUseCase(
+                                    server = server,
+                                    email = email,
+                                    accountId = accountId,
+                                    buildMessagesRoute = { buildMessagesRoute(it) }
+                                )
+                            }
                             val viewModel: MessagesViewModel = viewModel(
-                                key = "messages_${server}_${email}_${accountId}",
+                                key = messagesViewModelContext.key,
                                 factory = MessagesViewModelFactory(server, email, accountId, database, application)
                             )
 
                             LaunchedEffect(pendingPushTarget, currentSession, savedAccounts) {
                                 val target = pendingPushTarget ?: return@LaunchedEffect
-                                val resolvedSession = resolvePushSessionUseCase(target, currentSession, savedAccounts)
-                                    ?: return@LaunchedEffect
-
-                                if (resolvedSession != currentSession) {
-                                    preferencesManager.setActiveSession(resolvedSession)
-                                    navController.navigate(buildMessagesRoute(resolvedSession)) {
-                                        popUpTo(0) { inclusive = true }
+                                when (
+                                    val action = resolvePushNavigationUseCase.resolveInMessages(
+                                        ResolvePushNavigationUseCase.MessagesInput(
+                                            target = target,
+                                            currentSession = currentSession,
+                                            savedAccounts = savedAccounts
+                                        )
+                                    )
+                                ) {
+                                    is ResolvePushNavigationUseCase.MessagesAction.SwitchSessionAndOpenInbox -> {
+                                        preferencesManager.setActiveSession(action.session)
+                                        navController.navigate(buildMessagesRoute(action.session)) {
+                                            popUpTo(0) { inclusive = true }
+                                        }
                                     }
-                                    return@LaunchedEffect
-                                }
-
-                                PushNavigationStore.clear(target)
-                                navController.navigate(buildMessageRoute(currentSession, target.messageId)) {
-                                    launchSingleTop = true
+                                    is ResolvePushNavigationUseCase.MessagesAction.OpenMessage -> {
+                                        PushNavigationStore.clear(target)
+                                        navController.navigate(buildMessageRoute(currentSession, action.messageId)) {
+                                            launchSingleTop = true
+                                        }
+                                    }
                                 }
                             }
 
@@ -360,9 +394,17 @@ class MainActivity : FragmentActivity() {
                                             key = "embedded_message_${server}_${email}_${accountId}_$selectedMessageId",
                                             factory = MessageDetailViewModelFactory(application, server, email, accountId, selectedMessageId)
                                         )
+                                        val bridgeCoordinator = remember(viewModel) {
+                                            MessageListBridgeCoordinator(
+                                                removeMessage = { viewModel.removeMessage(it) },
+                                                updateReadStatus = { id, unread ->
+                                                    viewModel.updateMessageReadStatus(id, unread)
+                                                }
+                                            )
+                                        }
                                         LaunchedEffect(detailViewModel, viewModel) {
-                                            detailViewModel.setOnReadStatusChanged { updatedMessageId, isUnread ->
-                                                viewModel.updateMessageReadStatus(updatedMessageId, isUnread)
+                                            bridgeCoordinator.bindDetailReadStatusCallback {
+                                                detailViewModel.setOnReadStatusChanged(it)
                                             }
                                         }
                                         MessageDetailScreen(
@@ -377,15 +419,9 @@ class MainActivity : FragmentActivity() {
                                             onForward = { message ->
                                                 navController.navigate(buildReplyDraftRoute(server, email, accountId, message, ReplyAction.FORWARD))
                                             },
-                                            onMessageDeleted = { deletedMessageId ->
-                                                viewModel.removeMessage(deletedMessageId)
-                                            },
-                                            onMessageMoved = { movedMessageId ->
-                                                viewModel.removeMessage(movedMessageId)
-                                            },
-                                            onReadStatusChanged = { updatedMessageId, isUnread ->
-                                                viewModel.updateMessageReadStatus(updatedMessageId, isUnread)
-                                            },
+                                            onMessageDeleted = bridgeCoordinator::onMessageDeleted,
+                                            onMessageMoved = bridgeCoordinator::onMessageMoved,
+                                            onReadStatusChanged = bridgeCoordinator::onReadStatusChanged,
                                             onThreadMessageClick = { threadMessageId ->
                                                 viewModel.selectMessage(threadMessageId)
                                             }
@@ -531,20 +567,35 @@ class MainActivity : FragmentActivity() {
                                 factory = MessageDetailViewModelFactory(application, server, email, accountId, messageId)
                             )
 
-                            val messagesRoute = AppRoutes.messages(SavedSession(server, email, accountId))
-                            val parentEntry = remember(backStackEntry, messagesRoute) {
-                                navController.getBackStackEntry(messagesRoute)
+                            val messagesViewModelContext = remember(server, email, accountId) {
+                                resolveMessagesViewModelContextUseCase(
+                                server = server,
+                                email = email,
+                                accountId = accountId,
+                                buildMessagesRoute = { buildMessagesRoute(it) }
+                                )
+                            }
+                            val parentEntry = remember(backStackEntry, messagesViewModelContext.route) {
+                                navController.getBackStackEntry(messagesViewModelContext.route)
                             }
 
                             val messagesViewModel: MessagesViewModel = viewModel(
                                 parentEntry,
-                                key = "messages_${server}_${email}_${accountId}",
+                                key = messagesViewModelContext.key,
                                 factory = MessagesViewModelFactory(server, email, accountId, database, application)
                             )
+                            val bridgeCoordinator = remember(messagesViewModel) {
+                                MessageListBridgeCoordinator(
+                                    removeMessage = { messagesViewModel.removeMessage(it) },
+                                    updateReadStatus = { id, unread ->
+                                        messagesViewModel.updateMessageReadStatus(id, unread)
+                                    }
+                                )
+                            }
                             
                             LaunchedEffect(viewModel, messagesViewModel) {
-                                viewModel.setOnReadStatusChanged { updatedMessageId, isUnread ->
-                                    messagesViewModel.updateMessageReadStatus(updatedMessageId, isUnread)
+                                bridgeCoordinator.bindDetailReadStatusCallback {
+                                    viewModel.setOnReadStatusChanged(it)
                                 }
                             }
                             
@@ -562,15 +613,9 @@ class MainActivity : FragmentActivity() {
                                 onForward = { message ->
                                     navController.navigate(buildReplyDraftRoute(server, email, accountId, message, ReplyAction.FORWARD))
                                 },
-                                onMessageDeleted = { deletedMessageId ->
-                                    messagesViewModel.removeMessage(deletedMessageId)
-                                },
-                                onMessageMoved = { movedMessageId ->
-                                    messagesViewModel.removeMessage(movedMessageId)
-                                },
-                                onReadStatusChanged = { updatedMessageId, isUnread ->
-                                    messagesViewModel.updateMessageReadStatus(updatedMessageId, isUnread)
-                                },
+                                onMessageDeleted = bridgeCoordinator::onMessageDeleted,
+                                onMessageMoved = bridgeCoordinator::onMessageMoved,
+                                onReadStatusChanged = bridgeCoordinator::onReadStatusChanged,
                                 onThreadMessageClick = { threadMessageId ->
                                     if (threadMessageId != messageId) {
                                         navController.navigate(
