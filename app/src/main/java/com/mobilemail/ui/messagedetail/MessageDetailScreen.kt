@@ -3,11 +3,6 @@ package com.mobilemail.ui.messagedetail
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
-import android.view.MotionEvent
-import android.webkit.WebResourceRequest
-import android.webkit.WebSettings
-import android.webkit.WebView
-import android.webkit.WebViewClient
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,10 +31,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.mobilemail.data.model.MessageDetail
+import com.mobilemail.ui.messagedetail.content.MessageBodySection
+import com.mobilemail.ui.messagedetail.content.openExternalUriSafely
 import com.mobilemail.data.model.MessageListItem
-import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.ui.theme.EmailShapes
 import com.mobilemail.ui.theme.EmailTypography
 import com.mobilemail.ui.theme.ExtendedTheme
@@ -47,60 +42,8 @@ import java.util.regex.Pattern
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
-import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
-
-private object RemoteContentAllowanceStore {
-    private val allowedMessageIds = mutableSetOf<String>()
-
-    fun isAllowed(messageId: String): Boolean = allowedMessageIds.contains(messageId)
-
-    fun allow(messageId: String) {
-        allowedMessageIds.add(messageId)
-    }
-}
-
-private val disallowedHtmlTagsRegex = Regex(
-    pattern = "(?is)<(script|iframe|object|embed|base|meta|link)(?:\\s[^>]*)?>.*?</\\1\\s*>|<(script|iframe|object|embed|base|meta|link)(?:\\s[^>]*)?/?>"
-)
-
-private val inlineEventHandlersRegex = Regex(pattern = "(?i)\\son[a-z]+\\s*=\\s*(['\"]).*?\\1")
-
-private val javascriptHrefRegex = Regex(pattern = "(?i)(href|src)\\s*=\\s*(['\"])\\s*javascript:[^'\"]*\\2")
-
-private fun sanitizeHtmlForWebView(rawHtml: String): String {
-    val withoutDangerousTags = rawHtml.replace(disallowedHtmlTagsRegex, "")
-    val withoutInlineHandlers = withoutDangerousTags.replace(inlineEventHandlersRegex, "")
-    return withoutInlineHandlers.replace(javascriptHrefRegex, "$1=\"#\"")
-}
-
-private fun isAllowedExternalUri(uri: Uri?): Boolean {
-    val scheme = uri?.scheme?.lowercase(Locale.ROOT) ?: return false
-    return scheme == "https" || scheme == "http" || scheme == "mailto"
-}
-
-private fun openExternalUriSafely(context: Context, uri: Uri) {
-    if (!isAllowedExternalUri(uri)) {
-        android.util.Log.w("MessageDetailScreen", "Blocked unsupported uri scheme: $uri")
-        return
-    }
-    runCatching {
-        context.startActivity(Intent(Intent.ACTION_VIEW, uri))
-    }.onFailure { error ->
-        android.util.Log.e("MessageDetailScreen", "Failed to open uri: $uri", error)
-    }
-}
-
-internal fun shouldDisallowParentIntercept(actionMasked: Int): Boolean? {
-    return when (actionMasked) {
-        MotionEvent.ACTION_DOWN,
-        MotionEvent.ACTION_MOVE -> true
-        MotionEvent.ACTION_UP,
-        MotionEvent.ACTION_CANCEL -> false
-        else -> null
-    }
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -359,6 +302,7 @@ fun MessageContent(
             .fillMaxSize()
             .verticalScroll(scrollState)
             .padding(16.dp)
+            .semantics { contentDescription = "Содержимое письма" }
     ) {
         Text(
             text = message.subject,
@@ -659,285 +603,10 @@ private fun ConversationMessageCard(
 
                 MessageBodySection(
                     message = message,
-                    context = context,
                     isExpandedLayout = isExpandedLayout
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun MessageBodySection(
-    message: MessageDetail,
-    context: Context,
-    isExpandedLayout: Boolean
-) {
-    val preferencesManager = remember(context) { PreferencesManager(context) }
-    val blockRemoteContent by preferencesManager.blockRemoteContent.collectAsStateWithLifecycle(initialValue = true)
-    var allowRemoteContentForMessage by remember(message.id) {
-        mutableStateOf(RemoteContentAllowanceStore.isAllowed(message.id))
-    }
-    var webViewHeight by remember(message.id) { mutableStateOf(420.dp) }
-    var isHtmlLoading by remember(message.id) { mutableStateOf(true) }
-
-    fun composeResponsiveHtml(sourceHtml: String): String {
-        val styleBlock = """
-            <style>
-                html, body {
-                    max-width: 100% !important;
-                    overflow-x: hidden !important;
-                }
-                body {
-                    margin: 0 !important;
-                    padding: 8px !important;
-                    word-wrap: break-word !important;
-                    overflow-wrap: anywhere !important;
-                    min-width: 0 !important;
-                }
-                * {
-                    box-sizing: border-box !important;
-                    max-width: 100% !important;
-                    min-width: 0 !important;
-                }
-                img, video, iframe {
-                    max-width: 100% !important;
-                    height: auto !important;
-                }
-                table {
-                    width: 100% !important;
-                    table-layout: fixed !important;
-                }
-                td, th, pre, code, blockquote {
-                    word-break: break-word !important;
-                    white-space: pre-wrap !important;
-                }
-                [style*="width"] {
-                    max-width: 100% !important;
-                }
-            </style>
-        """.trimIndent()
-        val viewportMeta = "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes\">"
-
-        return when {
-            sourceHtml.contains("<head>", ignoreCase = true) -> {
-                sourceHtml.replace(
-                    "<head>",
-                    "<head>$viewportMeta$styleBlock",
-                    ignoreCase = true
-                )
-            }
-
-            sourceHtml.contains("<html>", ignoreCase = true) -> {
-                sourceHtml.replace(
-                    "<html>",
-                    "<html><head>$viewportMeta$styleBlock</head>",
-                    ignoreCase = true
-                )
-            }
-
-            else -> {
-                "<html><head>$viewportMeta$styleBlock</head><body>$sourceHtml</body></html>"
-            }
-        }
-    }
-
-    message.body.html?.let { html ->
-        val sanitizedHtml = sanitizeHtmlForWebView(html)
-        val adaptedHtml = composeResponsiveHtml(sanitizedHtml)
-        val contentKey = "${message.id}:${adaptedHtml.hashCode()}"
-        LaunchedEffect(contentKey) {
-            isHtmlLoading = true
-            delay(2500)
-            if (isHtmlLoading) {
-                isHtmlLoading = false
-            }
-        }
-
-        if (blockRemoteContent && !allowRemoteContentForMessage) {
-            ElevatedCard(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 12.dp),
-                colors = CardDefaults.elevatedCardColors(containerColor = ExtendedTheme.colors.chromeMuted)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp)
-                ) {
-                    Text(
-                        text = "Удалённый контент заблокирован",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Text(
-                        text = "Внешние изображения и трекеры отключены для защиты конфиденциальности.",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    TextButton(
-                        onClick = {
-                            allowRemoteContentForMessage = true
-                            RemoteContentAllowanceStore.allow(message.id)
-                        },
-                        modifier = Modifier.align(Alignment.End),
-                        contentPadding = PaddingValues(horizontal = 8.dp)
-                    ) {
-                        Text("Показать изображения")
-                    }
-                }
-            }
-        }
-
-        Box(modifier = Modifier.fillMaxWidth()) {
-            AndroidView(
-                factory = { ctx ->
-                    WebView(ctx).apply {
-                        val recalculateHeight: (WebView) -> Unit = { currentWebView ->
-                            currentWebView.evaluateJavascript(
-                                """
-                                (function() {
-                                    var body = document.body || {};
-                                    var doc = document.documentElement || {};
-                                    return Math.max(
-                                        body.scrollHeight || 0,
-                                        body.offsetHeight || 0,
-                                        doc.clientHeight || 0,
-                                        doc.scrollHeight || 0,
-                                        doc.offsetHeight || 0
-                                    ).toString();
-                                })();
-                                """.trimIndent()
-                            ) { rawHeight ->
-                                val normalized = rawHeight.trim().replace("\"", "")
-                                val htmlHeight = normalized.toFloatOrNull()
-                                if (htmlHeight != null && htmlHeight > 0f) {
-                                    val calculatedHeight = htmlHeight.dp + 24.dp
-                                    webViewHeight = calculatedHeight.coerceAtLeast(420.dp)
-                                }
-                            }
-                        }
-
-                        webViewClient = object : WebViewClient() {
-                            override fun onPageFinished(view: WebView?, url: String?) {
-                                super.onPageFinished(view, url)
-                                view ?: return
-                                view.post {
-                                    recalculateHeight(view)
-                                    view.postDelayed({ recalculateHeight(view) }, 300)
-                                    view.postDelayed({ recalculateHeight(view) }, 1200)
-                                    isHtmlLoading = false
-                                }
-                            }
-
-                            override fun shouldOverrideUrlLoading(
-                                view: WebView?,
-                                request: WebResourceRequest?
-                            ): Boolean {
-                                val targetUri = request?.url
-                                if (targetUri != null && targetUri.scheme != "data" && targetUri.scheme != "file") {
-                                    openExternalUriSafely(ctx, targetUri)
-                                    return true
-                                }
-                                return false
-                            }
-                        }
-                        settings.apply {
-                            javaScriptEnabled = false
-                            domStorageEnabled = false
-                            useWideViewPort = false
-                            loadWithOverviewMode = true
-                            builtInZoomControls = true
-                            displayZoomControls = false
-                            setSupportZoom(true)
-                            textZoom = if (isExpandedLayout) 100 else 95
-                            allowFileAccess = false
-                            allowContentAccess = false
-                            val blockRemoteLoads = blockRemoteContent && !allowRemoteContentForMessage
-                            blockNetworkImage = blockRemoteLoads
-                            blockNetworkLoads = blockRemoteLoads
-                            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                                safeBrowsingEnabled = true
-                            }
-                        }
-                        // Allow WebView to handle vertical gestures inside Compose scroll container.
-                        setOnTouchListener { view, event ->
-                            shouldDisallowParentIntercept(event.actionMasked)?.let { disallow ->
-                                view.parent?.requestDisallowInterceptTouchEvent(disallow)
-                            }
-                            false
-                        }
-                        isHorizontalScrollBarEnabled = false
-                        isVerticalScrollBarEnabled = true
-                        overScrollMode = WebView.OVER_SCROLL_NEVER
-                        tag = contentKey
-                        loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
-                    }
-                },
-                update = { webView ->
-                    val shouldBlockImages = blockRemoteContent && !allowRemoteContentForMessage
-                    val wasBlockingImages = webView.settings.blockNetworkImage
-                    webView.settings.blockNetworkImage = shouldBlockImages
-                    webView.settings.blockNetworkLoads = shouldBlockImages
-                    if (wasBlockingImages && !shouldBlockImages) {
-                        webView.reload()
-                    }
-                    if (webView.tag != contentKey) {
-                        webView.tag = contentKey
-                        isHtmlLoading = true
-                        webViewHeight = 420.dp
-                        webView.loadDataWithBaseURL(null, adaptedHtml, "text/html", "UTF-8", null)
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 160.dp)
-                    .height(webViewHeight)
-            )
-
-            if (isHtmlLoading) {
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 220.dp),
-                    color = ExtendedTheme.colors.surfaceReading,
-                    shape = EmailShapes.emailCard
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        CircularProgressIndicator(modifier = Modifier.size(28.dp))
-                        Spacer(modifier = Modifier.height(12.dp))
-                        Text(
-                            text = "Загружаем содержимое письма…",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-    } ?: message.body.text?.let { text ->
-        ClickableTextWithLinks(
-            text = text,
-            style = EmailTypography.emailBody,
-            modifier = Modifier.padding(vertical = 4.dp),
-            context = context
-        )
-    } ?: run {
-        Text(
-            text = "Письмо не содержит текста",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 

@@ -7,6 +7,7 @@ plugins {
     id("kotlin-parcelize")
     alias(libs.plugins.ksp)
     alias(libs.plugins.dokka)
+    alias(libs.plugins.baselineprofile)
 }
 
 fun secret(name: String): String {
@@ -132,6 +133,12 @@ kotlin {
     }
 }
 
+baselineProfile {
+    warnings {
+        maxAgpVersion = false
+    }
+}
+
 dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -163,6 +170,9 @@ dependencies {
 
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging.ktx)
+    implementation(libs.androidx.profileinstaller)
+
+    baselineProfile(project(":baseline-profile"))
 
     testImplementation(libs.junit4)
     testImplementation(libs.okhttp.mockwebserver)

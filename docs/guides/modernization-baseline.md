@@ -24,6 +24,9 @@ For release-hardening waves:
 
 1. `./gradlew :app:assembleRelease`
 2. Manual run on release artifact for critical flows.
+3. Optional baseline profiles: see [performance.md](performance.md).
+
+Stage 6 (perf/UX) adds HTML scroll handoff in `ui/messagedetail/content` and `:baseline-profile` for startup profiles.
 
 ## Rollback
 

@@ -15,3 +15,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "MobileMail"
 include(":app")
+include(":baseline-profile")
