@@ -24,7 +24,6 @@ class PreferencesManager(private val context: Context) {
         private val SAVED_ACCOUNTS_KEY = stringPreferencesKey("saved_accounts")
         private val NOTIFICATION_PERMISSION_REQUESTED_KEY = booleanPreferencesKey("notification_permission_requested")
         private val BLOCK_REMOTE_CONTENT_KEY = booleanPreferencesKey("block_remote_content")
-        private val PRIVACY_SCREEN_PROTECTION_KEY = booleanPreferencesKey("privacy_screen_protection")
     }
 
     private fun signatureKey(server: String, email: String) =
@@ -166,20 +165,6 @@ class PreferencesManager(private val context: Context) {
     suspend fun setBlockRemoteContent(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[BLOCK_REMOTE_CONTENT_KEY] = enabled
-        }
-    }
-
-    val privacyScreenProtection: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[PRIVACY_SCREEN_PROTECTION_KEY] ?: true
-    }
-
-    suspend fun isPrivacyScreenProtectionEnabled(): Boolean {
-        return context.dataStore.data.first()[PRIVACY_SCREEN_PROTECTION_KEY] ?: true
-    }
-
-    suspend fun setPrivacyScreenProtection(enabled: Boolean) {
-        context.dataStore.edit { preferences ->
-            preferences[PRIVACY_SCREEN_PROTECTION_KEY] = enabled
         }
     }
 

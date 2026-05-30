@@ -2,6 +2,7 @@ package com.mobilemail.ui.security
 
 import android.content.Context
 import android.content.ContextWrapper
+import android.view.WindowManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -66,6 +68,15 @@ fun PinLockScreen(
     val uiState by viewModel.uiState.collectAsState()
     val context = LocalContext.current
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
+
+    // Защищаем от скриншотов/записи экрана только пока виден экран ввода PIN.
+    DisposableEffect(Unit) {
+        val window = context.findActivity()?.window
+        window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        onDispose {
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
 
     LaunchedEffect(uiState.isUnlocked) {
         if (uiState.isUnlocked) {

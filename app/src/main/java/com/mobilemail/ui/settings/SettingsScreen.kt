@@ -59,12 +59,10 @@ fun SettingsScreen(
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var signature by remember { mutableStateOf("") }
     var blockRemoteContent by remember { mutableStateOf(true) }
-    var privacyScreenProtection by remember { mutableStateOf(true) }
 
     LaunchedEffect(server, email) {
         signature = preferencesManager.getSignature(server, email).orEmpty()
         blockRemoteContent = preferencesManager.isBlockRemoteContentEnabled()
-        privacyScreenProtection = preferencesManager.isPrivacyScreenProtectionEnabled()
     }
 
     Scaffold(
@@ -98,17 +96,10 @@ fun SettingsScreen(
                     SecuritySection(onPinSetupClick = onPinSetupClick)
                     PrivacySection(
                         blockRemoteContent = blockRemoteContent,
-                        privacyScreenProtection = privacyScreenProtection,
                         onBlockRemoteContentChange = { enabled ->
                             blockRemoteContent = enabled
                             scope.launch {
                                 preferencesManager.setBlockRemoteContent(enabled)
-                            }
-                        },
-                        onPrivacyScreenProtectionChange = { enabled ->
-                            privacyScreenProtection = enabled
-                            scope.launch {
-                                preferencesManager.setPrivacyScreenProtection(enabled)
                             }
                         }
                     )
@@ -139,17 +130,10 @@ fun SettingsScreen(
                 SecuritySection(onPinSetupClick = onPinSetupClick)
                 PrivacySection(
                     blockRemoteContent = blockRemoteContent,
-                    privacyScreenProtection = privacyScreenProtection,
                     onBlockRemoteContentChange = { enabled ->
                         blockRemoteContent = enabled
                         scope.launch {
                             preferencesManager.setBlockRemoteContent(enabled)
-                        }
-                    },
-                    onPrivacyScreenProtectionChange = { enabled ->
-                        privacyScreenProtection = enabled
-                        scope.launch {
-                            preferencesManager.setPrivacyScreenProtection(enabled)
                         }
                     }
                 )
@@ -185,9 +169,7 @@ private fun AppVersionFooter() {
 @Composable
 private fun PrivacySection(
     blockRemoteContent: Boolean,
-    privacyScreenProtection: Boolean,
-    onBlockRemoteContentChange: (Boolean) -> Unit,
-    onPrivacyScreenProtectionChange: (Boolean) -> Unit
+    onBlockRemoteContentChange: (Boolean) -> Unit
 ) {
     Text(
         text = "Конфиденциальность",
@@ -201,12 +183,6 @@ private fun PrivacySection(
                 subtitle = "Не загружать внешние изображения и трекеры в письмах",
                 checked = blockRemoteContent,
                 onCheckedChange = onBlockRemoteContentChange
-            )
-            PrivacyToggleRow(
-                title = "Защита экрана приложения",
-                subtitle = "Скрывать содержимое приложения в переключателе задач и на скриншотах",
-                checked = privacyScreenProtection,
-                onCheckedChange = onPrivacyScreenProtectionChange
             )
         }
     }

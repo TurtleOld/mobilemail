@@ -1,15 +1,12 @@
 package com.mobilemail.ui.navigation
 
-import android.app.Activity
 import android.content.Intent
 import android.util.Log
-import android.view.WindowManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalView
 import androidx.navigation.NavDeepLinkRequest
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -27,11 +24,7 @@ fun AppNavigationHost(
 ) {
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
-    val privacyScreenProtection by dependencies.preferencesManager.privacyScreenProtection
-        .collectAsState(initial = true)
     val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsState()
-
-    PrivacyScreenProtectionEffect(enabled = privacyScreenProtection)
 
     RootPushNavigationEffect(
         navController = navController,
@@ -49,19 +42,6 @@ fun AppNavigationHost(
     )
 
     IncomingDeepLinkEffect(navController = navController, intent = intent)
-}
-
-@Composable
-private fun PrivacyScreenProtectionEffect(enabled: Boolean) {
-    val view = LocalView.current
-    LaunchedEffect(enabled) {
-        val window = (view.context as? Activity)?.window ?: return@LaunchedEffect
-        if (enabled) {
-            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        } else {
-            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-        }
-    }
 }
 
 @Composable
