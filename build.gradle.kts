@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.dokka) apply false
     alias(libs.plugins.baselineprofile) apply false
+    alias(libs.plugins.detekt) apply false
 }
 
 tasks.register("clean", Delete::class) {

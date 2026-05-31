@@ -81,5 +81,5 @@ jobs:
           NTFY_TOPIC_PATTERN: mobilemail/{user}
         run: |
           chmod +x ./gradlew
-          ./gradlew --no-daemon --build-cache :app:lintDebug :app:testDebugUnitTest :app:assembleDebug
+          ./gradlew --no-daemon --build-cache :app:lintDebug :app:detekt :app:testDebugUnitTest :app:assembleDebug
 

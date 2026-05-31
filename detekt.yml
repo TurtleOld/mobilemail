@@ -1,0 +1,30 @@
+build:
+  maxIssues: 0
+
+style:
+  MagicNumber:
+    active: false
+  WildcardImport:
+    active: false
+
+complexity:
+  LongMethod:
+    threshold: 80
+  LongParameterList:
+    functionThreshold: 8
+    constructorThreshold: 8
+  TooManyFunctions:
+    thresholdInClasses: 20
+    thresholdInObjects: 20
+
+naming:
+  FunctionNaming:
+    active: true
+  TopLevelPropertyNaming:
+    active: false
+
+exceptions:
+  TooGenericExceptionCaught:
+    active: false
+  SwallowedException:
+    active: false
