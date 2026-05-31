@@ -76,19 +76,9 @@ class MessagesViewModel(
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState
 
-    private val jmapClient: JmapApi = MailClientFactory.create(
-        application = requireNotNull(application) { "Application is required" },
-        server = server,
-        email = email,
-        accountId = accountId
-    )
-    
-    private val repository = MailRepository(
-        jmapClient = jmapClient,
-        messageDao = database?.messageDao(),
-        folderDao = database?.folderDao()
-    )
-    private val messageActionsRepository = MessageActionsRepository(jmapClient)
+    private lateinit var jmapClient: JmapApi
+    private lateinit var repository: MailRepository
+    private lateinit var messageActionsRepository: MessageActionsRepository
     private var pendingFolderAction: PendingFolderAction? = null
     private val pagingRefreshTrigger = MutableStateFlow(0)
 
@@ -115,14 +105,28 @@ class MessagesViewModel(
 
     init {
         observeQueueStats()
-        try {
-            loadFolders()
-        } catch (e: Exception) {
-            android.util.Log.e("MessagesViewModel", "Ошибка при инициализации", e)
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                error = ErrorMapper.mapException(e)
-            )
+        viewModelScope.launch {
+            try {
+                jmapClient = MailClientFactory.create(
+                    application = requireNotNull(application) { "Application is required" },
+                    server = server,
+                    email = email,
+                    accountId = accountId
+                )
+                repository = MailRepository(
+                    jmapClient = jmapClient,
+                    messageDao = database?.messageDao(),
+                    folderDao = database?.folderDao()
+                )
+                messageActionsRepository = MessageActionsRepository(jmapClient)
+                loadFolders()
+            } catch (e: Exception) {
+                android.util.Log.e("MessagesViewModel", "Ошибка при инициализации", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = ErrorMapper.mapException(e)
+                )
+            }
         }
     }
 

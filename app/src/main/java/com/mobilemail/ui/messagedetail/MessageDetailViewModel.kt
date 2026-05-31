@@ -63,27 +63,31 @@ class MessageDetailViewModel(
     val uiState: StateFlow<MessageDetailUiState> = _uiState
     private val app: Application = getApplication()
 
-    private val jmapClient: JmapApi = buildJmapClient()
-    private val repository = MailRepository(jmapClient)
-    private val messageActionsRepository = MessageActionsRepository(jmapClient)
-    private val attachmentRepository = AttachmentRepository(jmapClient)
-    
+    private lateinit var jmapClient: JmapApi
+    private lateinit var repository: MailRepository
+    private lateinit var messageActionsRepository: MessageActionsRepository
+    private lateinit var attachmentRepository: AttachmentRepository
+
     private var onReadStatusChangedCallback: ((String, Boolean) -> Unit)? = null
     private var pendingDetailAction: PendingDetailAction? = null
     private var pendingReadStatusUpdate: PendingReadStatusUpdate? = null
 
     init {
         Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=$accountId")
-        loadFolders()
-        loadMessage()
+        viewModelScope.launch {
+            jmapClient = MailClientFactory.create(
+                application = getApplication(),
+                server = server,
+                email = email,
+                accountId = accountId
+            )
+            repository = MailRepository(jmapClient)
+            messageActionsRepository = MessageActionsRepository(jmapClient)
+            attachmentRepository = AttachmentRepository(jmapClient)
+            loadFolders()
+            loadMessage()
+        }
     }
-
-    private fun buildJmapClient(): JmapApi = MailClientFactory.create(
-        application = getApplication(),
-        server = server,
-        email = email,
-        accountId = accountId
-    )
     
     fun setOnReadStatusChanged(callback: ((String, Boolean) -> Unit)?) {
         onReadStatusChangedCallback = callback

@@ -20,7 +20,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 import android.content.ContentResolver
 import android.net.Uri
 import android.provider.OpenableColumns
@@ -48,15 +47,20 @@ class ComposeViewModel(
     private val _uiState = MutableStateFlow(ComposeUiState())
     val uiState: StateFlow<ComposeUiState> = _uiState
 
-    private val jmapClient: JmapApi = buildJmapClient()
-    private val repository = ComposeRepository(jmapClient)
+    private lateinit var jmapClient: JmapApi
+    private lateinit var repository: ComposeRepository
 
-    private fun buildJmapClient(): JmapApi = MailClientFactory.create(
-        application = getApplication(),
-        server = server,
-        email = email,
-        accountId = accountId
-    )
+    init {
+        viewModelScope.launch {
+            jmapClient = MailClientFactory.create(
+                application = getApplication(),
+                server = server,
+                email = email,
+                accountId = accountId
+            )
+            repository = ComposeRepository(jmapClient)
+        }
+    }
 
     fun sendMessage(
         to: List<String>,

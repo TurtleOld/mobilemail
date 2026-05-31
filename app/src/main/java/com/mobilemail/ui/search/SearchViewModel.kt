@@ -75,14 +75,15 @@ class SearchViewModel(
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState
 
-    private val jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
-    private val mailRepository = MailRepository(jmapClient)
-    private val searchRepository = SearchRepository(jmapClient)
+    private lateinit var jmapClient: JmapApi
+    private lateinit var mailRepository: MailRepository
+    private lateinit var searchRepository: SearchRepository
+
     private val activeSearchParams = MutableStateFlow<SearchPagingParams?>(null)
 
     val pagedResults: Flow<PagingData<MessageListItem>> = activeSearchParams
         .flatMapLatest { params ->
-            if (params == null) {
+            if (params == null || !::searchRepository.isInitialized) {
                 flowOf(PagingData.empty())
             } else {
                 Pager(
@@ -99,7 +100,12 @@ class SearchViewModel(
         .cachedIn(viewModelScope)
 
     init {
-        loadFolders()
+        viewModelScope.launch {
+            jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
+            mailRepository = MailRepository(jmapClient)
+            searchRepository = SearchRepository(jmapClient)
+            loadFolders()
+        }
     }
 
     private fun loadFolders() {
