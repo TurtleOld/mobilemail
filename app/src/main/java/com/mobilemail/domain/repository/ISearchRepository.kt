@@ -3,15 +3,17 @@ package com.mobilemail.domain.repository
 import com.mobilemail.data.common.Result
 import com.mobilemail.domain.model.MessageListItem
 
+data class SearchQuery(
+    val query: String,
+    val folderId: String? = null,
+    val unreadOnly: Boolean = false,
+    val hasAttachments: Boolean = false,
+    val starredOnly: Boolean = false,
+    val importantOnly: Boolean = false,
+    val senderQuery: String = "",
+    val limit: Int = 50
+)
+
 interface ISearchRepository {
-    suspend fun searchMessages(
-        query: String,
-        folderId: String? = null,
-        unreadOnly: Boolean = false,
-        hasAttachments: Boolean = false,
-        starredOnly: Boolean = false,
-        importantOnly: Boolean = false,
-        senderQuery: String = "",
-        limit: Int = 50
-    ): Result<List<MessageListItem>>
+    suspend fun searchMessages(searchQuery: SearchQuery): Result<List<MessageListItem>>
 }

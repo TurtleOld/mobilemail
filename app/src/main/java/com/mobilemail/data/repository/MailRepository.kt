@@ -45,40 +45,8 @@ class MailRepository(
     private val messageCache = mutableMapOf<String, MessageDetail>()
     private val cacheTtlMillis = 2 * 60 * 1000L
 
-    suspend fun getAccountData(): Result<Account> = runCatchingSuspend {
-        Log.d("MailRepository", "Получение аккаунта...")
-        val session = client.getSession()
-        Log.d("MailRepository", "Сессия получена, аккаунтов: ${session.accounts.size}")
 
-        val accountId = session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull()
-
-        Log.d("MailRepository", "Выбранный accountId: $accountId")
-
-        accountId?.let { id ->
-            val account = session.accounts[id]
-            account?.let {
-                Log.d("MailRepository", "Аккаунт найден: ${it.id}, имя: ${it.name}")
-                val resolvedEmail = when {
-                    !it.username.isNullOrBlank() -> it.username
-                    it.name.isNotBlank() && it.name.contains("@") -> it.name
-                    it.id.isNotBlank() && it.id.contains("@") -> it.id
-                    it.id.isNotBlank() -> it.id
-                    else -> it.name
-                }
-                val resolvedDisplayName = it.name.ifBlank { resolvedEmail }
-                Account(
-                    id = it.id,
-                    email = resolvedEmail,
-                    displayName = resolvedDisplayName
-                )
-            } ?: error("AccountId не найден в сессии")
-        } ?: error("AccountId не найден в сессии")
-    }.onError { e ->
-        Log.e("MailRepository", "Ошибка получения аккаунта", e)
-    }
-
-    suspend fun getFoldersData(): Result<List<Folder>> = runCatchingSuspend {
+    private suspend fun getFoldersData(): Result<List<Folder>> = runCatchingSuspend {
         Log.d("MailRepository", "Начало загрузки папок")
         val session = client.getSession()
         Log.d("MailRepository", "Сессия получена для getFolders")
@@ -113,12 +81,6 @@ class MailRepository(
             )
         }
     }
-
-    suspend fun getMessagesData(
-        folderId: String,
-        position: Int = 0,
-        limit: Int = 50
-    ): Result<List<DomainMessageListItem>> = getMessagesPage(folderId, position, limit).map { it.items }
 
     suspend fun getMessagesPage(
         folderId: String,
@@ -431,7 +393,7 @@ class MailRepository(
         }
     }
 
-    suspend fun getMessageData(messageId: String): Result<MessageDetail> = runCatchingSuspend {
+    private suspend fun getMessageData(messageId: String): Result<MessageDetail> = runCatchingSuspend {
         Log.d("MailRepository", "Загрузка письма: messageId=$messageId")
 
         messageCache[messageId]?.let {
@@ -522,7 +484,7 @@ class MailRepository(
         )
     }
 
-    suspend fun getThreadMessagesData(threadId: String, limit: Int = 100): Result<List<MessageListItem>> = runCatchingSuspend {
+    private suspend fun getThreadMessagesData(threadId: String, limit: Int = 100): Result<List<MessageListItem>> = runCatchingSuspend {
         val session = client.getSession()
         val accountId = session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull()
@@ -572,7 +534,7 @@ class MailRepository(
         }.sortedBy { it.date }
     }
 
-    suspend fun getThreadDetailsData(threadId: String, limit: Int = 100): Result<List<MessageDetail>> = runCatchingSuspend {
+    private suspend fun getThreadDetailsData(threadId: String, limit: Int = 100): Result<List<MessageDetail>> = runCatchingSuspend {
         val session = client.getSession()
         val accountId = session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull()
@@ -635,14 +597,39 @@ class MailRepository(
 
     // IMailRepository
 
-    override suspend fun getAccount(): Result<DomainAccount> =
-        getAccountData().map { it.toDomain() }
+    override suspend fun getAccount(): Result<DomainAccount> = runCatchingSuspend {
+        Log.d("MailRepository", "Получение аккаунта...")
+        val session = client.getSession()
+        Log.d("MailRepository", "Сессия получена, аккаунтов: ${session.accounts.size}")
+        val accountId = session.primaryAccounts?.mail ?: session.accounts.keys.firstOrNull()
+        Log.d("MailRepository", "Выбранный accountId: $accountId")
+        accountId?.let { id ->
+            val account = session.accounts[id]
+            account?.let {
+                Log.d("MailRepository", "Аккаунт найден: ${it.id}, имя: ${it.name}")
+                val resolvedEmail = when {
+                    !it.username.isNullOrBlank() -> it.username
+                    it.name.isNotBlank() && it.name.contains("@") -> it.name
+                    it.id.isNotBlank() && it.id.contains("@") -> it.id
+                    it.id.isNotBlank() -> it.id
+                    else -> it.name
+                }
+                DomainAccount(
+                    id = it.id,
+                    email = resolvedEmail,
+                    displayName = it.name.ifBlank { resolvedEmail }
+                )
+            } ?: error("AccountId не найден в сессии")
+        } ?: error("AccountId не найден в сессии")
+    }.onError { e ->
+        Log.e("MailRepository", "Ошибка получения аккаунта", e)
+    }
 
     override suspend fun getFolders(): Result<List<DomainFolder>> =
         getFoldersData().map { list -> list.map { it.toDomain() } }
 
     override suspend fun getMessages(folderId: String, position: Int, limit: Int): Result<List<DomainMessageListItem>> =
-        getMessagesData(folderId, position, limit)
+        getMessagesPage(folderId, position, limit).map { it.items }
 
     override suspend fun getMessage(messageId: String): Result<DomainMessageDetail> =
         getMessageData(messageId).map { it.toDomain() }

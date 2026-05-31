@@ -8,6 +8,7 @@ import com.mobilemail.data.model.MessageFlags
 import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.domain.model.toDomain
 import com.mobilemail.domain.repository.ISearchRepository
+import com.mobilemail.domain.repository.SearchQuery
 import java.time.Instant
 import java.util.Date
 import com.mobilemail.domain.model.MessageListItem as DomainMessageListItem
@@ -246,15 +247,16 @@ class SearchRepository(
 
     // ISearchRepository
 
-    override suspend fun searchMessages(
-        query: String,
-        folderId: String?,
-        unreadOnly: Boolean,
-        hasAttachments: Boolean,
-        starredOnly: Boolean,
-        importantOnly: Boolean,
-        senderQuery: String,
-        limit: Int
-    ): Result<List<DomainMessageListItem>> =
-        searchMessages(query, folderId, unreadOnly, hasAttachments, starredOnly, importantOnly, senderQuery, DateRange.ANY, limit)
+    override suspend fun searchMessages(searchQuery: SearchQuery): Result<List<DomainMessageListItem>> =
+        searchMessages(
+            query = searchQuery.query,
+            folderId = searchQuery.folderId,
+            unreadOnly = searchQuery.unreadOnly,
+            hasAttachments = searchQuery.hasAttachments,
+            starredOnly = searchQuery.starredOnly,
+            importantOnly = searchQuery.importantOnly,
+            senderQuery = searchQuery.senderQuery,
+            dateRange = DateRange.ANY,
+            limit = searchQuery.limit
+        )
 }
