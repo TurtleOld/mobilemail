@@ -43,6 +43,33 @@ fun optionalProp(name: String): String? =
         ?.trim()
         ?.takeIf { it.isNotBlank() }
 
+fun optionalSecret(name: String): String? {
+    System.getenv(name)
+        ?.trim()
+        ?.takeIf { it.isNotBlank() }
+        ?.let { return it }
+
+    val dotenv = rootProject.file(".env")
+    if (dotenv.exists()) {
+        dotenv.readLines()
+            .asSequence()
+            .map { it.trim() }
+            .filter { it.isNotEmpty() && !it.startsWith("#") && it.contains("=") }
+            .map {
+                val k = it.substringBefore("=").trim()
+                val v = it.substringAfter("=").trim().trim('"', '\'')
+                k to v
+            }
+            .firstOrNull { it.first == name }
+            ?.second
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?.let { return it }
+    }
+
+    return null
+}
+
 android {
     namespace = "com.mobilemail"
     compileSdk {
@@ -61,9 +88,9 @@ android {
         versionName = optionalProp("VERSION_NAME") ?: "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
-        buildConfigField("String", "NTFY_URL", "\"${secret("NTFY_URL")}\"")
-        buildConfigField("String", "NTFY_TOKEN", "\"${secret("NTFY_TOKEN")}\"")
-        buildConfigField("String", "NTFY_TOPIC_PATTERN", "\"${secret("NTFY_TOPIC_PATTERN")}\"")
+        buildConfigField("String", "NTFY_URL", "\"${optionalSecret("NTFY_URL") ?: ""}\"")
+        buildConfigField("String", "NTFY_TOKEN", "\"${optionalSecret("NTFY_TOKEN") ?: ""}\"")
+        buildConfigField("String", "NTFY_TOPIC_PATTERN", "\"${optionalSecret("NTFY_TOPIC_PATTERN") ?: ""}\"")
     }
 
     buildFeatures {
@@ -84,17 +111,22 @@ android {
     }
 
     signingConfigs {
-    create("release") {
-        storeFile = file("../.keystore/release.jks")
-        storePassword = secret("KEYSTORE_PASSWORD")
-        keyAlias = secret("KEY_ALIAS")
-        keyPassword = secret("KEY_PASSWORD")
+        val keystorePassword = optionalSecret("KEYSTORE_PASSWORD")
+        val keyAlias = optionalSecret("KEY_ALIAS")
+        val keyPassword = optionalSecret("KEY_PASSWORD")
+        if (keystorePassword != null && keyAlias != null && keyPassword != null) {
+            create("release") {
+                storeFile = file("../.keystore/release.jks")
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                this.keyPassword = keyPassword
+            }
+        }
     }
-}
 
     buildTypes {
         getByName("release") {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
