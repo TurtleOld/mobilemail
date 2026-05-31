@@ -1,15 +1,12 @@
 package com.mobilemail.ui.search
 
-import android.app.Application
 import android.util.Log
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.mobilemail.data.jmap.JmapApi
-import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageListItem
@@ -69,23 +66,17 @@ data class SearchUiState(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SearchViewModel(
-    application: Application,
-    private val server: String,
-    private val email: String,
-    private val accountId: String
-) : AndroidViewModel(application) {
+    private val mailRepository: MailRepository,
+    private val searchRepository: SearchRepository
+) : ViewModel() {
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState
-
-    private lateinit var jmapClient: JmapApi
-    private lateinit var mailRepository: MailRepository
-    private lateinit var searchRepository: SearchRepository
 
     private val activeSearchQuery = MutableStateFlow<SearchQuery?>(null)
 
     val pagedResults: Flow<PagingData<MessageListItem>> = activeSearchQuery
         .flatMapLatest { query ->
-            if (query == null || !::searchRepository.isInitialized) {
+            if (query == null) {
                 flowOf(PagingData.empty())
             } else {
                 Pager(
@@ -102,12 +93,7 @@ class SearchViewModel(
         .cachedIn(viewModelScope)
 
     init {
-        viewModelScope.launch {
-            jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
-            mailRepository = MailRepository(jmapClient)
-            searchRepository = SearchRepository(jmapClient)
-            loadFolders()
-        }
+        loadFolders()
     }
 
     private fun loadFolders() {

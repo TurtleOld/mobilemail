@@ -8,8 +8,6 @@ import androidx.paging.cachedIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.paging.MailPagingSource
-import com.mobilemail.data.jmap.JmapApi
-import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageListItem
@@ -58,13 +56,13 @@ data class MessagesUiState(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class MessagesViewModel(
+    private val app: Application,
     private val server: String,
     private val email: String,
     private val accountId: String,
-    private val database: com.mobilemail.data.local.database.AppDatabase? = null,
-    private val application: Application? = null
+    private val repository: MailRepository,
+    private val messageActionsRepository: MessageActionsRepository
 ) : ViewModel() {
-    private val app: Application = requireNotNull(application) { "Application is required" }
 
     private data class PendingFolderAction(
         val id: String,
@@ -77,9 +75,6 @@ class MessagesViewModel(
     private val _uiState = MutableStateFlow(MessagesUiState())
     val uiState: StateFlow<MessagesUiState> = _uiState
 
-    private lateinit var jmapClient: JmapApi
-    private lateinit var repository: MailRepository
-    private lateinit var messageActionsRepository: MessageActionsRepository
     private var pendingFolderAction: PendingFolderAction? = null
     private val pagingRefreshTrigger = MutableStateFlow(0)
 
@@ -106,29 +101,7 @@ class MessagesViewModel(
 
     init {
         observeQueueStats()
-        viewModelScope.launch {
-            try {
-                jmapClient = MailClientFactory.create(
-                    application = requireNotNull(application) { "Application is required" },
-                    server = server,
-                    email = email,
-                    accountId = accountId
-                )
-                repository = MailRepository(
-                    jmapClient = jmapClient,
-                    messageDao = database?.messageDao(),
-                    folderDao = database?.folderDao()
-                )
-                messageActionsRepository = MessageActionsRepository(jmapClient)
-                loadFolders()
-            } catch (e: Exception) {
-                android.util.Log.e("MessagesViewModel", "Ошибка при инициализации", e)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = ErrorMapper.mapException(e)
-                )
-            }
-        }
+        loadFolders()
     }
 
     private fun loadFolders() {

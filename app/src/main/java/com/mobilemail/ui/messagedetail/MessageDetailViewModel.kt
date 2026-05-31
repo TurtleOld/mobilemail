@@ -6,8 +6,6 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.mobilemail.data.jmap.JmapApi
-import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageDetail
@@ -15,6 +13,7 @@ import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.repository.AttachmentRepository
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.MessageActionsRepository
+import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.FeatureScreenUiState
@@ -41,10 +40,11 @@ data class MessageDetailUiState(
 
 class MessageDetailViewModel(
     application: Application,
-    private val server: String,
-    private val email: String,
-    private val accountId: String,
-    private val messageId: String
+    private val session: SavedSession,
+    private val messageId: String,
+    private val repository: MailRepository,
+    private val messageActionsRepository: MessageActionsRepository,
+    private val attachmentRepository: AttachmentRepository
 ) : AndroidViewModel(application) {
     private data class PendingReadStatusUpdate(
         val messageId: String,
@@ -63,30 +63,14 @@ class MessageDetailViewModel(
     val uiState: StateFlow<MessageDetailUiState> = _uiState
     private val app: Application = getApplication()
 
-    private lateinit var jmapClient: JmapApi
-    private lateinit var repository: MailRepository
-    private lateinit var messageActionsRepository: MessageActionsRepository
-    private lateinit var attachmentRepository: AttachmentRepository
-
     private var onReadStatusChangedCallback: ((String, Boolean) -> Unit)? = null
     private var pendingDetailAction: PendingDetailAction? = null
     private var pendingReadStatusUpdate: PendingReadStatusUpdate? = null
 
     init {
-        Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=$accountId")
-        viewModelScope.launch {
-            jmapClient = MailClientFactory.create(
-                application = getApplication(),
-                server = server,
-                email = email,
-                accountId = accountId
-            )
-            repository = MailRepository(jmapClient)
-            messageActionsRepository = MessageActionsRepository(jmapClient)
-            attachmentRepository = AttachmentRepository(jmapClient)
-            loadFolders()
-            loadMessage()
-        }
+        Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=${session.accountId}")
+        loadFolders()
+        loadMessage()
     }
     
     fun setOnReadStatusChanged(callback: ((String, Boolean) -> Unit)?) {
@@ -181,7 +165,7 @@ class MessageDetailViewModel(
                     Log.e("MessageDetailViewModel", "Ошибка автоматической пометки как прочитанного", e)
                     if (OfflineQueueManager.shouldQueue(e)) {
                         viewModelScope.launch {
-                            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, true)
+                            OfflineQueueManager.enqueueMarkRead(app, session.server, session.email, session.accountId, messageId, true)
                         }
                         notifyReadStatusChanged(messageId, isUnread = false)
                     } else {
@@ -223,7 +207,7 @@ class MessageDetailViewModel(
                 messageActionsRepository.deleteMessage(messageId).fold(
                     onError = { e ->
                         if (OfflineQueueManager.shouldQueue(e)) {
-                            OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
+                            OfflineQueueManager.enqueueDelete(app, session.server, session.email, session.accountId, messageId)
                             if (!navigated) {
                                 navigated = true
                                 onMessageDeleted?.invoke(messageId)
@@ -268,7 +252,10 @@ class MessageDetailViewModel(
                     Log.e("MessageDetailViewModel", "Ошибка изменения статуса прочитанности", e)
                     if (OfflineQueueManager.shouldQueue(e)) {
                         viewModelScope.launch {
-                            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, !newReadStatus)
+                            OfflineQueueManager.enqueueMarkRead(
+                                app, session.server, session.email,
+                                session.accountId, messageId, !newReadStatus
+                            )
                         }
                         _uiState.value = _uiState.value.copy(
                             message = currentMessage.copy(flags = currentMessage.flags.copy(unread = newReadStatus)),
@@ -317,7 +304,10 @@ class MessageDetailViewModel(
                     Log.e("MessageDetailViewModel", "Ошибка изменения статуса звездочки", e)
                     if (OfflineQueueManager.shouldQueue(e)) {
                         viewModelScope.launch {
-                            OfflineQueueManager.enqueueToggleStar(app, server, email, accountId, messageId, newStarredStatus)
+                            OfflineQueueManager.enqueueToggleStar(
+                                app, session.server, session.email,
+                                session.accountId, messageId, newStarredStatus
+                            )
                         }
                         _uiState.value = _uiState.value.copy(
                             message = currentMessage.copy(flags = currentMessage.flags.copy(starred = newStarredStatus)),
@@ -397,7 +387,10 @@ class MessageDetailViewModel(
                 onSuccess()
             },
             onQueued = {
-                OfflineQueueManager.enqueueMove(app, server, email, accountId, messageId, sourceFolderId, toFolderId)
+                OfflineQueueManager.enqueueMove(
+                    app, session.server, session.email, session.accountId,
+                    messageId, sourceFolderId, toFolderId
+                )
             }
         )
     }

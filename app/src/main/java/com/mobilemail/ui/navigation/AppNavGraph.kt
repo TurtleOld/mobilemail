@@ -229,7 +229,7 @@ fun AppNavGraph(
             }
             val viewModel: MessagesViewModel = viewModel(
                 key = messagesViewModelContext.key,
-                factory = MessagesViewModelFactory(server, email, accountId, database, application)
+                factory = MessagesViewModelFactory(application, server, email, accountId, database)
             )
 
             LaunchedEffect(pendingPushTarget, currentSession, savedAccounts) {
@@ -292,7 +292,7 @@ fun AppNavGraph(
                     } else {
                         val detailViewModel: MessageDetailViewModel = viewModel(
                             key = "embedded_message_${server}_${email}_${accountId}_$selectedMessageId",
-                            factory = MessageDetailViewModelFactory(application, server, email, accountId, selectedMessageId)
+                            factory = MessageDetailViewModelFactory(application, SavedSession(server, email, accountId), selectedMessageId)
                         )
                         val bridgeCoordinator = remember(viewModel) {
                             MessageListBridgeCoordinator(
@@ -468,7 +468,7 @@ fun AppNavGraph(
             val accountId = routeArgs.accountId
             val messageId = routeArgs.messageId
             val viewModel: MessageDetailViewModel = viewModel(
-                factory = MessageDetailViewModelFactory(application, server, email, accountId, messageId)
+                factory = MessageDetailViewModelFactory(application, SavedSession(server, email, accountId), messageId)
             )
 
             val messagesViewModelContext = remember(server, email, accountId) {
@@ -486,7 +486,7 @@ fun AppNavGraph(
             val messagesViewModel: MessagesViewModel = viewModel(
                 parentEntry,
                 key = messagesViewModelContext.key,
-                factory = MessagesViewModelFactory(server, email, accountId, database, application)
+                factory = MessagesViewModelFactory(application, server, email, accountId, database)
             )
             val bridgeCoordinator = remember(messagesViewModel) {
                 MessageListBridgeCoordinator(

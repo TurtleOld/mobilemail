@@ -5,8 +5,6 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.common.fold
-import com.mobilemail.data.jmap.JmapApi
-import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Attachment
 import com.mobilemail.domain.model.toData
 import com.mobilemail.data.repository.ComposeRepository
@@ -40,28 +38,14 @@ class ComposeViewModel(
     application: Application,
     private val server: String,
     private val email: String,
-    private val accountId: String
+    private val accountId: String,
+    private val repository: ComposeRepository
 ) : AndroidViewModel(application) {
     companion object {
         private const val MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024L
     }
     private val _uiState = MutableStateFlow(ComposeUiState())
     val uiState: StateFlow<ComposeUiState> = _uiState
-
-    private lateinit var jmapClient: JmapApi
-    private lateinit var repository: ComposeRepository
-
-    init {
-        viewModelScope.launch {
-            jmapClient = MailClientFactory.create(
-                application = getApplication(),
-                server = server,
-                email = email,
-                accountId = accountId
-            )
-            repository = ComposeRepository(jmapClient)
-        }
-    }
 
     fun sendMessage(
         to: List<String>,
