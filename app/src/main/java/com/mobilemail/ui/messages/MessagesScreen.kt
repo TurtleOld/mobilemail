@@ -57,8 +57,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mobilemail.data.model.FolderRole
-import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.domain.model.FolderRole
+import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.ui.theme.EmailShapes
 import com.mobilemail.ui.theme.EmailTypography
@@ -330,8 +330,8 @@ fun MessagesScreen(
 private fun MailNavigationContent(
     accounts: List<SavedSession>,
     activeAccountEmail: String,
-    folders: List<com.mobilemail.data.model.Folder>,
-    selectedFolder: com.mobilemail.data.model.Folder?,
+    folders: List<com.mobilemail.domain.model.Folder>,
+    selectedFolder: com.mobilemail.domain.model.Folder?,
     pendingQueueCount: Int,
     queueAttentionCount: Int,
     onComposeClick: () -> Unit,
@@ -339,7 +339,7 @@ private fun MailNavigationContent(
     onSwitchAccount: (SavedSession) -> Unit,
     onOutboxClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    onFolderSelected: (com.mobilemail.data.model.Folder) -> Unit
+    onFolderSelected: (com.mobilemail.domain.model.Folder) -> Unit
 ) {
     var showAccountMenu by remember { mutableStateOf(false) }
     Column(modifier = Modifier.fillMaxHeight()) {
@@ -451,9 +451,9 @@ private fun MailNavigationContent(
 
 @Composable
 fun FoldersList(
-    folders: List<com.mobilemail.data.model.Folder>,
-    selectedFolder: com.mobilemail.data.model.Folder?,
-    onFolderSelected: (com.mobilemail.data.model.Folder) -> Unit,
+    folders: List<com.mobilemail.domain.model.Folder>,
+    selectedFolder: com.mobilemail.domain.model.Folder?,
+    onFolderSelected: (com.mobilemail.domain.model.Folder) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val defaultOrder = listOf(
@@ -502,7 +502,7 @@ fun FoldersList(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderItem(
-    folder: com.mobilemail.data.model.Folder,
+    folder: com.mobilemail.domain.model.Folder,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {

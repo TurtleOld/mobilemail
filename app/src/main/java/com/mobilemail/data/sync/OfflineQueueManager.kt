@@ -8,6 +8,8 @@ import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.local.entity.PendingOperationEntity
 import com.mobilemail.data.model.Attachment
 import com.mobilemail.data.repository.ComposeRepository
+import com.mobilemail.domain.model.toDomain
+import com.mobilemail.domain.model.toData
 import com.mobilemail.data.repository.MessageActionsRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -343,10 +345,10 @@ object OfflineQueueManager {
         val repository = ComposeRepository(client)
         val to = json.getJSONArray("to").toStringList()
         val sourceAttachments = json.getJSONArray("attachments").toAttachmentList()
-        val attachments = sourceAttachments
+        val attachments: List<com.mobilemail.domain.model.Attachment> = sourceAttachments
             .map { attachment ->
                 if (attachment.isUploaded) {
-                    attachment
+                    attachment.toDomain()
                 } else {
                     val bytes = OfflineAttachmentStorage.read(requireNotNull(attachment.localFilePath))
                     repository.uploadAttachment(bytes, attachment.mime, attachment.filename).fold(

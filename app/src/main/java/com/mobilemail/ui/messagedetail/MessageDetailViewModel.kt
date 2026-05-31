@@ -8,10 +8,10 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.jmap.MailClientFactory
-import com.mobilemail.data.model.Folder
-import com.mobilemail.data.model.FolderRole
-import com.mobilemail.data.model.MessageDetail
-import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.domain.model.Folder
+import com.mobilemail.domain.model.FolderRole
+import com.mobilemail.domain.model.MessageDetail
+import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.repository.AttachmentRepository
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.MessageActionsRepository
@@ -173,7 +173,7 @@ class MessageDetailViewModel(
         }
     }
     
-    private fun markAsReadSilently(initialMessage: com.mobilemail.data.model.MessageDetail) {
+    private fun markAsReadSilently(initialMessage: com.mobilemail.domain.model.MessageDetail) {
         viewModelScope.launch {
             Log.d("MessageDetailViewModel", "Начало автоматической пометки как прочитанного")
             messageActionsRepository.markAsRead(messageId, true).fold(

@@ -10,9 +10,9 @@ import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.paging.MailPagingSource
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.jmap.MailClientFactory
-import com.mobilemail.data.model.Folder
-import com.mobilemail.data.model.FolderRole
-import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.domain.model.Folder
+import com.mobilemail.domain.model.FolderRole
+import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.repository.MessageActionsRepository
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.sync.OfflineQueueManager

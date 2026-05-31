@@ -33,7 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import com.mobilemail.ui.theme.EmailShapes

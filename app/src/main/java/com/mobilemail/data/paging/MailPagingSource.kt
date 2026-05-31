@@ -3,7 +3,7 @@ package com.mobilemail.data.paging
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.mobilemail.data.common.fold
-import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.repository.MailRepository
 
 class MailPagingSource(
