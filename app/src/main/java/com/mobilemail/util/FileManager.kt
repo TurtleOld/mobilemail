@@ -7,12 +7,12 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
+import androidx.annotation.RequiresApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStream
 
 object FileManager {
     suspend fun saveToDownloads(
@@ -25,7 +25,7 @@ object FileManager {
             val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 saveToDownloadsApi29Plus(context, filename, data, mimeType)
             } else {
-                saveToDownloadsLegacy(context, filename, data)
+                saveToDownloadsLegacy(filename, data)
             }
             Log.d("FileManager", "Файл сохранен: $uri")
             uri
@@ -33,7 +33,7 @@ object FileManager {
     }
 
     @Suppress("DEPRECATION")
-    private fun saveToDownloadsLegacy(context: Context, filename: String, data: ByteArray): Uri {
+    private fun saveToDownloadsLegacy(filename: String, data: ByteArray): Uri {
         val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
         if (!downloadsDir.exists()) {
             downloadsDir.mkdirs()
@@ -56,6 +56,7 @@ object FileManager {
         return Uri.fromFile(finalFile)
     }
 
+    @RequiresApi(Build.VERSION_CODES.Q)
     private fun saveToDownloadsApi29Plus(
         context: Context,
         filename: String,
@@ -63,9 +64,9 @@ object FileManager {
         mimeType: String
     ): Uri {
         val contentValues = ContentValues().apply {
-            put(MediaStore.Downloads.DISPLAY_NAME, filename)
-            put(MediaStore.Downloads.MIME_TYPE, mimeType)
-            put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, filename)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
         }
         
         var uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
@@ -75,7 +76,7 @@ object FileManager {
             val ext = filename.substringAfterLast(".", "")
             var counter = 1
             do {
-                contentValues.put(MediaStore.Downloads.DISPLAY_NAME, "$nameWithoutExt ($counter).$ext")
+                contentValues.put(MediaStore.MediaColumns.DISPLAY_NAME, "$nameWithoutExt ($counter).$ext")
                 uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 counter++
             } while (uri == null && counter < 100)
@@ -85,26 +86,32 @@ object FileManager {
             context.contentResolver.openOutputStream(it)?.use { out ->
                 out.write(data)
             }
-        } ?: throw IllegalStateException("Не удалось создать файл в Downloads")
+        } ?: error("Не удалось создать файл в Downloads")
         
         return uri
     }
 
     fun getFilePath(context: Context, uri: Uri): String {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            val projection = arrayOf(MediaStore.Downloads.DISPLAY_NAME)
-            context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
-                if (cursor.moveToFirst()) {
-                    val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.Downloads.DISPLAY_NAME)
-                    val filename = cursor.getString(nameIndex)
-                    "${Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)}/$filename"
-                } else {
-                    uri.toString()
-                }
-            } ?: uri.toString()
+            getFilePathApi29Plus(context, uri)
         } else {
             uri.path ?: uri.toString()
         }
+    }
+
+    @Suppress("DEPRECATION")
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun getFilePathApi29Plus(context: Context, uri: Uri): String {
+        val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
+        return context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val nameIndex = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
+                val filename = cursor.getString(nameIndex)
+                "${Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)}/$filename"
+            } else {
+                uri.toString()
+            }
+        } ?: uri.toString()
     }
     
     suspend fun saveToCache(
@@ -115,7 +122,10 @@ object FileManager {
     ): com.mobilemail.data.common.Result<Uri> = withContext(Dispatchers.IO) {
         com.mobilemail.data.common.runCatchingSuspend {
             val cacheDir = context.cacheDir
-            val file = File(cacheDir, filename)
+            val extension = mimeType.substringAfter('/', "").substringBefore(';').ifBlank { "bin" }
+            val normalizedExtension = if (extension == "octet-stream") "bin" else extension
+            val safeFilename = if (filename.contains('.')) filename else "$filename.$normalizedExtension"
+            val file = File(cacheDir, safeFilename)
             
             var counter = 1
             var finalFile = file

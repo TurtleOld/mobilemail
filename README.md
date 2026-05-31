@@ -4,10 +4,13 @@
 
 ## Технологии
 
-- **Kotlin** - язык программирования
-- **Jetpack Compose** - современный UI фреймворк
-- **JMAP** - протокол для работы с почтой
-- **Material Design 3** - дизайн система
+Полный стек (версии, слои, perf): [docs/guides/performance.md](docs/guides/performance.md). Toolchain/SDK: [docs/guides/toolchain.md](docs/guides/toolchain.md).
+
+- **Kotlin 2.3** + **Jetpack Compose** (Material 3)
+- **JMAP** (Stalwart) + **OkHttp**
+- **Room**, **DataStore**, **WorkManager**, **Paging**
+- **OAuth Device Flow**, **FCM** + **ntfy** для push
+- **Navigation Compose**, **ViewModel**, domain use-case’ы
 
 ## Функциональность
 
@@ -70,7 +73,11 @@ app/
 
 ## Документация
 
-Документация генерируется из KDoc комментариев в коде с использованием [Dokka](https://kotlinlang.org/docs/dokka-introduction.html).
+- [performance.md](docs/guides/performance.md) — стек приложения, perf/UX, baseline profiles
+- [toolchain.md](docs/guides/toolchain.md) — Gradle, AGP, SDK
+- [modernization-baseline.md](docs/guides/modernization-baseline.md) — smoke-чеклисты
+
+Документация API генерируется из KDoc комментариев в коде с использованием [Dokka](https://kotlinlang.org/docs/dokka-introduction.html).
 
 ```bash
 # Генерация документации

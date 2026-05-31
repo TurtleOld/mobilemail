@@ -1,6 +1,7 @@
 package com.mobilemail.ui.login
 
 import android.app.Application
+import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -11,12 +12,16 @@ import com.mobilemail.data.oauth.DeviceFlowState
 import com.mobilemail.data.oauth.OAuthDeviceFlowError
 import com.mobilemail.data.oauth.OAuthDiscovery
 import com.mobilemail.data.oauth.OAuthException
+import com.mobilemail.data.oauth.OAuthServerMetadata
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.common.fold
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
+import com.mobilemail.ui.common.FeatureScreenUiState
+import com.mobilemail.ui.common.NotificationState
+import com.mobilemail.util.LogRedactor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -24,49 +29,61 @@ import kotlinx.coroutines.launch
 data class LoginUiState(
     val server: String = "",
     val isLoading: Boolean = false,
-    val error: AppError? = null,
+    override val error: AppError? = null,
+    override val notification: NotificationState = NotificationState.None,
     val account: Account? = null,
     val oauthUserCode: String? = null,
     val oauthVerificationUri: String? = null,
     val oauthVerificationUriComplete: String? = null,
     val oauthExpiresAt: Long? = null
-)
+) : FeatureScreenUiState
 
-class LoginViewModel(application: Application) : AndroidViewModel(application) {
-    private val preferencesManager = PreferencesManager(application)
-    private val credentialManager = CredentialManager(application)
-    private val tokenStore = TokenStore(application)
+class LoginViewModel(
+    application: Application,
+    private val autoLoginEnabled: Boolean = true
+) : AndroidViewModel(application) {
+    private val app = getApplication<Application>()
+    private val preferencesManager = PreferencesManager(app)
+    private val tokenStore = TokenStore(app)
     private val _uiState = MutableStateFlow(LoginUiState())
     val uiState: StateFlow<LoginUiState> = _uiState
-    
+
     private var deviceFlowClient: DeviceFlowClient? = null
     private var discovery: OAuthDiscovery? = null
-    
+
     companion object {
         private const val CLIENT_ID = "mail-client"
     }
 
     init {
-        viewModelScope.launch {
-            val savedSession = preferencesManager.getSavedSession()
-            if (savedSession != null) {
-                val tokenStore = TokenStore(application)
-                val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
-                if (tokens != null && tokens.isValid()) {
-                    Log.d("LoginViewModel", "Найдена сохраненная OAuth сессия: ${savedSession.email}")
-                    _uiState.value = _uiState.value.copy(server = savedSession.server)
-                    autoOAuthLogin(savedSession.server, savedSession.email, savedSession.accountId)
-                } else {
-                    Log.d("LoginViewModel", "Сохраненная сессия найдена, но OAuth токены отсутствуют")
-                    _uiState.value = _uiState.value.copy(server = savedSession.server)
-                }
-            } else {
+        if (!autoLoginEnabled) {
+            viewModelScope.launch {
                 val savedServer = preferencesManager.getServerUrl()
                 if (!savedServer.isNullOrBlank()) {
                     _uiState.value = _uiState.value.copy(server = savedServer)
-                    Log.d("LoginViewModel", "Загружен сохраненный адрес сервера: $savedServer")
+                }
+            }
+        } else {
+            viewModelScope.launch {
+                val savedSession = preferencesManager.getSavedSession()
+                if (savedSession != null) {
+                    val tokens = tokenStore.getTokens(savedSession.server, savedSession.email)
+                    if (tokens != null && tokens.isValid()) {
+                        Log.d("LoginViewModel", "Найдена сохраненная OAuth сессия: ${savedSession.email}")
+                        _uiState.value = _uiState.value.copy(server = savedSession.server)
+                        autoOAuthLogin(savedSession.server, savedSession.email, savedSession.accountId)
+                    } else {
+                        Log.d("LoginViewModel", "Сохраненная сессия найдена, но OAuth токены отсутствуют")
+                        _uiState.value = _uiState.value.copy(server = savedSession.server)
+                    }
                 } else {
-                    Log.d("LoginViewModel", "Сохраненный адрес сервера не найден")
+                    val savedServer = preferencesManager.getServerUrl()
+                    if (!savedServer.isNullOrBlank()) {
+                        _uiState.value = _uiState.value.copy(server = savedServer)
+                        Log.d("LoginViewModel", "Загружен сохраненный адрес сервера: $savedServer")
+                    } else {
+                        Log.d("LoginViewModel", "Сохраненный адрес сервера не найден")
+                    }
                 }
             }
         }
@@ -74,114 +91,139 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun autoOAuthLogin(server: String, email: String, accountId: String) {
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
-        
+
         viewModelScope.launch {
             try {
-                val normalizedServer = server.trim().trimEnd('/')
-                val tokenStore = TokenStore(application)
-                val tokens = tokenStore.getTokens(normalizedServer, email)
-                
+                val tokens = tokenStore.getTokens(server, email)
                 if (tokens == null) {
                     Log.w("LoginViewModel", "OAuth токены не найдены для автовхода")
                     _uiState.value = _uiState.value.copy(isLoading = false)
                     return@launch
                 }
-                
-                Log.d("LoginViewModel", "Найдены OAuth токены, попытка автовхода: expired=${tokens.isExpired()}, has_refresh=${tokens.refreshToken != null}")
-                
-                val httpClient = OAuthDiscovery.createClient()
-                val discovery = OAuthDiscovery(httpClient)
-                val discoveryUrl = "$normalizedServer/.well-known/oauth-authorization-server"
-                val metadata = discovery.discover(discoveryUrl)
-                
-                val jmapClient = JmapOAuthClient.getOrCreate(
-                    baseUrl = normalizedServer,
-                    email = email,
-                    accountId = accountId,
-                    tokenStore = tokenStore,
-                    metadata = metadata,
-                    clientId = CLIENT_ID
+
+                Log.d(
+                    "LoginViewModel",
+                    "Найдены OAuth токены, попытка автовхода: expired=${tokens.isExpired()}, has_refresh=${tokens.refreshToken != null}"
                 )
-                
-                val repository = MailRepository(jmapClient)
-                repository.getAccount().fold(
-                    onError = { e ->
-                        Log.w("LoginViewModel", "OAuth автовход не удался", e)
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            error = ErrorMapper.mapException(e)
-                        )
-                        if (e is com.mobilemail.data.jmap.OAuthTokenExpiredException) {
-                            preferencesManager.clearSession()
-                            tokenStore.clearTokens(normalizedServer, email)
-                        }
-                    },
-                    onSuccess = { account ->
-                        Log.d("LoginViewModel", "OAuth автовход успешен, account: ${account.id}")
-                        _uiState.value = _uiState.value.copy(
-                            isLoading = false,
-                            account = account
-                        )
-                    }
-                )
+
+                val normalizedServer = normalizeServerUrl(server)
+                Log.d("LoginViewModel", LogRedactor.redact("Нормализованный URL сервера для автовхода: $normalizedServer"))
+
+                val metadata = fetchOrDiscoverMetadata(normalizedServer)
+                setupAutoLoginJmapClient(server, email, accountId, metadata)
+            } catch (e: com.mobilemail.data.jmap.OAuthTokenExpiredException) {
+                Log.e("LoginViewModel", "Ошибка OAuth автовхода", e)
+                _uiState.value = _uiState.value.copy(isLoading = false, error = ErrorMapper.mapException(e))
+                preferencesManager.removeSavedAccount(server, email)
+                tokenStore.clearTokens(server, email)
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Ошибка OAuth автовхода", e)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = ErrorMapper.mapException(e)
-                )
-                if (e is com.mobilemail.data.jmap.OAuthTokenExpiredException) {
-                    preferencesManager.clearSession()
-                    tokenStore.clearTokens(normalizedServer, email)
-                }
+                _uiState.value = _uiState.value.copy(isLoading = false, error = ErrorMapper.mapException(e))
             }
         }
     }
 
+    private fun normalizeServerUrl(url: String): String =
+        if (url.startsWith("http")) url else "https://$url"
+
+    private suspend fun fetchOrDiscoverMetadata(serverUrl: String): OAuthServerMetadata {
+        return preferencesManager.getOAuthMetadata(serverUrl) ?: run {
+            val httpClient = OAuthDiscovery.createClient()
+            val discoveryClient = OAuthDiscovery(httpClient)
+            val discovered = discoveryClient.discover(serverUrl)
+            preferencesManager.saveOAuthMetadata(serverUrl, discovered)
+            Log.d("LoginViewModel", "OAuth metadata discovered:")
+            Log.d("LoginViewModel", LogRedactor.redact("  Issuer: ${discovered.issuer}"))
+            Log.d("LoginViewModel", LogRedactor.redact("  Device Authorization Endpoint: ${discovered.deviceAuthorizationEndpoint}"))
+            Log.d("LoginViewModel", LogRedactor.redact("  Token Endpoint: ${discovered.tokenEndpoint}"))
+            Log.d("LoginViewModel", LogRedactor.redact("  Authorization Endpoint: ${discovered.authorizationEndpoint}"))
+            Log.d("LoginViewModel", "  Grant Types: ${discovered.grantTypesSupported.joinToString(", ")}")
+            discovered
+        }
+    }
+
+    private suspend fun setupAutoLoginJmapClient(
+        server: String,
+        email: String,
+        accountId: String,
+        metadata: OAuthServerMetadata
+    ) {
+        Log.d("LoginViewModel", "Using OAuth metadata:")
+        Log.d("LoginViewModel", LogRedactor.redact("  Issuer: ${metadata.issuer}"))
+        Log.d("LoginViewModel", LogRedactor.redact("  Device Authorization Endpoint: ${metadata.deviceAuthorizationEndpoint}"))
+        Log.d("LoginViewModel", LogRedactor.redact("  Token Endpoint: ${metadata.tokenEndpoint}"))
+
+        val jmapClient = JmapOAuthClient.getOrCreate(
+            serverUrl = server,
+            email = email,
+            accountId = accountId,
+            tokenStore = tokenStore,
+            metadata = metadata,
+            clientId = CLIENT_ID
+        )
+
+        val repository = MailRepository(jmapClient)
+        repository.getAccount().fold(
+            onError = { e ->
+                Log.w("LoginViewModel", "OAuth автовход не удался", e)
+                _uiState.value = _uiState.value.copy(isLoading = false, error = ErrorMapper.mapException(e))
+                if (e is com.mobilemail.data.jmap.OAuthTokenExpiredException) {
+                    preferencesManager.removeSavedAccount(server, email)
+                    tokenStore.clearTokens(server, email)
+                }
+            },
+            onSuccess = { account ->
+                Log.d("LoginViewModel", "OAuth автовход успешен, account: ${account.id}")
+                _uiState.value = _uiState.value.copy(isLoading = false, account = account)
+            }
+        )
+    }
+
     fun updateServer(server: String) {
         _uiState.value = _uiState.value.copy(server = server)
+        viewModelScope.launch {
+            val trimmed = server.trim()
+            if (trimmed.isNotEmpty()) {
+                preferencesManager.saveServerUrl(trimmed)
+                Log.d("LoginViewModel", LogRedactor.redact("Сохранен адрес сервера: $trimmed"))
+            }
+        }
     }
 
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
-    
+
+    fun clearNotification() {
+        _uiState.value = _uiState.value.copy(notification = NotificationState.None)
+    }
+
     fun startOAuthLogin(onSuccess: (Account) -> Unit) {
         val state = _uiState.value
-        
+
+        Log.d("LoginViewModel", "=== STARTING OAuth LOGIN PROCESS ===")
+        Log.d("LoginViewModel", LogRedactor.redact("Current server: '${state.server}'"))
+
         if (state.server.isBlank()) {
+            Log.w("LoginViewModel", "Server is blank, showing error")
             _uiState.value = state.copy(error = AppError.UnknownError("Введите адрес сервера"))
             return
         }
-        
+
+        Log.d("LoginViewModel", "Server validation passed, starting OAuth login")
         _uiState.value = state.copy(isLoading = true, error = null)
-        
+
         viewModelScope.launch {
             try {
-                val normalizedServer = state.server.trim().trimEnd('/')
-                
-                val httpClient = OAuthDiscovery.createClient()
-                discovery = OAuthDiscovery(httpClient)
-                
-                val discoveryUrl = "$normalizedServer/.well-known/oauth-authorization-server"
-                val metadata = discovery!!.discover(discoveryUrl)
-                
-                deviceFlowClient = DeviceFlowClient(
-                    metadata = metadata,
-                    clientId = CLIENT_ID,
-                    client = DeviceFlowClient.createClient()
-                )
-                
-                val deviceCode = deviceFlowClient!!.requestDeviceCode(
-                    scopes = listOf(
-                        "urn:ietf:params:jmap:core",
-                        "urn:ietf:params:jmap:mail",
-                        "offline_access"
-                    )
-                )
-                
+                val serverUrl = normalizeServerUrl(state.server.trim())
+                Log.d("LoginViewModel", LogRedactor.redact("Нормализованный URL сервера: $serverUrl"))
+
+                val metadata = discoverAndValidateMetadata(serverUrl) ?: return@launch
+
+                setupDeviceFlow(metadata)
+                val deviceCode = requestDeviceCode()
                 val expiresAt = System.currentTimeMillis() + (deviceCode.expiresIn * 1000L)
-                
+
                 _uiState.value = _uiState.value.copy(
                     isLoading = false,
                     oauthUserCode = deviceCode.userCode,
@@ -189,36 +231,8 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     oauthVerificationUriComplete = deviceCode.verificationUriComplete,
                     oauthExpiresAt = expiresAt
                 )
-                
-                deviceFlowClient!!.pollForToken(
-                    deviceCode = deviceCode.deviceCode,
-                    interval = deviceCode.interval,
-                    expiresAt = expiresAt
-                ) { flowState ->
-                    when (flowState) {
-                        is DeviceFlowState.Success -> {
-                            viewModelScope.launch {
-                                handleOAuthTokenSuccess(
-                                    server = normalizedServer,
-                                    metadata = metadata,
-                                    tokenResponse = flowState.tokenResponse,
-                                    onSuccess = onSuccess
-                                )
-                            }
-                        }
-                        is DeviceFlowState.Error -> {
-                            viewModelScope.launch {
-                                handleOAuthTokenError(flowState.error)
-                            }
-                        }
-                        is DeviceFlowState.WaitingForUser -> {
-                            _uiState.value = _uiState.value.copy(
-                                oauthExpiresAt = flowState.expiresAt
-                            )
-                        }
-                        else -> {}
-                    }
-                }
+
+                startTokenPolling(serverUrl, metadata, deviceCode, expiresAt, onSuccess)
             } catch (e: OAuthException) {
                 Log.e("LoginViewModel", "Ошибка OAuth", e)
                 _uiState.value = _uiState.value.copy(
@@ -231,52 +245,154 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 )
             } catch (e: Exception) {
                 Log.e("LoginViewModel", "Ошибка OAuth авторизации", e)
-                _uiState.value = _uiState.value.copy(
-                    isLoading = false,
-                    error = ErrorMapper.mapException(e)
-                )
+                _uiState.value = _uiState.value.copy(isLoading = false, error = ErrorMapper.mapException(e))
             }
         }
     }
-    
+
+    private suspend fun discoverAndValidateMetadata(serverUrl: String): OAuthServerMetadata? {
+        Log.d("LoginViewModel", "Creating HTTP client and discovery service")
+        val httpClient = OAuthDiscovery.createClient()
+        Log.d("LoginViewModel", "HTTP client created")
+        discovery = OAuthDiscovery(httpClient)
+        Log.d("LoginViewModel", "Discovery service created")
+
+        Log.d("LoginViewModel", "Checking for cached OAuth metadata")
+        val metadata = preferencesManager.getOAuthMetadata(serverUrl) ?: run {
+            Log.d("LoginViewModel", "No cached metadata found, starting discovery")
+            val discovered = discovery?.discover(serverUrl)
+                ?: error("OAuth discovery service not initialized")
+            preferencesManager.saveOAuthMetadata(serverUrl, discovered)
+            Log.d("LoginViewModel", "Discovery completed successfully")
+            discovered
+        }
+        Log.d("LoginViewModel", LogRedactor.redact("Using metadata: ${metadata.issuer}"))
+        Log.d("LoginViewModel", LogRedactor.redact("Device Auth Endpoint: ${metadata.deviceAuthorizationEndpoint}"))
+        Log.d("LoginViewModel", LogRedactor.redact("Token Endpoint: ${metadata.tokenEndpoint}"))
+        Log.d("LoginViewModel", "Grant Types: ${metadata.grantTypesSupported.joinToString(", ")}")
+
+        if (metadata.deviceAuthorizationEndpoint.isBlank() || metadata.tokenEndpoint.isBlank()) {
+            Log.e("LoginViewModel", "OAuth metadata is incomplete - cannot proceed with OAuth flow")
+            Log.e("LoginViewModel", LogRedactor.redact("Device auth endpoint: '${metadata.deviceAuthorizationEndpoint}'"))
+            Log.e("LoginViewModel", LogRedactor.redact("Token endpoint: '${metadata.tokenEndpoint}'"))
+            _uiState.value = _uiState.value.copy(
+                isLoading = false,
+                error = AppError.NetworkError(
+                    errorMessage = "OAuth configuration error: Server metadata is incomplete",
+                    isConnectionError = true
+                )
+            )
+            return null
+        }
+        return metadata
+    }
+
+    private fun setupDeviceFlow(metadata: OAuthServerMetadata) {
+        deviceFlowClient = DeviceFlowClient(
+            metadata = metadata,
+            clientId = CLIENT_ID,
+            client = DeviceFlowClient.createClient()
+        )
+    }
+
+    private suspend fun requestDeviceCode(): com.mobilemail.data.oauth.DeviceCodeResponse {
+        Log.d("LoginViewModel", "Requesting device code via DeviceFlowClient")
+        val deviceCode = deviceFlowClient!!.requestDeviceCode(
+            scopes = listOf("urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail", "offline_access")
+        )
+        Log.d(
+            "LoginViewModel",
+            "Device code received: user_code=[REDACTED], expires_in=${deviceCode.expiresIn}, interval=${deviceCode.interval}"
+        )
+        return deviceCode
+    }
+
+    private suspend fun startTokenPolling(
+        serverUrl: String,
+        metadata: OAuthServerMetadata,
+        deviceCode: com.mobilemail.data.oauth.DeviceCodeResponse,
+        expiresAt: Long,
+        onSuccess: (Account) -> Unit
+    ) {
+        Log.d("LoginViewModel", "Starting token polling")
+        deviceFlowClient!!.pollForToken(
+            deviceCode = deviceCode.deviceCode,
+            interval = deviceCode.interval,
+            expiresAt = expiresAt
+        ) { flowState ->
+            when (flowState) {
+                is DeviceFlowState.Success -> {
+                    viewModelScope.launch {
+                        handleOAuthTokenSuccess(
+                            server = serverUrl,
+                            metadata = metadata,
+                            tokenResponse = flowState.tokenResponse,
+                            onSuccess = onSuccess
+                        )
+                    }
+                }
+                is DeviceFlowState.Error -> {
+                    viewModelScope.launch {
+                        Log.e("LoginViewModel", "OAuth device flow error: ${LogRedactor.redact(flowState.error.toString())}")
+                        handleOAuthTokenError(flowState.error)
+                    }
+                }
+                is DeviceFlowState.WaitingForUser -> {
+                    _uiState.value = _uiState.value.copy(oauthExpiresAt = flowState.expiresAt)
+                }
+                else -> {}
+            }
+        }
+    }
+
     private suspend fun handleOAuthTokenSuccess(
         server: String,
-        metadata: com.mobilemail.data.oauth.OAuthServerMetadata,
+        metadata: OAuthServerMetadata,
         tokenResponse: com.mobilemail.data.oauth.TokenResponse,
         onSuccess: (Account) -> Unit
     ) {
         try {
-            val email = server
-            Log.d("LoginViewModel", "Сохранение OAuth токенов: expires_in=${tokenResponse.expiresIn}s, has_refresh=${tokenResponse.refreshToken != null}")
-            tokenStore.saveTokens(server, email, tokenResponse)
-            
-            val savedTokens = tokenStore.getTokens(server, email)
+            val tempEmail = server
+            Log.d(
+                "LoginViewModel",
+                "Сохранение OAuth токенов: expires_in=${tokenResponse.expiresIn}s, has_refresh=${tokenResponse.refreshToken != null}"
+            )
+            tokenStore.saveTokens(server, tempEmail, tokenResponse)
+
+            val savedTokens = tokenStore.getTokens(server, tempEmail)
             if (savedTokens == null) {
-                throw Exception("Не удалось сохранить OAuth токены")
+                error("Не удалось сохранить OAuth токены")
             }
             Log.d("LoginViewModel", "OAuth токены сохранены успешно: has_refresh=${savedTokens.refreshToken != null}")
-            
+
             val jmapClient = JmapOAuthClient.getOrCreate(
-                baseUrl = server,
-                email = email,
-                accountId = email,
+                serverUrl = server,
+                email = tempEmail,
+                accountId = tempEmail,
                 tokenStore = tokenStore,
                 metadata = metadata,
                 clientId = CLIENT_ID
             )
-            
+
             val repository = MailRepository(jmapClient)
             repository.getAccount().fold(
                 onError = { e ->
                     Log.w("LoginViewModel", "Не удалось получить аккаунт через OAuth", e)
-                    _uiState.value = _uiState.value.copy(
-                        isLoading = false,
-                        error = ErrorMapper.mapException(e)
-                    )
+                    _uiState.value = _uiState.value.copy(isLoading = false, error = ErrorMapper.mapException(e))
                 },
                 onSuccess = { account ->
                     Log.d("LoginViewModel", "OAuth вход успешен, account: ${account.id}, сохранение сессии")
-                    preferencesManager.saveSession(server, email, account.id)
+                    val accountEmail = account.email.ifBlank { tempEmail }
+                    if (accountEmail != tempEmail) {
+                        tokenStore.saveTokens(server, accountEmail, tokenResponse)
+                        tokenStore.clearTokens(server, tempEmail)
+                    }
+                    Log.d(
+                        "LoginViewModel",
+                        "Сохранение сессии: server=$server, accountEmail=$accountEmail, tempEmail=$tempEmail, accountId=${account.id}"
+                    )
+                    preferencesManager.saveSession(server, accountEmail, account.id)
+                    bringAppToForeground()
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
                         account = account,
@@ -290,45 +406,28 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             )
         } catch (e: Exception) {
             Log.e("LoginViewModel", "Ошибка после получения OAuth токена", e)
-            _uiState.value = _uiState.value.copy(
-                isLoading = false,
-                error = ErrorMapper.mapException(e)
-            )
+            _uiState.value = _uiState.value.copy(isLoading = false, error = ErrorMapper.mapException(e))
         }
     }
-    
+
     private suspend fun handleOAuthTokenError(error: OAuthDeviceFlowError) {
         val appError = when (error) {
-            is OAuthDeviceFlowError.AuthorizationPending -> {
-                return
-            }
-            is OAuthDeviceFlowError.SlowDown -> {
-                return
-            }
-            is OAuthDeviceFlowError.ExpiredToken -> {
-                AppError.AuthError("Время ожидания истекло. Начните авторизацию заново.")
-            }
-            is OAuthDeviceFlowError.AccessDenied -> {
-                AppError.AuthError("Авторизация отклонена пользователем.")
-            }
-            is OAuthDeviceFlowError.NetworkError -> {
-                AppError.NetworkError(
-                    errorMessage = error.message,
-                    errorCause = error.cause,
-                    isConnectionError = true
-                )
-            }
-            is OAuthDeviceFlowError.ServerError -> {
-                AppError.ServerError(
-                    errorMessage = error.message,
-                    statusCode = error.statusCode
-                )
-            }
-            is OAuthDeviceFlowError.UnknownError -> {
-                AppError.UnknownError(error.message, error.cause)
-            }
+            is OAuthDeviceFlowError.AuthorizationPending -> return
+            is OAuthDeviceFlowError.SlowDown -> return
+            is OAuthDeviceFlowError.ExpiredToken -> AppError.AuthError("Время ожидания истекло. Начните авторизацию заново.")
+            is OAuthDeviceFlowError.AccessDenied -> AppError.AuthError("Авторизация отклонена пользователем.")
+            is OAuthDeviceFlowError.NetworkError -> AppError.NetworkError(
+                errorMessage = error.message,
+                errorCause = error.cause,
+                isConnectionError = true
+            )
+            is OAuthDeviceFlowError.ServerError -> AppError.ServerError(
+                errorMessage = error.message,
+                statusCode = error.statusCode
+            )
+            is OAuthDeviceFlowError.UnknownError -> AppError.UnknownError(error.message, error.cause)
         }
-        
+
         _uiState.value = _uiState.value.copy(
             isLoading = false,
             error = appError,
@@ -338,7 +437,22 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
             oauthExpiresAt = null
         )
     }
-    
+
+    private fun bringAppToForeground() {
+        try {
+            val pkg = app.packageName
+            val launchIntent = app.packageManager.getLaunchIntentForPackage(pkg) ?: return
+            launchIntent.addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+            app.startActivity(launchIntent)
+        } catch (e: Exception) {
+            Log.w("LoginViewModel", "Не удалось вернуть приложение на передний план", e)
+        }
+    }
+
     fun cancelOAuthLogin() {
         deviceFlowClient?.cancel()
         _uiState.value = _uiState.value.copy(

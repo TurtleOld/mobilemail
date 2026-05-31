@@ -4,11 +4,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 fun JSONObject.optStringOrNull(key: String): String? {
-    return if (has(key) && !isNull(key)) {
-        optString(key, null)
-    } else {
-        null
-    }
+    if (!has(key) || isNull(key)) return null
+    return optString(key).trim().takeIf { it.isNotEmpty() && it != "null" }
 }
 
 fun JSONObject.optIntOrNull(key: String): Int? {
@@ -51,7 +48,7 @@ fun JSONObject.optJSONArrayOrNull(key: String): JSONArray? {
     }
 }
 
-fun JSONArray.toList(): List<Any> {
+fun JSONArray.toAnyList(): List<Any> {
     val list = mutableListOf<Any>()
     for (i in 0 until length()) {
         list.add(get(i))
@@ -68,7 +65,7 @@ fun JSONArray.toStringList(): List<String> {
 }
 
 fun JSONObject.getStringOrEmpty(key: String): String {
-    return optString(key, )
+    return optString(key, "")
 }
 
 fun JSONObject.getIntOrDefault(key: String, default: Int = 0): Int {

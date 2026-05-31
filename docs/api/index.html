@@ -1,0 +1,673 @@
+<!DOCTYPE html>
+<html class="no-js" lang="en">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1" charset="UTF-8">
+    <title>MobileMail</title>
+    <link href="images/logo-icon.svg" rel="icon" type="image/svg">
+        <script>var pathToRoot = "";</script>
+    <script>document.documentElement.classList.replace("no-js", "js");</script>
+    <script>const storage = localStorage.getItem("dokka-dark-mode")
+      if (storage == null) {
+        const osDarkSchemePreferred = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches
+        if (osDarkSchemePreferred === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      } else {
+        const savedDarkMode = JSON.parse(storage)
+        if (savedDarkMode === true) {
+          document.getElementsByTagName("html")[0].classList.add("theme-dark")
+        }
+      }
+    </script>
+<script type="text/javascript" src="scripts/sourceset_dependencies.js" async="async"></script>
+<link href="styles/style.css" rel="Stylesheet">
+<link href="styles/main.css" rel="Stylesheet">
+<link href="styles/prism.css" rel="Stylesheet">
+<link href="styles/logo-styles.css" rel="Stylesheet">
+<link href="ui-kit/ui-kit.min.css" rel="Stylesheet">
+<script type="text/javascript" src="scripts/safe-local-storage_blocking.js"></script>
+<script type="text/javascript" src="scripts/navigation-loader.js" async="async"></script>
+<script type="text/javascript" src="scripts/platform-content-handler.js" async="async"></script>
+<script type="text/javascript" src="scripts/main.js" defer="defer"></script>
+<script type="text/javascript" src="scripts/prism.js" async="async"></script>
+<script type="text/javascript" src="ui-kit/ui-kit.min.js" defer="defer"></script>
+</head>
+<body>
+<div class="root">
+    <header class="navigation theme-dark" id="navigation-wrapper" role="banner">
+            <a class="library-name--link" href="index.html" tabindex="1">
+                    MobileMail
+            </a>
+        <button class="navigation-controls--btn navigation-controls--btn_toc ui-kit_mobile-only" id="toc-toggle"
+                type="button">Toggle table of contents
+        </button>
+        <div class="navigation-controls--break ui-kit_mobile-only"></div>
+        <div class="library-version" id="library-version">
+        </div>
+        <div class="navigation-controls">
+        <ul class="filter-section filter-section_loading" id="filter-section" aria-label="Target filter">
+                <button class="platform-tag platform-selector jvm-like" data-active="" aria-pressed="true"
+                        data-filter=":app/release">release</button>
+            <div class="dropdown filter-section--dropdown" data-role="dropdown" id="filter-section-dropdown">
+                <button class="button button_dropdown filter-section--dropdown-toggle" role="combobox"
+                        data-role="dropdown-toggle"
+                        aria-controls="platform-tags-listbox"
+                        aria-haspopup="listbox"
+                        aria-expanded="false"
+                        aria-label="Toggle source sets"
+                ></button>
+                <ul role="listbox" id="platform-tags-listbox" class="dropdown--list" data-role="dropdown-listbox" aria-label="Target filter">
+                    <div class="dropdown--header"><span>Target filter</span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close target filter">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                        <li role="option" class="dropdown--option platform-selector-option jvm-like" tabindex="0">
+                            <label class="checkbox">
+                                <input type="checkbox" class="checkbox--input" id=":app/release"
+                                       data-filter=":app/release"/>
+                                <span class="checkbox--icon"></span>
+                                release
+                            </label>
+                        </li>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </ul>
+            <button class="navigation-controls--btn navigation-controls--btn_theme" id="theme-toggle-button"
+                    type="button">Switch theme
+            </button>
+            <div class="navigation-controls--btn navigation-controls--btn_search" id="searchBar" role="button">Search in
+                API
+            </div>
+        </div>
+    </header>
+    <div id="container">
+        <nav id="leftColumn" class="sidebar" data-item-type="SECTION" data-item-config='{"defaultSize": 280, "minSize": 200, "maxSize": 400}'>
+            <a class="toc--skip-link" href="#main">Skip to content</a>
+            <div class="dropdown theme-dark_mobile" data-role="dropdown" id="toc-dropdown">
+                <ul role="listbox" id="toc-listbox" class="dropdown--list dropdown--list_toc-list"
+                    data-role="dropdown-listbox" aria-label="Table of contents">
+                    <div class="dropdown--header">
+                            <span>
+                                    MobileMail
+                            </span>
+                        <button class="button" data-role="dropdown-toggle" aria-label="Close table of contents">
+                            <i class="ui-kit-icon ui-kit-icon_cross"></i>
+                        </button>
+                    </div>
+                    <div class="sidebar--inner" id="sideMenu"></div>
+                </ul>
+                <div class="dropdown--overlay"></div>
+            </div>
+        </nav>
+        <div id="resizer" class="resizer" data-item-type="BAR"></div>
+        <div id="main" data-item-type="SECTION" role="main">
+<div class="main-content" id="content" pageIds="MobileMail::////PointingToDeclaration//-865142711">
+  <div class="breadcrumbs"></div>
+  <div class="cover ">
+    <h1 class="cover"><span>Mobile</span><wbr></wbr><span><span>Mail</span></span></h1>
+    <div class="platform-hinted UnderCoverText" data-platform-hinted="data-platform-hinted"><div class="content sourceset-dependent-content" data-active="" data-togglable=":app/release"><p class="paragraph">Мобильное приложение для работы с электронной почтой через протокол JMAP с поддержкой OAuth 2.0 авторизации.</p><h2 class="">Описание</h2><p class="paragraph">MobileMail — это современное Android приложение, которое позволяет работать с почтовым сервером Stalwart через протокол JMAP. Приложение поддерживает безопасную авторизацию через OAuth 2.0 Device Authorization Grant (RFC 8628) без необходимости ввода паролей.</p><h2 class="">Основные возможности</h2><ul><li><p class="paragraph">📧 <strong>JMAP протокол</strong> — современный протокол для работы с почтой</p></li><li><p class="paragraph">🔐 <strong>OAuth 2.0 Device Flow</strong> — безопасная авторизация без паролей</p></li><li><p class="paragraph">🔒 <strong>Шифрованное хранение</strong> — токены хранятся в EncryptedSharedPreferences</p></li><li><p class="paragraph">🚀 <strong>Автоматическое обновление токенов</strong> — прозрачное обновление через refresh token</p></li><li><p class="paragraph">📱 <strong>Современный UI</strong> — построен на Jetpack Compose</p></li></ul><h2 class="">Архитектура</h2><h3 class="">Основные модули</h3><ul><li><p class="paragraph"><strong>OAuth</strong> (<code class="lang-kotlin">com.mobilemail.data.oauth</code>) — авторизация через OAuth 2.0 Device Flow</p></li><li><p class="paragraph"><strong>JMAP</strong> (<code class="lang-kotlin">com.mobilemail.data.jmap</code>) — клиент для работы с JMAP протоколом</p></li><li><p class="paragraph"><strong>Repository</strong> (<code class="lang-kotlin">com.mobilemail.data.repository</code>) — репозитории для работы с данными</p></li><li><p class="paragraph"><strong>UI</strong> (<code class="lang-kotlin">com.mobilemail.ui</code>) — пользовательский интерфейс на Jetpack Compose</p></li></ul><h2 class="">Требования</h2><ul><li><p class="paragraph">Android 8.0 (API 26) или выше</p></li><li><p class="paragraph">Kotlin 1.9.24 или выше</p></li><li><p class="paragraph">Gradle 7.6 или выше</p></li></ul><h2 class="">Лицензия</h2><p class="paragraph">Укажите лицензию проекта</p></div></div>
+  </div>
+  <h2 class="">Packages</h2>
+  <div class="table"><a data-name="211529032%2FPackages%2F-865142711" anchor-label="com.mobilemail" id="211529032%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail/index.html">com.mobilemail</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="211529032%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="919185609%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.common" id="919185609%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.common/index.html">com.mobilemail.data.common</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="919185609%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-542309458%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.error" id="-542309458%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.error/index.html">com.mobilemail.data.error</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-542309458%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="135141328%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.jmap" id="135141328%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.jmap/index.html">com.mobilemail.data.jmap</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="135141328%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="1759063875%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.local.converter" id="1759063875%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.local.converter/index.html">com.mobilemail.data.local.converter</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1759063875%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="386573173%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.local.dao" id="386573173%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.local.dao/index.html">com.mobilemail.data.local.dao</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="386573173%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="596346300%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.local.database" id="596346300%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.local.database/index.html">com.mobilemail.data.local.database</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="596346300%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="1616110052%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.local.entity" id="1616110052%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.local.entity/index.html">com.mobilemail.data.local.entity</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1616110052%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-2105666161%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.model" id="-2105666161%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.model/index.html">com.mobilemail.data.model</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-2105666161%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-1742234755%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.oauth" id="-1742234755%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.oauth/index.html">com.mobilemail.data.oauth</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1742234755%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-785522902%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.paging" id="-785522902%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.paging/index.html">com.mobilemail.data.paging</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-785522902%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-954490466%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.preferences" id="-954490466%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.preferences/index.html">com.mobilemail.data.preferences</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-954490466%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="891949928%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.repository" id="891949928%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.repository/index.html">com.mobilemail.data.repository</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="891949928%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="1127663326%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.security" id="1127663326%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.security/index.html">com.mobilemail.data.security</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1127663326%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="1331584121%2FPackages%2F-865142711" anchor-label="com.mobilemail.data.sync" id="1331584121%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.data.sync/index.html">com.mobilemail.data.sync</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1331584121%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-1299020361%2FPackages%2F-865142711" anchor-label="com.mobilemail.domain.usecase" id="-1299020361%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.domain.usecase/index.html">com.mobilemail.domain.usecase</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1299020361%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="32705986%2FPackages%2F-865142711" anchor-label="com.mobilemail.notifications" id="32705986%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.notifications/index.html">com.mobilemail.notifications</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="32705986%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="1992371487%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.common" id="1992371487%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.common/index.html">com.mobilemail.ui.common</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1992371487%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-823733575%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.login" id="-823733575%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.login/index.html">com.mobilemail.ui.login</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-823733575%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-298205272%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.messagedetail" id="-298205272%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.messagedetail/index.html">com.mobilemail.ui.messagedetail</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-298205272%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="2073387200%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.messages" id="2073387200%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.messages/index.html">com.mobilemail.ui.messages</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="2073387200%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-1351326968%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.navigation" id="-1351326968%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.navigation/index.html">com.mobilemail.ui.navigation</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1351326968%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="298191259%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.newmessage" id="298191259%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.newmessage/index.html">com.mobilemail.ui.newmessage</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="298191259%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-1849359983%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.orchestration" id="-1849359983%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.orchestration/index.html">com.mobilemail.ui.orchestration</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1849359983%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-772971407%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.outbox" id="-772971407%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.outbox/index.html">com.mobilemail.ui.outbox</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-772971407%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="1299318428%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.search" id="1299318428%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.search/index.html">com.mobilemail.ui.search</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1299318428%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="1667141044%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.security" id="1667141044%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.security/index.html">com.mobilemail.ui.security</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="1667141044%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-1885098793%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.settings" id="-1885098793%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.settings/index.html">com.mobilemail.ui.settings</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-1885098793%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="-566288103%2FPackages%2F-865142711" anchor-label="com.mobilemail.ui.theme" id="-566288103%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.ui.theme/index.html">com.mobilemail.ui.theme</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="-566288103%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+<a data-name="935420268%2FPackages%2F-865142711" anchor-label="com.mobilemail.util" id="935420268%2FPackages%2F-865142711" data-filterable-set=":app/release"></a>
+    <div class="table-row table-row_platform-tagged" data-filterable-current=":app/release" data-filterable-set=":app/release">
+      <div>
+        <div class="main-subrow ">
+          <div class=""><span class="inline-flex">
+              <div><a href="-mobile-mail/com.mobilemail.util/index.html">com.mobilemail.util</a></div>
+<span class="anchor-wrapper"><span class="anchor-icon" pointing-to="935420268%2FPackages%2F-865142711"></span>
+                <div class="copy-popup-wrapper "><span class="copy-popup-icon"></span><span>Link copied to clipboard</span></div>
+              </span></span></div>
+          <div class="pull-right platform-tags--wrapper">
+            <div class="platform-tags no-gutters">
+              <div class="platform-tag jvm-like">release</div>
+            </div>
+          </div>
+        </div>
+        <div></div>
+      </div>
+    </div>
+  </div>
+</div>
+    <div class="footer">
+        <div class="footer--container">
+            <a href="#content" id="go-to-top-link" class="footer--button footer--button_go-to-top"></a>
+            <div class="footer--content">
+                <div>
+                    <span>Generated by </span>
+                    <a class="footer--link footer--link_external" href="https://github.com/Kotlin/dokka">
+                        Dokka
+                    </a>
+                    <div>© 2026 Copyright</div>
+                </div>
+            </div>
+        </div>
+    </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>

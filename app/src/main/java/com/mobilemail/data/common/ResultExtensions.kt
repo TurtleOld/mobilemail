@@ -9,8 +9,8 @@ fun <T> Result<T>.toExceptionOrNull(): Throwable? = when (this) {
     is Result.Error -> exception
 }
 
-inline fun <T, R> Result<T>.mapError(transform: (Throwable) -> Throwable): Result<R> = when (this) {
-    is Result.Success -> Result.Success(data as R)
+inline fun <T> Result<T>.mapError(transform: (Throwable) -> Throwable): Result<T> = when (this) {
+    is Result.Success -> this
     is Result.Error -> Result.Error(transform(exception))
 }
 

@@ -16,6 +16,7 @@ data class MessageListItem(
 data class MessageDetail(
     val id: String,
     val threadId: String,
+    val mailboxIds: Set<String> = emptySet(),
     val from: EmailAddress,
     val to: List<EmailAddress>,
     val cc: List<EmailAddress>? = null,
@@ -43,5 +44,7 @@ data class Attachment(
     val id: String,
     val filename: String,
     val mime: String,
-    val size: Long
+    val size: Long,
+    val localFilePath: String? = null,
+    val isUploaded: Boolean = true
 )

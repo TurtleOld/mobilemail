@@ -1,4 +1,4 @@
-.PHONY: docs-build docs-serve docs-clean
+.PHONY: docs-build docs-serve docs-clean release-tag
 
 docs-build:
 	@echo "Генерация документации через Dokka..."
@@ -11,3 +11,11 @@ docs-serve: docs-build
 docs-clean:
 	@echo "Очистка сгенерированной документации..."
 	rm -rf docs/api
+
+release-tag:
+	@if [ -z "$(VERSION)" ]; then \
+		echo "Usage: make release-tag VERSION=1.2.3"; \
+		exit 1; \
+	fi
+	git tag "v$(VERSION)"
+	git push origin "v$(VERSION)"

@@ -18,6 +18,7 @@ import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
+import com.mobilemail.data.common.fold
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
@@ -45,11 +46,14 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
     companion object {
         private const val CLIENT_ID = "mail-client"
     }
+
+
     
     fun updateServer(server: String) {
         _uiState.value = _uiState.value.copy(server = server)
     }
     
+    @Suppress("LongMethod")
     fun startOAuthLogin() {
         val state = _uiState.value
         
@@ -62,12 +66,12 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
         
         viewModelScope.launch {
             try {
-                val normalizedServer = state.server.trim().trimEnd('/')
-                
+                val normalizedUrl = state.server.trimEnd('/')
+
                 val httpClient = OAuthDiscovery.createClient()
                 discovery = OAuthDiscovery(httpClient)
-                
-                val discoveryUrl = "$normalizedServer/.well-known/oauth-authorization-server"
+
+                val discoveryUrl = "$normalizedUrl/.well-known/oauth-authorization-server"
                 val metadata = discovery!!.discover(discoveryUrl)
                 
                 deviceFlowClient = DeviceFlowClient(
@@ -103,7 +107,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
                         is DeviceFlowState.Success -> {
                             viewModelScope.launch {
                                 handleTokenSuccess(
-                                    server = normalizedServer,
+                                    server = normalizedUrl,
                                     metadata = metadata,
                                     tokenResponse = flowState.tokenResponse
                                 )
@@ -151,7 +155,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
             tokenStore.saveTokens(server, server, tokenResponse)
             
             val jmapClient = JmapOAuthClient.getOrCreate(
-                baseUrl = server,
+                serverUrl = server,
                 email = server,
                 accountId = server,
                 tokenStore = tokenStore,

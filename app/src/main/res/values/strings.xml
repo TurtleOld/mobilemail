@@ -14,4 +14,8 @@
     <string name="message_subject">Тема</string>
     <string name="message_from">От</string>
     <string name="message_date">Дата</string>
+    <string name="notification_channel_mail">Новые письма</string>
+    <string name="notification_channel_mail_description">Уведомления о новых входящих письмах</string>
+    <string name="notification_new_message_title">Новое письмо</string>
+    <string name="notification_new_message_body">Откройте приложение, чтобы прочитать письмо</string>
 </resources>

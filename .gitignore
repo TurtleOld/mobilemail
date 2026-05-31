@@ -1,22 +1,54 @@
-*.iml
-.gradle
-/local.properties
-/.idea/caches
-/.idea/libraries
-/.idea/modules.xml
-/.idea/workspace.xml
-/.idea/navEditor.xml
-/.idea/assetWizardSettings.xml
+# Compiled and build artifacts
+*.class
+*.o
+*.obj
+*.out
+build/
+target/
+
+# Dependencies
+.gradle/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+venv/
+.venv/
+node_modules/
+dist/
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and temp files
+*.log
+*.tmp
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# System files
 .DS_Store
-/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
+Thumbs.db
+
 
 *.sh
+*.jks
+.keystore/
 
-build/
+#Ignore vscode AI rules
+.github/instructions/codacy.instructions.md
+.claude
+.
 
-# Dokka generated documentation
-docs/api/
+app/src/google-services.json
+app/google-services.json

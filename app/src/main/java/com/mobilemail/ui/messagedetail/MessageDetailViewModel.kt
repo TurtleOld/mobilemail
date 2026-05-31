@@ -6,52 +6,110 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.mobilemail.data.jmap.JmapClient
+import com.mobilemail.data.jmap.JmapApi
+import com.mobilemail.data.jmap.MailClientFactory
+import com.mobilemail.data.model.Folder
+import com.mobilemail.data.model.FolderRole
 import com.mobilemail.data.model.MessageDetail
+import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.data.repository.AttachmentRepository
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.MessageActionsRepository
+import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.ui.common.AppError
+import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.data.common.fold
 import com.mobilemail.util.FileManager
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import java.util.UUID
 
 data class MessageDetailUiState(
     val message: MessageDetail? = null,
+    val threadMessages: List<MessageListItem> = emptyList(),
+    val threadDetails: List<MessageDetail> = emptyList(),
+    val folders: List<Folder> = emptyList(),
     val isLoading: Boolean = false,
-    val error: AppError? = null,
-    val notification: NotificationState = NotificationState.None
-)
+    override val error: AppError? = null,
+    override val notification: NotificationState = NotificationState.None
+) : FeatureScreenUiState
 
 class MessageDetailViewModel(
     application: Application,
     private val server: String,
     private val email: String,
-    private val password: String,
     private val accountId: String,
     private val messageId: String
 ) : AndroidViewModel(application) {
+    private data class PendingReadStatusUpdate(
+        val messageId: String,
+        val isUnread: Boolean
+    )
+
+    private data class PendingDetailAction(
+        val id: String,
+        val job: Job,
+        val commit: suspend () -> com.mobilemail.data.common.Result<Boolean>,
+        val onCommitted: () -> Unit,
+        val onQueued: suspend () -> Unit
+    )
+
     private val _uiState = MutableStateFlow(MessageDetailUiState())
     val uiState: StateFlow<MessageDetailUiState> = _uiState
+    private val app: Application = getApplication()
 
-    private val jmapClient = JmapClient.getOrCreate(server, email, password, accountId)
-    private val repository = MailRepository(jmapClient)
-    private val messageActionsRepository = MessageActionsRepository(jmapClient)
-    private val attachmentRepository = AttachmentRepository(jmapClient)
-    
+    private lateinit var jmapClient: JmapApi
+    private lateinit var repository: MailRepository
+    private lateinit var messageActionsRepository: MessageActionsRepository
+    private lateinit var attachmentRepository: AttachmentRepository
+
     private var onReadStatusChangedCallback: ((String, Boolean) -> Unit)? = null
+    private var pendingDetailAction: PendingDetailAction? = null
+    private var pendingReadStatusUpdate: PendingReadStatusUpdate? = null
 
     init {
         Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=$accountId")
-        loadMessage()
+        viewModelScope.launch {
+            jmapClient = MailClientFactory.create(
+                application = getApplication(),
+                server = server,
+                email = email,
+                accountId = accountId
+            )
+            repository = MailRepository(jmapClient)
+            messageActionsRepository = MessageActionsRepository(jmapClient)
+            attachmentRepository = AttachmentRepository(jmapClient)
+            loadFolders()
+            loadMessage()
+        }
     }
     
     fun setOnReadStatusChanged(callback: ((String, Boolean) -> Unit)?) {
         onReadStatusChangedCallback = callback
+        if (callback != null) {
+            pendingReadStatusUpdate?.let { pendingUpdate ->
+                callback(pendingUpdate.messageId, pendingUpdate.isUnread)
+                pendingReadStatusUpdate = null
+            }
+        }
+    }
+
+    private fun loadFolders() {
+        viewModelScope.launch {
+            repository.getFolders().fold(
+                onError = { e ->
+                    _uiState.value = _uiState.value.copy(error = ErrorMapper.mapException(e))
+                },
+                onSuccess = { folders ->
+                    _uiState.value = _uiState.value.copy(folders = folders)
+                }
+            )
+        }
     }
 
     private fun loadMessage() {
@@ -88,6 +146,28 @@ class MessageDetailViewModel(
                         },
                         isLoading = false
                     )
+                    loadThreadMessages(message.threadId)
+                }
+            )
+        }
+    }
+
+    private fun loadThreadMessages(threadId: String) {
+        viewModelScope.launch {
+            repository.getThreadMessages(threadId).fold(
+                onError = { e ->
+                    Log.e("MessageDetailViewModel", "Ошибка загрузки переписки", e)
+                },
+                onSuccess = { threadMessages ->
+                    _uiState.value = _uiState.value.copy(threadMessages = threadMessages)
+                }
+            )
+            repository.getThreadDetails(threadId).fold(
+                onError = { e ->
+                    Log.e("MessageDetailViewModel", "Ошибка загрузки полной переписки", e)
+                },
+                onSuccess = { threadDetails ->
+                    _uiState.value = _uiState.value.copy(threadDetails = threadDetails)
                 }
             )
         }
@@ -99,56 +179,82 @@ class MessageDetailViewModel(
             messageActionsRepository.markAsRead(messageId, true).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка автоматической пометки как прочитанного", e)
-                    // В случае ошибки возвращаем исходный статус
-                    _uiState.value = _uiState.value.copy(
-                        message = initialMessage
-                    )
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        viewModelScope.launch {
+                            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, true)
+                        }
+                        notifyReadStatusChanged(messageId, isUnread = false)
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            message = initialMessage
+                        )
+                    }
                 },
                 onSuccess = {
                     Log.d("MessageDetailViewModel", "Письмо автоматически помечено как прочитанное на сервере")
-                    // Обновляем UI с прочитанным статусом
-                    val currentMessage = _uiState.value.message
-                    if (currentMessage != null) {
-                        _uiState.value = _uiState.value.copy(
-                            message = currentMessage.copy(
-                                flags = currentMessage.flags.copy(unread = false)
-                            )
+                    val currentMessage = _uiState.value.message ?: initialMessage
+                    _uiState.value = _uiState.value.copy(
+                        message = currentMessage.copy(
+                            flags = currentMessage.flags.copy(unread = false)
                         )
-                        Log.d("MessageDetailViewModel", "UI обновлен, статус: unread=false")
-                    }
-                    // Уведомляем о изменении статуса для обновления счетчика
-                    Log.d("MessageDetailViewModel", "Вызов callback для обновления счетчика")
-                    onReadStatusChangedCallback?.invoke(messageId, false)
+                    )
+                    Log.d("MessageDetailViewModel", "UI обновлен, статус: unread=false")
+                    Log.d("MessageDetailViewModel", "Отправка обновления статуса прочитанности")
+                    notifyReadStatusChanged(messageId, isUnread = false)
                 }
             )
         }
     }
 
+    private fun notifyReadStatusChanged(messageId: String, isUnread: Boolean) {
+        val callback = onReadStatusChangedCallback
+        if (callback != null) {
+            callback(messageId, isUnread)
+        } else {
+            pendingReadStatusUpdate = PendingReadStatusUpdate(messageId, isUnread)
+        }
+    }
+
     fun deleteMessage(onSuccess: () -> Unit, onMessageDeleted: ((String) -> Unit)? = null) {
-        val currentMessage = _uiState.value.message ?: return
+        _uiState.value.message ?: return
         viewModelScope.launch {
-            messageActionsRepository.deleteMessage(messageId).fold(
-                onError = { e ->
-                    Log.e("MessageDetailViewModel", "Ошибка удаления письма", e)
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось удалить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
-                        )
-                    )
-                },
-                onSuccess = {
-                    Log.d("MessageDetailViewModel", "Письмо удалено успешно")
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Письмо удалено",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Short
-                        )
-                    )
-                    onMessageDeleted?.invoke(messageId)
-                    onSuccess()
-                }
-            )
+            var navigated = false
+            val deleteRequest = launch {
+                messageActionsRepository.deleteMessage(messageId).fold(
+                    onError = { e ->
+                        if (OfflineQueueManager.shouldQueue(e)) {
+                            OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
+                            if (!navigated) {
+                                navigated = true
+                                onMessageDeleted?.invoke(messageId)
+                                onSuccess()
+                            }
+                        } else if (!navigated) {
+                            _uiState.value = _uiState.value.copy(
+                                notification = NotificationState.Snackbar(
+                                    message = "Не удалось удалить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                    duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                                )
+                            )
+                        }
+                    },
+                    onSuccess = {
+                        if (!navigated) {
+                            navigated = true
+                            onMessageDeleted?.invoke(messageId)
+                            onSuccess()
+                        }
+                    }
+                )
+            }
+
+            // Не блокируем экран детали, если сеть отвечает медленно.
+            delay(400)
+            if (!navigated && deleteRequest.isActive) {
+                navigated = true
+                onMessageDeleted?.invoke(messageId)
+                onSuccess()
+            }
         }
     }
 
@@ -160,12 +266,26 @@ class MessageDetailViewModel(
             messageActionsRepository.markAsRead(messageId, !newReadStatus).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка изменения статуса прочитанности", e)
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось изменить статус: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        viewModelScope.launch {
+                            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, !newReadStatus)
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            message = currentMessage.copy(flags = currentMessage.flags.copy(unread = newReadStatus)),
+                            notification = NotificationState.Snackbar(
+                                message = "Нет сети. Изменение прочитанности поставлено в очередь.",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
                         )
-                    )
+                        onReadStatusChanged?.invoke(messageId, newReadStatus)
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            notification = NotificationState.Snackbar(
+                                message = "Не удалось изменить статус: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
+                        )
+                    }
                 },
                 onSuccess = {
                     Log.d("MessageDetailViewModel", "Статус прочитанности изменен: $newReadStatus")
@@ -195,12 +315,25 @@ class MessageDetailViewModel(
             messageActionsRepository.toggleStarred(messageId, newStarredStatus).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка изменения статуса звездочки", e)
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось изменить статус: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                    if (OfflineQueueManager.shouldQueue(e)) {
+                        viewModelScope.launch {
+                            OfflineQueueManager.enqueueToggleStar(app, server, email, accountId, messageId, newStarredStatus)
+                        }
+                        _uiState.value = _uiState.value.copy(
+                            message = currentMessage.copy(flags = currentMessage.flags.copy(starred = newStarredStatus)),
+                            notification = NotificationState.Snackbar(
+                                message = "Нет сети. Изменение избранного поставлено в очередь.",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
                         )
-                    )
+                    } else {
+                        _uiState.value = _uiState.value.copy(
+                            notification = NotificationState.Snackbar(
+                                message = "Не удалось изменить статус: ${ErrorMapper.mapException(e).getUserMessage()}",
+                                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                            )
+                        )
+                    }
                 },
                 onSuccess = {
                     Log.d("MessageDetailViewModel", "Статус звездочки изменен: $newStarredStatus")
@@ -219,8 +352,164 @@ class MessageDetailViewModel(
         }
     }
 
+    fun archiveMessage(onSuccess: () -> Unit, onMessageRemoved: ((String) -> Unit)? = null) {
+        moveMessageToRole(FolderRole.ARCHIVE, onSuccess, onMessageRemoved)
+    }
+
+    fun reportSpam(onSuccess: () -> Unit, onMessageRemoved: ((String) -> Unit)? = null) {
+        moveMessageToRole(FolderRole.SPAM, onSuccess, onMessageRemoved)
+    }
+
+    fun moveMessage(
+        toFolderId: String,
+        onSuccess: () -> Unit,
+        onMessageRemoved: ((String) -> Unit)? = null
+    ) {
+        val currentMessage = _uiState.value.message ?: return
+        val sourceFolderId = currentMessage.mailboxIds.firstOrNull()
+            ?: _uiState.value.folders.firstOrNull { it.role == FolderRole.INBOX }?.id
+            ?: run {
+                _uiState.value = _uiState.value.copy(
+                    notification = NotificationState.Snackbar(
+                        message = "Не удалось определить исходную папку",
+                        duration = com.mobilemail.ui.common.SnackbarDuration.Short
+                    )
+                )
+                return
+            }
+
+        if (sourceFolderId == toFolderId) {
+            _uiState.value = _uiState.value.copy(
+                notification = NotificationState.Snackbar(
+                    message = "Письмо уже находится в выбранной папке",
+                    duration = com.mobilemail.ui.common.SnackbarDuration.Short
+                )
+            )
+            return
+        }
+
+        val destinationFolder = _uiState.value.folders.firstOrNull { it.id == toFolderId }
+        scheduleDeferredAction(
+            pendingMessage = "Письмо перемещается в ${destinationFolder?.name ?: "другую папку"}",
+            commitAction = { messageActionsRepository.moveMessage(messageId, sourceFolderId, toFolderId) },
+            onCommitted = {
+                onMessageRemoved?.invoke(messageId)
+                onSuccess()
+            },
+            onQueued = {
+                OfflineQueueManager.enqueueMove(app, server, email, accountId, messageId, sourceFolderId, toFolderId)
+            }
+        )
+    }
+
+    private fun moveMessageToRole(
+        role: FolderRole,
+        onSuccess: () -> Unit,
+        onMessageRemoved: ((String) -> Unit)? = null
+    ) {
+        val destination = _uiState.value.folders.firstOrNull { it.role == role }
+        if (destination == null) {
+            _uiState.value = _uiState.value.copy(
+                notification = NotificationState.Snackbar(
+                    message = when (role) {
+                        FolderRole.ARCHIVE -> "Папка Архив недоступна"
+                        FolderRole.SPAM -> "Папка Спам недоступна"
+                        else -> "Целевая папка недоступна"
+                    },
+                    duration = com.mobilemail.ui.common.SnackbarDuration.Short
+                )
+            )
+            return
+        }
+        moveMessage(destination.id, onSuccess, onMessageRemoved)
+    }
+
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
+    }
+
+    fun clearError() {
+        _uiState.value = _uiState.value.copy(error = null)
+    }
+
+    private fun scheduleDeferredAction(
+        pendingMessage: String,
+        commitAction: suspend () -> com.mobilemail.data.common.Result<Boolean>,
+        onCommitted: () -> Unit,
+        onQueued: suspend () -> Unit
+    ) {
+        val existingAction = pendingDetailAction
+        if (existingAction != null) {
+            viewModelScope.launch {
+                finalizePendingDetailAction(existingAction)
+                scheduleDeferredAction(pendingMessage, commitAction, onCommitted, onQueued)
+            }
+            return
+        }
+
+        val actionId = UUID.randomUUID().toString()
+        val job = viewModelScope.launch {
+            delay(5000)
+            pendingDetailAction?.takeIf { it.id == actionId }?.let { finalizePendingDetailAction(it) }
+        }
+
+        pendingDetailAction = PendingDetailAction(
+            id = actionId,
+            job = job,
+            commit = commitAction,
+            onCommitted = onCommitted,
+            onQueued = onQueued
+        )
+        _uiState.value = _uiState.value.copy(
+            notification = NotificationState.Snackbar(
+                message = pendingMessage,
+                actionLabel = "Отменить",
+                onAction = { undoPendingDetailAction(actionId) },
+                duration = com.mobilemail.ui.common.SnackbarDuration.Long
+            )
+        )
+    }
+
+    private suspend fun finalizePendingDetailAction(action: PendingDetailAction) {
+        pendingDetailAction = null
+        action.commit().fold(
+            onError = { e ->
+                if (OfflineQueueManager.shouldQueue(e)) {
+                    viewModelScope.launch {
+                        action.onQueued()
+                    }
+                    _uiState.value = _uiState.value.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Нет сети. Действие поставлено в очередь и будет повторено автоматически.",
+                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                        )
+                    )
+                    action.onCommitted()
+                } else {
+                    _uiState.value = _uiState.value.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Не удалось синхронизировать изменения: ${ErrorMapper.mapException(e).getUserMessage()}",
+                            duration = com.mobilemail.ui.common.SnackbarDuration.Long
+                        )
+                    )
+                }
+            },
+            onSuccess = {
+                action.onCommitted()
+            }
+        )
+    }
+
+    private fun undoPendingDetailAction(actionId: String) {
+        val action = pendingDetailAction?.takeIf { it.id == actionId } ?: return
+        action.job.cancel()
+        pendingDetailAction = null
+        _uiState.value = _uiState.value.copy(
+            notification = NotificationState.Snackbar(
+                message = "Действие отменено",
+                duration = com.mobilemail.ui.common.SnackbarDuration.Short
+            )
+        )
     }
 
     fun openAttachment(attachmentId: String, filename: String, mimeType: String = "application/octet-stream") {

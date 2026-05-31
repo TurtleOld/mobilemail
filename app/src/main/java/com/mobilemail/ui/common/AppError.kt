@@ -16,11 +16,6 @@ sealed class AppError(
         val errorCause: Throwable? = null
     ) : AppError(errorMessage, errorCause)
     
-    data class TwoFactorRequired(
-        val errorMessage: String = "Требуется двухфакторная авторизация",
-        val errorCause: Throwable? = null
-    ) : AppError(errorMessage, errorCause)
-    
     data class ParseError(
         val errorMessage: String,
         val errorCause: Throwable? = null
@@ -40,11 +35,10 @@ sealed class AppError(
     fun getUserMessage(): String = when (this) {
         is NetworkError -> when {
             isTimeout -> "Превышено время ожидания. Проверьте подключение к сети."
-            isConnectionError -> "Не удалось подключиться к серверу. Проверьте подключение к интернету."
+            isConnectionError -> "Не удалось подключиться к серверу! Проверьте подключение к интернету."
             else -> message.ifEmpty { "Ошибка сети" }
         }
         is AuthError -> message.ifEmpty { "Ошибка авторизации. Проверьте логин и пароль." }
-        is TwoFactorRequired -> message.ifEmpty { "Требуется код двухфакторной авторизации." }
         is ParseError -> "Ошибка обработки данных. Попробуйте позже."
         is ServerError -> when (statusCode) {
             404 -> "Сервер не найден. Проверьте адрес сервера."

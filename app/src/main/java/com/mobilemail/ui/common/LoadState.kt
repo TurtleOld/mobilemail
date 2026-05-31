@@ -21,7 +21,7 @@ sealed class LoadState<out T> {
     
     fun getOrThrow(): T = when (this) {
         is Success -> data
-        is Error -> throw IllegalStateException("Ошибка загрузки: ${error.message}", error.cause)
-        is Loading -> throw IllegalStateException("Данные еще загружаются")
+        is Error -> error("Ошибка загрузки: ${error.message}")
+        is Loading -> error("Данные еще загружаются")
     }
 }

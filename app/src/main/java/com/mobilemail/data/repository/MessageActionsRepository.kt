@@ -2,38 +2,46 @@ package com.mobilemail.data.repository
 
 import com.mobilemail.data.common.Result
 import com.mobilemail.data.common.runCatchingSuspend
-import com.mobilemail.data.jmap.JmapClient
+import com.mobilemail.data.jmap.JmapApi
 
 class MessageActionsRepository(
-    private val jmapClient: JmapClient
+    private val jmapClient: JmapApi
 ) {
-    suspend fun markAsRead(messageId: String, isRead: Boolean): Result<Boolean> = runCatchingSuspend {
+    private fun requireSuccess(success: Boolean, actionName: String): Boolean {
+        check(success) { "JMAP operation failed: $actionName" }
+        return true
+    }
+
+    suspend fun updateKeywords(messageId: String, keywords: Map<String, Boolean>): Result<Boolean> = runCatchingSuspend {
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
-        
-        val keywords = mapOf("\$seen" to isRead)
-        jmapClient.updateEmailKeywords(messageId, keywords, accountId)
+            ?: error("AccountId не найден")
+
+        requireSuccess(
+            success = jmapClient.updateEmailKeywords(messageId, keywords, accountId),
+            actionName = "update keywords for $messageId"
+        )
+    }
+
+    suspend fun markAsRead(messageId: String, isRead: Boolean): Result<Boolean> = runCatchingSuspend {
+        updateKeywords(messageId, mapOf("\$seen" to isRead)).getOrThrow()
     }
     
     suspend fun toggleStarred(messageId: String, isStarred: Boolean): Result<Boolean> = runCatchingSuspend {
-        val session = jmapClient.getSession()
-        val accountId = session.primaryAccounts?.mail 
-            ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
-        
-        val keywords = mapOf("\$flagged" to isStarred)
-        jmapClient.updateEmailKeywords(messageId, keywords, accountId)
+        updateKeywords(messageId, mapOf("\$flagged" to isStarred)).getOrThrow()
     }
     
     suspend fun deleteMessage(messageId: String): Result<Boolean> = runCatchingSuspend {
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
         
-        jmapClient.deleteEmail(messageId, accountId)
+        requireSuccess(
+            success = jmapClient.deleteEmail(messageId, accountId),
+            actionName = "delete message $messageId"
+        )
     }
     
     suspend fun moveMessage(
@@ -44,8 +52,11 @@ class MessageActionsRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
         
-        jmapClient.moveEmail(messageId, fromMailboxId, toMailboxId, accountId)
+        requireSuccess(
+            success = jmapClient.moveEmail(messageId, fromMailboxId, toMailboxId, accountId),
+            actionName = "move message $messageId"
+        )
     }
 }

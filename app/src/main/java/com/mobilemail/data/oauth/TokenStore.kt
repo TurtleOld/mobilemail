@@ -1,10 +1,9 @@
 package com.mobilemail.data.oauth
 
 import android.content.Context
-import android.content.SharedPreferences
 import android.util.Log
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import com.mobilemail.data.security.KeystoreSecureStore
+import com.mobilemail.util.LogRedactor
 
 data class StoredToken(
     val accessToken: String,
@@ -22,16 +21,10 @@ data class StoredToken(
 }
 
 class TokenStore(private val context: Context) {
-    private val masterKey = MasterKey.Builder(context)
-        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-        .build()
-    
-    private val encryptedPrefs: SharedPreferences = EncryptedSharedPreferences.create(
-        context,
-        "oauth_tokens",
-        masterKey,
-        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    private val secureStore = KeystoreSecureStore(
+        context = context,
+        prefsName = "oauth_tokens_v2",
+        keyAlias = "mobilemail_oauth_tokens_key"
     )
     
     fun saveTokens(server: String, email: String, tokenResponse: TokenResponse) {
@@ -41,57 +34,64 @@ class TokenStore(private val context: Context) {
         
         val expiresAtDays = expiresAt?.let { (it - System.currentTimeMillis()) / (1000L * 60 * 60 * 24) }
         
-        encryptedPrefs.edit()
-            .putString("access_token_${server}_$email", tokenResponse.accessToken)
-            .putString("token_type_${server}_$email", tokenResponse.tokenType)
-            .putLong("expires_at_${server}_$email", expiresAt ?: -1L)
-            .putString("refresh_token_${server}_$email", tokenResponse.refreshToken)
-            .apply()
+        secureStore.putString("access_token_${server}_$email", tokenResponse.accessToken)
+        secureStore.putString("token_type_${server}_$email", tokenResponse.tokenType)
+        secureStore.putLong("expires_at_${server}_$email", expiresAt)
+        secureStore.putString("refresh_token_${server}_$email", tokenResponse.refreshToken)
         
-        Log.d("TokenStore", "Токены сохранены для $email на $server: expires_in=${tokenResponse.expiresIn}s (${expiresAtDays} дней), has_refresh=${tokenResponse.refreshToken != null}")
+        Log.d("TokenStore", LogRedactor.redact(
+            "Токены сохранены для $email на $server: expires_in=${tokenResponse.expiresIn}s " +
+                "(${expiresAtDays} дней), has_refresh=${tokenResponse.refreshToken != null}"
+        ))
     }
     
     fun getTokens(server: String, email: String): StoredToken? {
-        val accessToken = encryptedPrefs.getString("access_token_${server}_$email", null)
-        val tokenType = encryptedPrefs.getString("token_type_${server}_$email", "Bearer")
-        val expiresAt = encryptedPrefs.getLong("expires_at_${server}_$email", -1L).takeIf { it > 0 }
-        val refreshToken = encryptedPrefs.getString("refresh_token_${server}_$email", null)
+        val accessToken = secureStore.getString("access_token_${server}_$email")
+        val tokenType = secureStore.getString("token_type_${server}_$email") ?: "Bearer"
+        val expiresAt = secureStore.getLong("expires_at_${server}_$email")
+        val refreshToken = secureStore.getString("refresh_token_${server}_$email")
         
         return if (accessToken != null) {
             val token = StoredToken(
                 accessToken = accessToken,
-                tokenType = tokenType ?: "Bearer",
+                tokenType = tokenType,
                 expiresAt = expiresAt,
                 refreshToken = refreshToken
             )
             
             val expiresAtDays = expiresAt?.let { (it - System.currentTimeMillis()) / (1000L * 60 * 60 * 24) }
             val isExpired = token.isExpired()
-            Log.d("TokenStore", "Токены загружены для $email на $server: expired=$isExpired, expires_in_days=$expiresAtDays, has_refresh=${refreshToken != null}")
+            Log.d("TokenStore", LogRedactor.redact(
+                "Токены загружены для $email на $server: expired=$isExpired, " +
+                    "expires_in_days=$expiresAtDays, has_refresh=${refreshToken != null}"
+            ))
             
             token
         } else {
-            Log.d("TokenStore", "Токены не найдены для $email на $server")
+            Log.d("TokenStore", LogRedactor.redact("Токены не найдены для $email на $server"))
             null
         }
     }
     
     fun clearTokens(server: String, email: String) {
-        val hadAccessToken = encryptedPrefs.contains("access_token_${server}_$email")
-        val hadRefreshToken = encryptedPrefs.contains("refresh_token_${server}_$email")
+        val accessKey = "access_token_${server}_$email"
+        val refreshKey = "refresh_token_${server}_$email"
+        val hadAccessToken = secureStore.contains(accessKey)
+        val hadRefreshToken = secureStore.contains(refreshKey)
+        secureStore.remove(
+            accessKey,
+            "token_type_${server}_$email",
+            "expires_at_${server}_$email",
+            refreshKey
+        )
         
-        encryptedPrefs.edit()
-            .remove("access_token_${server}_$email")
-            .remove("token_type_${server}_$email")
-            .remove("expires_at_${server}_$email")
-            .remove("refresh_token_${server}_$email")
-            .apply()
-        
-        Log.d("TokenStore", "Токены удалены для $email на $server: had_access=$hadAccessToken, had_refresh=$hadRefreshToken")
+        Log.d("TokenStore", LogRedactor.redact(
+            "Токены удалены для $email на $server: had_access=$hadAccessToken, had_refresh=$hadRefreshToken"
+        ))
     }
     
     fun clearAllTokens() {
-        encryptedPrefs.edit().clear().apply()
+        secureStore.clear()
         Log.d("TokenStore", "Все токены удалены")
     }
     

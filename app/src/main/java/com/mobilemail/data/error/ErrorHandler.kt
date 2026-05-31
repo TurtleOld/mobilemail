@@ -14,7 +14,6 @@ object ErrorHandler {
         when (error) {
             is AppError.NetworkError -> Log.w(tag, "Network error: ${error.message}", error.cause)
             is AppError.AuthError -> Log.w(tag, "Auth error: ${error.message}", error.cause)
-            is AppError.TwoFactorRequired -> Log.w(tag, "Two-factor authentication required: ${error.message}", error.cause)
             is AppError.ParseError -> Log.e(tag, "Parse error: ${error.message}", error.cause)
             is AppError.ServerError -> Log.e(tag, "Server error: ${error.message}", error.cause)
             is AppError.UnknownError -> Log.e(tag, "Unknown error: ${error.message}", error.cause)
@@ -34,7 +33,7 @@ object ErrorHandler {
         factor: Double = 2.0,
         shouldRetry: (Throwable) -> Boolean = { throwable ->
             val error = handleError(throwable)
-            error !is AppError.AuthError && error !is AppError.TwoFactorRequired
+            error !is AppError.AuthError
         },
         block: suspend () -> T
     ): Result<T> {
@@ -46,7 +45,7 @@ object ErrorHandler {
                 return Result.success(block())
             } catch (e: Throwable) {
                 lastException = e
-                val error = handleError(e)
+                handleError(e)
                 
                 if (!shouldRetry(e) || attempt == retries - 1) {
                     return Result.failure(e)
@@ -68,7 +67,7 @@ object ErrorHandler {
         return retryWhen { cause, attempt ->
             if (attempt < retries) {
                 val error = handleError(cause)
-                if (error !is AppError.AuthError && error !is AppError.TwoFactorRequired) {
+                if (error !is AppError.AuthError) {
                     delay(currentDelay)
                     currentDelay *= 2
                     true

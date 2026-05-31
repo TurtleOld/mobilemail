@@ -15,5 +15,6 @@ data class FolderEntity(
     val name: String,
     val role: FolderRole,
     val unreadCount: Int = 0,
+    val queryState: String? = null,
     val syncedAt: Long = System.currentTimeMillis()
 )
