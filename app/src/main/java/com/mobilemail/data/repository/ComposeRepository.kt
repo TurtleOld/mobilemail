@@ -5,11 +5,17 @@ import com.mobilemail.data.common.runCatchingSuspend
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.model.Attachment
 import com.mobilemail.data.model.EmailSubmissionStatus
+import com.mobilemail.domain.model.toDomain
+import com.mobilemail.domain.model.toData
+import com.mobilemail.domain.repository.IComposeRepository
+import com.mobilemail.domain.model.Attachment as DomainAttachment
+import com.mobilemail.domain.model.EmailSubmissionStatus as DomainEmailSubmissionStatus
 
 class ComposeRepository(
     private val jmapClient: JmapApi
-) {
-    suspend fun sendMessage(
+) : IComposeRepository {
+
+    suspend fun sendMessageData(
         from: String,
         to: List<String>,
         subject: String,
@@ -35,7 +41,7 @@ class ComposeRepository(
         )
     }
 
-    suspend fun getEmailSubmissionStatus(
+    suspend fun getEmailSubmissionStatusData(
         submissionId: String
     ): Result<EmailSubmissionStatus> = runCatchingSuspend {
         val session = jmapClient.getSession()
@@ -46,7 +52,7 @@ class ComposeRepository(
         jmapClient.getEmailSubmission(submissionId = submissionId, accountId = accountId)
     }
 
-    suspend fun uploadAttachment(
+    suspend fun uploadAttachmentData(
         data: ByteArray,
         mimeType: String,
         filename: String
@@ -59,7 +65,7 @@ class ComposeRepository(
         jmapClient.uploadAttachment(data, mimeType, filename, accountId)
     }
 
-    suspend fun saveDraft(
+    suspend fun saveDraftData(
         from: String,
         to: List<String>,
         subject: String,
@@ -82,4 +88,33 @@ class ComposeRepository(
             accountId = accountId
         )
     }
+
+    // IComposeRepository
+
+    override suspend fun sendMessage(
+        from: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<DomainAttachment>,
+        draftId: String?
+    ): Result<String> = sendMessageData(from, to, subject, body, attachments.map { it.toData() }, draftId)
+
+    override suspend fun saveDraft(
+        from: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<DomainAttachment>,
+        draftId: String?
+    ): Result<String> = saveDraftData(from, to, subject, body, attachments.map { it.toData() }, draftId)
+
+    override suspend fun getEmailSubmissionStatus(submissionId: String): Result<DomainEmailSubmissionStatus> =
+        getEmailSubmissionStatusData(submissionId).map { it.toDomain() }
+
+    override suspend fun uploadAttachment(
+        data: ByteArray,
+        mimeType: String,
+        filename: String
+    ): Result<DomainAttachment> = uploadAttachmentData(data, mimeType, filename).map { it.toDomain() }
 }

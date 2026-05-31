@@ -6,8 +6,11 @@ import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.model.EmailAddress
 import com.mobilemail.data.model.MessageFlags
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.domain.model.toDomain
+import com.mobilemail.domain.repository.ISearchRepository
 import java.time.Instant
 import java.util.Date
+import com.mobilemail.domain.model.MessageListItem as DomainMessageListItem
 
 data class SearchParams(
     val query: String,
@@ -22,9 +25,9 @@ data class SearchParams(
 
 class SearchRepository(
     private val jmapClient: JmapApi
-) {
+) : ISearchRepository {
     data class SearchPage(
-        val items: List<MessageListItem>,
+        val items: List<DomainMessageListItem>,
         val nextPosition: Int?,
         val hasMore: Boolean
     )
@@ -48,7 +51,7 @@ class SearchRepository(
         senderQuery: String = "",
         dateRange: DateRange = DateRange.ANY,
         limit: Int = 50
-    ): Result<List<MessageListItem>> = searchMessagesPage(
+    ): Result<List<DomainMessageListItem>> = searchMessagesPage(
         params = SearchParams(
             query = query,
             folderId = folderId,
@@ -127,7 +130,7 @@ class SearchRepository(
 
         val items = mapEmailsToSearchItems(emails, params)
         SearchPage(
-            items = items,
+            items = items.map { it.toDomain() },
             nextPosition = (position + queryResult.ids.size).takeIf { queryResult.ids.size >= limit },
             hasMore = queryResult.ids.size >= limit
         )
@@ -240,4 +243,18 @@ class SearchRepository(
             DateRange.LAST_365_DAYS -> diff <= day * 365
         }
     }
+
+    // ISearchRepository
+
+    override suspend fun searchMessages(
+        query: String,
+        folderId: String?,
+        unreadOnly: Boolean,
+        hasAttachments: Boolean,
+        starredOnly: Boolean,
+        importantOnly: Boolean,
+        senderQuery: String,
+        limit: Int
+    ): Result<List<DomainMessageListItem>> =
+        searchMessages(query, folderId, unreadOnly, hasAttachments, starredOnly, importantOnly, senderQuery, DateRange.ANY, limit)
 }
