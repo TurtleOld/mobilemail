@@ -7,7 +7,8 @@ import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.common.fold
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.jmap.MailClientFactory
-import com.mobilemail.data.model.Attachment
+import com.mobilemail.domain.model.Attachment
+import com.mobilemail.domain.model.toData
 import com.mobilemail.data.repository.ComposeRepository
 import com.mobilemail.data.sync.OfflineAttachmentStorage
 import com.mobilemail.data.sync.OfflineQueueManager
@@ -167,7 +168,7 @@ class ComposeViewModel(
                     to = recipients,
                     subject = trimmedSubject,
                     body = trimmedBody,
-                    attachments = resolvedAttachments,
+                    attachments = resolvedAttachments.map { it.toData() },
                     draftId = _uiState.value.draftId
                 )
                 _uiState.value = _uiState.value.copy(
@@ -380,7 +381,7 @@ class ComposeViewModel(
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
     }
 
-    private fun resolveSubmissionNotification(status: com.mobilemail.data.model.EmailSubmissionStatus): NotificationState.Snackbar? {
+    private fun resolveSubmissionNotification(status: com.mobilemail.domain.model.EmailSubmissionStatus): NotificationState.Snackbar? {
         val text = status.lastStatusText
         if (!text.isNullOrBlank()) {
             return NotificationState.Snackbar(message = "Статус доставки: $text", duration = SnackbarDuration.Long)

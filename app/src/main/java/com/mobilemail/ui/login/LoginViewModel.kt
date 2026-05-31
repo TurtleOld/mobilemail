@@ -6,7 +6,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.JmapOAuthClient
-import com.mobilemail.data.model.Account
+import com.mobilemail.domain.model.Account
 import com.mobilemail.data.oauth.DeviceFlowClient
 import com.mobilemail.data.oauth.DeviceFlowState
 import com.mobilemail.data.oauth.OAuthDeviceFlowError

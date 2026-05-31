@@ -40,7 +40,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import android.util.Log
-import com.mobilemail.data.model.Attachment
+import com.mobilemail.domain.model.Attachment
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState

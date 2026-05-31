@@ -21,7 +21,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.mobilemail.data.model.MessageDetail
+import com.mobilemail.domain.model.MessageDetail
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.ui.messagedetail.ClickableTextWithLinks
 import com.mobilemail.ui.theme.EmailTypography

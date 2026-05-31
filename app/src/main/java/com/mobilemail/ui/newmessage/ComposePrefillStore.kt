@@ -1,7 +1,7 @@
 package com.mobilemail.ui.newmessage
 
-import com.mobilemail.data.model.EmailAddress
-import com.mobilemail.data.model.MessageDetail
+import com.mobilemail.domain.model.EmailAddress
+import com.mobilemail.domain.model.MessageDetail
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.UUID

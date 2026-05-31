@@ -31,10 +31,10 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
-import com.mobilemail.data.model.MessageDetail
+import com.mobilemail.domain.model.MessageDetail
 import com.mobilemail.ui.messagedetail.content.MessageBodySection
 import com.mobilemail.ui.messagedetail.content.openExternalUriSafely
-import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.ui.theme.EmailShapes
 import com.mobilemail.ui.theme.EmailTypography
 import com.mobilemail.ui.theme.ExtendedTheme
@@ -50,9 +50,9 @@ import java.util.Locale
 fun MessageDetailScreen(
     viewModel: MessageDetailViewModel,
     onBack: () -> Unit,
-    onReply: ((com.mobilemail.data.model.MessageDetail) -> Unit)? = null,
-    onReplyAll: ((com.mobilemail.data.model.MessageDetail) -> Unit)? = null,
-    onForward: ((com.mobilemail.data.model.MessageDetail) -> Unit)? = null,
+    onReply: ((com.mobilemail.domain.model.MessageDetail) -> Unit)? = null,
+    onReplyAll: ((com.mobilemail.domain.model.MessageDetail) -> Unit)? = null,
+    onForward: ((com.mobilemail.domain.model.MessageDetail) -> Unit)? = null,
     onMessageDeleted: ((String) -> Unit)? = null,
     onReadStatusChanged: ((String, Boolean) -> Unit)? = null,
     onMessageMoved: ((String) -> Unit)? = null,
@@ -277,7 +277,7 @@ fun MessageDetailScreen(
 
 @Composable
 fun MessageContent(
-    message: com.mobilemail.data.model.MessageDetail,
+    message: com.mobilemail.domain.model.MessageDetail,
     threadMessages: List<MessageListItem> = emptyList(),
     threadDetails: List<MessageDetail> = emptyList(),
     onThreadMessageClick: ((String) -> Unit)? = null,
@@ -644,7 +644,7 @@ private fun MessageEnvelope(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AttachmentItem(
-    attachment: com.mobilemail.data.model.Attachment,
+    attachment: com.mobilemail.domain.model.Attachment,
     onDownload: () -> Unit,
     onOpen: () -> Unit
 ) {

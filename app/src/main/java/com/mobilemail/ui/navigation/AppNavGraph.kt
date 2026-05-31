@@ -27,7 +27,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navOptions
 import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.data.local.database.AppDatabase
-import com.mobilemail.data.model.MessageDetail
+import com.mobilemail.domain.model.MessageDetail
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
