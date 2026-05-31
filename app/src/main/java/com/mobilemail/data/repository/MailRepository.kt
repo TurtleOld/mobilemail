@@ -6,27 +6,23 @@ import com.mobilemail.data.common.runCatchingSuspend
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.local.dao.FolderDao
 import com.mobilemail.data.local.dao.MessageDao
-import com.mobilemail.data.model.Account
-import com.mobilemail.data.model.EmailAddress
 import com.mobilemail.data.model.Folder
-import com.mobilemail.data.model.FolderRole
-import com.mobilemail.data.model.MessageBody
 import com.mobilemail.data.model.MessageDetail
-import com.mobilemail.data.model.MessageFlags
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.domain.model.Account as DomainAccount
+import com.mobilemail.data.repository.Mappers.toDomainAccount
+import com.mobilemail.data.repository.Mappers.toFolder
 import com.mobilemail.data.repository.Mappers.toFolderEntity
+import com.mobilemail.data.repository.Mappers.toMessageDetail
 import com.mobilemail.data.repository.Mappers.toMessageEntity
 import com.mobilemail.data.repository.Mappers.toMessageListItem
 import com.mobilemail.data.repository.Mappers.toMessageListItem as entityToMessageListItem
 import com.mobilemail.data.repository.AttachmentParser.parseAttachments
 import com.mobilemail.domain.model.toDomain
 import com.mobilemail.domain.repository.IMailRepository
-import com.mobilemail.domain.model.Account as DomainAccount
 import com.mobilemail.domain.model.Folder as DomainFolder
 import com.mobilemail.domain.model.MessageDetail as DomainMessageDetail
 import com.mobilemail.domain.model.MessageListItem as DomainMessageListItem
-import java.time.Instant
-import java.util.Date
 
 data class MessagePage(
     val items: List<DomainMessageListItem>,
@@ -62,24 +58,7 @@ class MailRepository(
         val mailboxes = client.getMailboxes(accountId)
         Log.d("MailRepository", "Получено папок: ${mailboxes.size}")
 
-        mailboxes.map { mailbox ->
-            val role = when (mailbox.role) {
-                "inbox" -> FolderRole.INBOX
-                "sent" -> FolderRole.SENT
-                "drafts" -> FolderRole.DRAFTS
-                "trash" -> FolderRole.TRASH
-                "spam", "junk" -> FolderRole.SPAM
-                "archive" -> FolderRole.ARCHIVE
-                else -> FolderRole.CUSTOM
-            }
-
-            Folder(
-                id = mailbox.id,
-                name = mailbox.name,
-                role = role,
-                unreadCount = mailbox.unreadEmails ?: 0
-            )
-        }
+        mailboxes.map { it.toFolder() }
     }
 
     suspend fun getMessagesPage(
@@ -220,50 +199,13 @@ class MailRepository(
 
     private fun mapEmailsToListItems(emails: List<com.mobilemail.data.model.JmapEmail>): List<MessageListItem> {
         return emails.map { email ->
-            val from = email.from?.firstOrNull()
-                ?: EmailAddress(email = "unknown")
-
-            val cachedMessage = messageCache[email.id]
-            val isUnread = if (cachedMessage != null) {
-                cachedMessage.flags.unread
+            val item = email.toMessageListItem(::parseAttachments)
+            val cachedIsUnread = messageCache[email.id]?.flags?.unread
+            if (cachedIsUnread != null) {
+                item.copy(flags = item.flags.copy(unread = cachedIsUnread))
             } else {
-                email.keywords?.get("\$seen") != true
+                item
             }
-
-            val isStarred = email.keywords?.get("\$flagged") == true
-            val isImportant = email.keywords?.get("\$important") == true
-            val hasRealAttachments = parseHasAttachments(email)
-
-            MessageListItem(
-                id = email.id,
-                threadId = email.threadId,
-                from = from,
-                subject = email.subject ?: "(без темы)",
-                snippet = email.preview ?: "",
-                date = parseDateSafe(email.receivedAt),
-                flags = MessageFlags(
-                    unread = isUnread,
-                    starred = isStarred,
-                    important = isImportant,
-                    hasAttachments = hasRealAttachments
-                ),
-                size = email.size
-            )
-        }
-    }
-
-    private fun parseHasAttachments(email: com.mobilemail.data.model.JmapEmail): Boolean {
-        if (email.bodyStructure == null) return email.hasAttachment == true
-        return try {
-            val bodyStructureJson = when (email.bodyStructure) {
-                is org.json.JSONObject -> email.bodyStructure
-                is org.json.JSONArray -> email.bodyStructure
-                else -> null
-            }
-            parseAttachments(bodyStructureJson).isNotEmpty()
-        } catch (e: Exception) {
-            Log.e("MailRepository", "Ошибка парсинга вложений для списка", e)
-            email.hasAttachment == true
         }
     }
 
@@ -296,97 +238,9 @@ class MailRepository(
         }
     }
 
-    private fun parseDateSafe(receivedAt: String?): Date {
-        return try {
-            Date.from(Instant.parse(receivedAt))
-        } catch (e: Exception) {
-            Date()
-        }
-    }
-
-    private fun parseEmailAddress(raw: com.mobilemail.data.model.EmailAddress): EmailAddress {
-        val name = if (raw.name == null || raw.name == "null" || raw.name.isBlank()) null else raw.name
-        val emailAddr = if (raw.email.isBlank() || raw.email == "null") "unknown" else raw.email
-        return EmailAddress(name, emailAddr)
-    }
-
-    private fun parseAddressList(list: List<com.mobilemail.data.model.EmailAddress>?): List<EmailAddress>? {
-        return list?.map { parseEmailAddress(it) }
-    }
-
-    private fun parseBodyContent(email: com.mobilemail.data.model.JmapEmail): Pair<String?, String?> {
-        var textBody: String? = null
-        var htmlBody: String? = null
-
-        email.textBody?.forEach { textPart: com.mobilemail.data.model.BodyPart ->
-            email.bodyValues?.get(textPart.partId)?.let { textBody = it.value }
-        }
-
-        email.htmlBody?.forEach { htmlPart: com.mobilemail.data.model.BodyPart ->
-            email.bodyValues?.get(htmlPart.partId)?.let { htmlBody = it.value }
-        }
-
-        if (textBody == null && htmlBody == null) {
-            email.bodyValues?.values?.firstOrNull()?.let {
-                val content = it.value.trim()
-                val looksLikeHtml = content.startsWith("<") &&
-                    (content.contains("<html") || content.contains("<body") ||
-                     content.contains("<div") || content.contains("<p"))
-                if (looksLikeHtml) htmlBody = it.value else textBody = it.value
-            }
-        }
-
-        return Pair(textBody, htmlBody)
-    }
-
-    private fun parseBodyStructureAttachments(email: com.mobilemail.data.model.JmapEmail): List<com.mobilemail.data.model.Attachment> {
-        if (email.bodyStructure == null) return emptyList()
-        return try {
-            val bodyStructureJson = when (email.bodyStructure) {
-                is org.json.JSONObject -> email.bodyStructure
-                is org.json.JSONArray -> email.bodyStructure
-                else -> null
-            }
-            if (bodyStructureJson != null) parseAttachments(bodyStructureJson) else emptyList()
-        } catch (e: Exception) {
-            Log.e("MailRepository", "Ошибка парсинга вложений для списка", e)
-            emptyList()
-        }
-    }
-
     private fun convertEmailToMessageDetail(email: com.mobilemail.data.model.JmapEmail): MessageDetail? {
         return try {
-            val fromRaw = email.from?.firstOrNull()
-            val from = if (fromRaw != null) parseEmailAddress(fromRaw) else EmailAddress(email = "unknown")
-
-            val (textBody, htmlBody) = parseBodyContent(email)
-            val attachments = parseBodyStructureAttachments(email)
-
-            val isUnread = email.keywords?.get("\$seen") != true
-            val isStarred = email.keywords?.get("\$flagged") == true
-            val isImportant = email.keywords?.get("\$important") == true
-
-            val toList = parseAddressList(email.to) ?: emptyList()
-
-            MessageDetail(
-                id = email.id,
-                threadId = email.threadId,
-                mailboxIds = email.mailboxIds.keys,
-                from = from,
-                to = toList,
-                cc = parseAddressList(email.cc),
-                bcc = parseAddressList(email.bcc),
-                subject = email.subject ?: "(без темы)",
-                date = parseDateSafe(email.receivedAt),
-                body = MessageBody(text = textBody, html = htmlBody),
-                attachments = attachments,
-                flags = MessageFlags(
-                    unread = isUnread,
-                    starred = isStarred,
-                    important = isImportant,
-                    hasAttachments = email.hasAttachment == true || attachments.isNotEmpty()
-                )
-            )
+            email.toMessageDetail(::parseAttachments)
         } catch (e: Exception) {
             Log.e("MailRepository", "Ошибка конвертации письма ${email.id}", e)
             null
@@ -443,45 +297,14 @@ class MailRepository(
         email: com.mobilemail.data.model.JmapEmail,
         cachedReadStatus: Boolean?
     ): MessageDetail {
-        val fromRaw = email.from?.firstOrNull()
-        val from = if (fromRaw != null) parseEmailAddress(fromRaw) else EmailAddress(email = "unknown")
-        Log.d("MailRepository", "Парсинг письма: from=${from.email}, to=${email.to?.size ?: 0}, cc=${email.cc?.size ?: 0}")
-
-        val (textBody, htmlBody) = parseBodyContent(email)
-        val attachments = parseBodyStructureAttachments(email)
-
-        val isUnread = email.keywords?.get("\$seen") != true
-        val isStarred = email.keywords?.get("\$flagged") == true
-        val isImportant = email.keywords?.get("\$important") == true
-        val toList = parseAddressList(email.to) ?: emptyList()
-
-        val finalIsUnread = if (cachedReadStatus != null) {
+        val from = email.from?.firstOrNull()?.email
+        Log.d("MailRepository", "Парсинг письма: from=$from, to=${email.to?.size ?: 0}, cc=${email.cc?.size ?: 0}")
+        if (cachedReadStatus != null) {
             Log.d("MailRepository", "Используем статус прочитанности из Room: $cachedReadStatus")
-            cachedReadStatus
         } else {
-            Log.d("MailRepository", "Используем статус прочитанности с сервера: $isUnread")
-            isUnread
+            Log.d("MailRepository", "Используем статус прочитанности с сервера")
         }
-
-        return MessageDetail(
-            id = email.id,
-            threadId = email.threadId,
-            mailboxIds = email.mailboxIds.keys,
-            from = from,
-            to = toList,
-            cc = parseAddressList(email.cc),
-            bcc = parseAddressList(email.bcc),
-            subject = email.subject ?: "(без темы)",
-            date = parseDateSafe(email.receivedAt),
-            body = MessageBody(text = textBody, html = htmlBody),
-            attachments = attachments,
-            flags = MessageFlags(
-                unread = finalIsUnread,
-                starred = isStarred,
-                important = isImportant,
-                hasAttachments = email.hasAttachment == true || attachments.isNotEmpty()
-            )
-        )
+        return email.toMessageDetail(::parseAttachments, cachedReadStatus)
     }
 
     private suspend fun getThreadMessagesData(threadId: String, limit: Int = 100): Result<List<MessageListItem>> = runCatchingSuspend {
@@ -510,28 +333,7 @@ class MailRepository(
             )
         )
 
-        emails.map { email ->
-            val from = email.from?.firstOrNull() ?: EmailAddress(email = "unknown")
-            val isUnread = email.keywords?.get("\$seen") != true
-            val isStarred = email.keywords?.get("\$flagged") == true
-            val isImportant = email.keywords?.get("\$important") == true
-
-            MessageListItem(
-                id = email.id,
-                threadId = email.threadId,
-                from = from,
-                subject = email.subject ?: "(без темы)",
-                snippet = email.preview ?: "",
-                date = parseDateSafe(email.receivedAt),
-                flags = MessageFlags(
-                    unread = isUnread,
-                    starred = isStarred,
-                    important = isImportant,
-                    hasAttachments = email.hasAttachment == true
-                ),
-                size = email.size
-            )
-        }.sortedBy { it.date }
+        emails.map { it.toMessageListItem(::parseAttachments) }.sortedBy { it.date }
     }
 
     private suspend fun getThreadDetailsData(threadId: String, limit: Int = 100): Result<List<MessageDetail>> = runCatchingSuspend {
@@ -607,18 +409,7 @@ class MailRepository(
             val account = session.accounts[id]
             account?.let {
                 Log.d("MailRepository", "Аккаунт найден: ${it.id}, имя: ${it.name}")
-                val resolvedEmail = when {
-                    !it.username.isNullOrBlank() -> it.username
-                    it.name.isNotBlank() && it.name.contains("@") -> it.name
-                    it.id.isNotBlank() && it.id.contains("@") -> it.id
-                    it.id.isNotBlank() -> it.id
-                    else -> it.name
-                }
-                DomainAccount(
-                    id = it.id,
-                    email = resolvedEmail,
-                    displayName = it.name.ifBlank { resolvedEmail }
-                )
+                it.toDomainAccount(id)
             } ?: error("AccountId не найден в сессии")
         } ?: error("AccountId не найден в сессии")
     }.onError { e ->
