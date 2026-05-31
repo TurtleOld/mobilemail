@@ -43,7 +43,11 @@ jobs:
             exit 1
           fi
 
-          APP_VERSION_CODE="${{ github.run_number }}"
+          # Derive versionCode from semver: 1.2.3 → 10203, 1.12.0 → 11200
+          MAJOR="$(echo "$APP_VERSION_NAME" | cut -d. -f1)"
+          MINOR="$(echo "$APP_VERSION_NAME" | cut -d. -f2)"
+          PATCH="$(echo "$APP_VERSION_NAME" | cut -d. -f3)"
+          APP_VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
 
           echo "APP_VERSION_NAME=$APP_VERSION_NAME" >> "$GITHUB_ENV"
           echo "APP_VERSION_CODE=$APP_VERSION_CODE" >> "$GITHUB_ENV"
@@ -94,32 +98,6 @@ jobs:
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
-      - name: Generate release notes from commits
-        env:
-          RELEASE_TAG: ${{ github.ref_name }}
-          GITHUB_SHA: ${{ github.sha }}
-        run: |
-          PREV_TAG="$(git describe --tags --abbrev=0 "${GITHUB_SHA}^" 2>/dev/null || true)"
-
-          {
-            echo "## Что вошло в релиз"
-            echo
-
-            if [ -n "$PREV_TAG" ]; then
-              echo "_Коммиты между ${PREV_TAG} и ${RELEASE_TAG}_"
-              echo
-              git log --pretty=format:'- %s (%h)' "${PREV_TAG}..${GITHUB_SHA}"
-            else
-              echo "_Предыдущий тег не найден, перечислены все доступные коммиты до ${RELEASE_TAG}_"
-              echo
-              git log --pretty=format:'- %s (%h)' "${GITHUB_SHA}"
-            fi
-          } > release-notes.md
-
-          if ! grep -q "^- " release-notes.md; then
-            echo "- Технический релиз без новых коммитов." >> release-notes.md
-          fi
-
       - name: Create GitHub release with APK
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -127,5 +105,5 @@ jobs:
         run: |
           gh release create "$RELEASE_TAG" \
             --title "MobileMail ${APP_VERSION_NAME}" \
-            --notes-file release-notes.md \
+            --generate-notes \
             app/build/outputs/apk/release/app-release.apk

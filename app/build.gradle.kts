@@ -58,7 +58,7 @@ android {
             version = release(36)
         }
         versionCode = optionalProp("VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = optionalProp("VERSION_NAME") ?: "1.1"
+        versionName = optionalProp("VERSION_NAME") ?: "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
         buildConfigField("String", "NTFY_URL", "\"${secret("NTFY_URL")}\"")
