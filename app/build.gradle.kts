@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.dokka)
     alias(libs.plugins.baselineprofile)
+    alias(libs.plugins.detekt)
 }
 
 fun secret(name: String): String {
@@ -103,7 +104,6 @@ android {
         }
 
         getByName("debug") {
-            signingConfig = signingConfigs.getByName("release")
         }
 
         create("internal") {
@@ -137,6 +137,12 @@ baselineProfile {
     warnings {
         maxAgpVersion = false
     }
+}
+
+detekt {
+    config.setFrom(rootProject.files("detekt.yml"))
+    buildUponDefaultConfig = true
+    allRules = false
 }
 
 dependencies {
