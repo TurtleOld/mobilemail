@@ -1,8 +1,10 @@
 package com.mobilemail.data.sync
 
 import android.app.Application
-import com.mobilemail.data.common.Result
 import com.mobilemail.data.common.fold
+import com.mobilemail.domain.common.Result
+import com.mobilemail.domain.common.Result.Success
+import com.mobilemail.domain.common.Result.Error
 import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.local.entity.PendingOperationEntity

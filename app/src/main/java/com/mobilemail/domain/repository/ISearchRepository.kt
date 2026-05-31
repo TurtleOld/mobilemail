@@ -1,7 +1,15 @@
 package com.mobilemail.domain.repository
 
-import com.mobilemail.data.common.Result
+import com.mobilemail.domain.common.Result
 import com.mobilemail.domain.model.MessageListItem
+
+enum class DateRange {
+    ANY,
+    TODAY,
+    LAST_7_DAYS,
+    LAST_30_DAYS,
+    LAST_365_DAYS
+}
 
 data class SearchQuery(
     val query: String,
@@ -11,6 +19,7 @@ data class SearchQuery(
     val starredOnly: Boolean = false,
     val importantOnly: Boolean = false,
     val senderQuery: String = "",
+    val dateRange: DateRange = DateRange.ANY,
     val limit: Int = 50
 )
 

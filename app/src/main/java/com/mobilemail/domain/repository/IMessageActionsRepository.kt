@@ -1,6 +1,6 @@
 package com.mobilemail.domain.repository
 
-import com.mobilemail.data.common.Result
+import com.mobilemail.domain.common.Result
 
 interface IMessageActionsRepository {
     suspend fun markAsRead(messageId: String, isRead: Boolean): Result<Boolean>

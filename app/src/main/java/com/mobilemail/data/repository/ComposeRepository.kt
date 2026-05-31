@@ -15,13 +15,13 @@ class ComposeRepository(
     private val jmapClient: JmapApi
 ) : IComposeRepository {
 
-    suspend fun sendMessageData(
+    override suspend fun sendMessage(
         from: String,
         to: List<String>,
         subject: String,
         body: String,
-        attachments: List<Attachment> = emptyList(),
-        draftId: String? = null
+        attachments: List<DomainAttachment>,
+        draftId: String?
     ): Result<String> = runCatchingSuspend {
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail
@@ -35,43 +35,19 @@ class ComposeRepository(
             to = to,
             subject = subject,
             body = body,
-            attachments = attachments,
+            attachments = attachments.map { it.toData() },
             draftId = draftId,
             accountId = accountId
         )
     }
 
-    suspend fun getEmailSubmissionStatusData(
-        submissionId: String
-    ): Result<EmailSubmissionStatus> = runCatchingSuspend {
-        val session = jmapClient.getSession()
-        val accountId = session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull()
-            ?: error("AccountId не найден")
-
-        jmapClient.getEmailSubmission(submissionId = submissionId, accountId = accountId)
-    }
-
-    suspend fun uploadAttachmentData(
-        data: ByteArray,
-        mimeType: String,
-        filename: String
-    ): Result<Attachment> = runCatchingSuspend {
-        val session = jmapClient.getSession()
-        val accountId = session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull()
-            ?: error("AccountId не найден")
-
-        jmapClient.uploadAttachment(data, mimeType, filename, accountId)
-    }
-
-    suspend fun saveDraftData(
+    override suspend fun saveDraft(
         from: String,
         to: List<String>,
         subject: String,
         body: String,
-        attachments: List<Attachment> = emptyList(),
-        draftId: String? = null
+        attachments: List<DomainAttachment>,
+        draftId: String?
     ): Result<String> = runCatchingSuspend {
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail
@@ -83,38 +59,33 @@ class ComposeRepository(
             to = to,
             subject = subject,
             body = body,
-            attachments = attachments,
+            attachments = attachments.map { it.toData() },
             draftId = draftId,
             accountId = accountId
         )
     }
 
-    // IComposeRepository
+    override suspend fun getEmailSubmissionStatus(
+        submissionId: String
+    ): Result<DomainEmailSubmissionStatus> = runCatchingSuspend {
+        val session = jmapClient.getSession()
+        val accountId = session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull()
+            ?: error("AccountId не найден")
 
-    override suspend fun sendMessage(
-        from: String,
-        to: List<String>,
-        subject: String,
-        body: String,
-        attachments: List<DomainAttachment>,
-        draftId: String?
-    ): Result<String> = sendMessageData(from, to, subject, body, attachments.map { it.toData() }, draftId)
-
-    override suspend fun saveDraft(
-        from: String,
-        to: List<String>,
-        subject: String,
-        body: String,
-        attachments: List<DomainAttachment>,
-        draftId: String?
-    ): Result<String> = saveDraftData(from, to, subject, body, attachments.map { it.toData() }, draftId)
-
-    override suspend fun getEmailSubmissionStatus(submissionId: String): Result<DomainEmailSubmissionStatus> =
-        getEmailSubmissionStatusData(submissionId).map { it.toDomain() }
+        jmapClient.getEmailSubmission(submissionId = submissionId, accountId = accountId).toDomain()
+    }
 
     override suspend fun uploadAttachment(
         data: ByteArray,
         mimeType: String,
         filename: String
-    ): Result<DomainAttachment> = uploadAttachmentData(data, mimeType, filename).map { it.toDomain() }
+    ): Result<DomainAttachment> = runCatchingSuspend {
+        val session = jmapClient.getSession()
+        val accountId = session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull()
+            ?: error("AccountId не найден")
+
+        jmapClient.uploadAttachment(data, mimeType, filename, accountId).toDomain()
+    }
 }
