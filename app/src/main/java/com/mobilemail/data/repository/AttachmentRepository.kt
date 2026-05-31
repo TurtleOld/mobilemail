@@ -11,7 +11,7 @@ class AttachmentRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
         
         jmapClient.downloadAttachment(blobId, accountId)
     }

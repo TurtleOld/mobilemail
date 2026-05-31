@@ -143,31 +143,6 @@ fun LoginScreen(
                         }
                     }
 
-                    if (uiState.requiresTwoFactor) {
-                        OutlinedTextField(
-                            value = uiState.totpCode,
-                            onValueChange = { newValue ->
-                                if (newValue.length <= 6 && newValue.all { it.isDigit() }) {
-                                    viewModel.updateTotpCode(newValue)
-                                }
-                            },
-                            label = { Text("Код двухфакторной авторизации") },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .semantics {
-                                    contentDescription = "Код двухфакторной авторизации"
-                                },
-                            singleLine = true,
-                            placeholder = { Text("000000") },
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.NumberPassword,
-                                imeAction = ImeAction.Done
-                            ),
-                            keyboardActions = KeyboardActions(onDone = { }),
-                            visualTransformation = PasswordVisualTransformation()
-                        )
-                    }
-
                     Button(
                         onClick = { viewModel.startOAuthLogin { } },
                         modifier = Modifier

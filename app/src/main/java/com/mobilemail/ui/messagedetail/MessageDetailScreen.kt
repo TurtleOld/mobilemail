@@ -152,7 +152,8 @@ fun MessageDetailScreen(
                             Icon(
                                 imageVector = Icons.Default.Star,
                                 contentDescription = if (message.flags.starred) "Убрать из избранного" else "Добавить в избранное",
-                                tint = if (message.flags.starred) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                                tint = if (message.flags.starred) MaterialTheme.colorScheme.primary
+                                else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                             )
                         }
                         // Кнопка пометки прочитанным
@@ -492,6 +493,7 @@ private fun ConversationHeader(
     }
 }
 
+@Suppress("UnusedParameter")
 @Composable
 private fun ConversationMessageCard(
     message: MessageDetail,

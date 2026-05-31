@@ -1,6 +1,5 @@
 package com.mobilemail.ui.common
 import android.util.Log
-import com.mobilemail.data.jmap.TwoFactorRequiredException
 import com.mobilemail.util.LogRedactor
 import java.io.IOException
 import java.net.ConnectException
@@ -28,129 +27,134 @@ object ErrorMapper {
         Log.e("ErrorMapper", "  Selected message for UI: $messageForLog")
 
         return when (root) {
-
-            is TwoFactorRequiredException -> AppError.TwoFactorRequired(
-                errorMessage = root.message ?: "Требуется двухфакторная авторизация",
-                errorCause = exception
-            )
-
             is SocketTimeoutException -> AppError.NetworkError(
                 errorMessage = if (messageForUi.isBlank()) "Timeout" else messageForUi,
                 errorCause = exception,
                 isTimeout = true
             )
-
             is UnknownHostException -> AppError.NetworkError(
                 errorMessage = "Сервер не найден (DNS). Проверьте адрес сервера и интернет.",
                 errorCause = exception,
                 isConnectionError = true
             )
-
             is ConnectException -> AppError.NetworkError(
                 errorMessage = "Не удалось подключиться к серверу. Проверьте адрес/порт и доступность сервера.",
                 errorCause = exception,
                 isConnectionError = true
             )
-
-            is UnknownServiceException -> {
-                val msg = rootMessage
-                if (msg.contains("CLEARTEXT", ignoreCase = true) ||
-                    msg.contains("cleartext", ignoreCase = true)
-                ) {
-                    AppError.NetworkError(
-                        errorMessage = "HTTP запрещён (cleartext). Используйте HTTPS или настройте network security config.",
-                        errorCause = exception,
-                        isConnectionError = true
-                    )
-                } else {
-                    AppError.NetworkError(
-                        errorMessage = if (messageForUi.isBlank()) "Ошибка сетевого сервиса" else messageForUi,
-                        errorCause = exception,
-                        isConnectionError = true
-                    )
-                }
-            }
-
+            is UnknownServiceException -> mapUnknownServiceException(rootMessage, messageForUi, exception)
             is SSLHandshakeException, is SSLPeerUnverifiedException -> AppError.NetworkError(
                 errorMessage = "Проблема TLS/сертификата сервера: ${shorten(rootMessage)}",
                 errorCause = exception,
                 isConnectionError = true
             )
+            is IOException -> mapIOException(rootMessage, messageForUi, exception)
+            else -> mapGenericException(rootMessage, fullMessage, messageForUi, exception)
+        }
+    }
 
-            is IOException -> {
-                val m = rootMessage.lowercase()
-                when {
-                    m.contains("timeout") -> AppError.NetworkError(
-                        errorMessage = "Timeout при подключении к серверу.",
-                        errorCause = exception,
-                        isTimeout = true
-                    )
+    private fun mapUnknownServiceException(
+        rootMessage: String,
+        messageForUi: String,
+        exception: Throwable
+    ): AppError {
+        return if (rootMessage.contains("CLEARTEXT", ignoreCase = true) ||
+            rootMessage.contains("cleartext", ignoreCase = true)
+        ) {
+            AppError.NetworkError(
+                errorMessage = "HTTP запрещён (cleartext). Используйте HTTPS или настройте network security config.",
+                errorCause = exception,
+                isConnectionError = true
+            )
+        } else {
+            AppError.NetworkError(
+                errorMessage = if (messageForUi.isBlank()) "Ошибка сетевого сервиса" else messageForUi,
+                errorCause = exception,
+                isConnectionError = true
+            )
+        }
+    }
 
-                    m.contains("refused") || m.contains("connection refused") -> AppError.NetworkError(
-                        errorMessage = "Сервер отказал в соединении (connection refused). Проверьте порт/файрвол/прокси.",
-                        errorCause = exception,
-                        isConnectionError = true
-                    )
+    private fun mapIOException(
+        rootMessage: String,
+        messageForUi: String,
+        exception: Throwable
+    ): AppError {
+        val m = rootMessage.lowercase()
+        return when {
+            m.contains("timeout") -> AppError.NetworkError(
+                errorMessage = "Timeout при подключении к серверу.",
+                errorCause = exception,
+                isTimeout = true
+            )
+            m.contains("refused") || m.contains("connection refused") -> AppError.NetworkError(
+                errorMessage = "Сервер отказал в соединении (connection refused). Проверьте порт/файрвол/прокси.",
+                errorCause = exception,
+                isConnectionError = true
+            )
+            m.contains("reset") || m.contains("connection reset") -> AppError.NetworkError(
+                errorMessage = "Соединение сброшено сервером (connection reset).",
+                errorCause = exception,
+                isConnectionError = true
+            )
+            else -> AppError.NetworkError(
+                errorMessage = if (messageForUi.isBlank()) "Сетевая ошибка: ${shorten(rootMessage)}" else messageForUi,
+                errorCause = exception,
+                isConnectionError = true
+            )
+        }
+    }
 
-                    m.contains("reset") || m.contains("connection reset") -> AppError.NetworkError(
-                        errorMessage = "Соединение сброшено сервером (connection reset).",
-                        errorCause = exception,
-                        isConnectionError = true
-                    )
+    private fun mapGenericException(
+        rootMessage: String,
+        fullMessage: String,
+        messageForUi: String,
+        exception: Throwable
+    ): AppError {
+        val combined = (rootMessage + " " + fullMessage).lowercase()
+        val statusCode = extractStatusCode(combined)
+        return mapByStatusCodeOrContent(statusCode, combined, messageForUi, exception)
+    }
 
-                    else -> AppError.NetworkError(
-                        errorMessage = if (messageForUi.isBlank()) "Сетевая ошибка: ${shorten(rootMessage)}" else messageForUi,
-                        errorCause = exception,
-                        isConnectionError = true
-                    )
-                }
-            }
-
-            else -> {
-                val combined = (rootMessage + " " + fullMessage).lowercase()
-                val statusCode = extractStatusCode(combined)
-
-                when {
-                    statusCode == 401 || statusCode == 403 -> AppError.AuthError(
-                        errorMessage = if (messageForUi.isBlank()) "Ошибка авторизации ($statusCode)" else messageForUi,
-                        errorCause = exception
-                    )
-
-                    statusCode == 404 -> AppError.ServerError(
-                        errorMessage = if (messageForUi.isBlank()) "Не найдено (404)" else messageForUi,
-                        errorCause = exception,
-                        statusCode = 404
-                    )
-
-                    statusCode != null && statusCode in 500..599 -> AppError.ServerError(
-                        errorMessage = if (messageForUi.isBlank()) "Ошибка сервера ($statusCode)" else messageForUi,
-                        errorCause = exception,
-                        statusCode = statusCode
-                    )
-
-                    combined.contains("parse") || combined.contains("json") -> AppError.ParseError(
-                        errorMessage = if (messageForUi.isBlank()) "Ошибка обработки данных (parse/json)" else messageForUi,
-                        errorCause = exception
-                    )
-
-                    combined.contains("timeout") -> AppError.NetworkError(
-                        errorMessage = if (messageForUi.isBlank()) "Timeout" else messageForUi,
-                        errorCause = exception,
-                        isTimeout = true
-                    )
-
-                    combined.contains("connect") -> AppError.NetworkError(
-                        errorMessage = if (messageForUi.isBlank()) "Ошибка соединения" else messageForUi,
-                        errorCause = exception,
-                        isConnectionError = true
-                    )
-
-                    else -> AppError.UnknownError(
-                        errorMessage = if (messageForUi.isBlank()) shorten(rootMessage) else messageForUi,
-                        errorCause = exception
-                    )
-                }
-            }
+    private fun mapByStatusCodeOrContent(
+        statusCode: Int?,
+        combined: String,
+        messageForUi: String,
+        exception: Throwable
+    ): AppError {
+        return when {
+            statusCode == 401 || statusCode == 403 -> AppError.AuthError(
+                errorMessage = if (messageForUi.isBlank()) "Ошибка авторизации ($statusCode)" else messageForUi,
+                errorCause = exception
+            )
+            statusCode == 404 -> AppError.ServerError(
+                errorMessage = if (messageForUi.isBlank()) "Не найдено (404)" else messageForUi,
+                errorCause = exception,
+                statusCode = 404
+            )
+            statusCode != null && statusCode in 500..599 -> AppError.ServerError(
+                errorMessage = if (messageForUi.isBlank()) "Ошибка сервера ($statusCode)" else messageForUi,
+                errorCause = exception,
+                statusCode = statusCode
+            )
+            combined.contains("parse") || combined.contains("json") -> AppError.ParseError(
+                errorMessage = if (messageForUi.isBlank()) "Ошибка обработки данных (parse/json)" else messageForUi,
+                errorCause = exception
+            )
+            combined.contains("timeout") -> AppError.NetworkError(
+                errorMessage = if (messageForUi.isBlank()) "Timeout" else messageForUi,
+                errorCause = exception,
+                isTimeout = true
+            )
+            combined.contains("connect") -> AppError.NetworkError(
+                errorMessage = if (messageForUi.isBlank()) "Ошибка соединения" else messageForUi,
+                errorCause = exception,
+                isConnectionError = true
+            )
+            else -> AppError.UnknownError(
+                errorMessage = if (messageForUi.isBlank()) shorten(rootMessage(exception)) else messageForUi,
+                errorCause = exception
+            )
         }
     }
 
@@ -163,6 +167,11 @@ object ErrorMapper {
             cur = next
         }
         return cur
+    }
+
+    private fun rootMessage(t: Throwable): String {
+        val root = rootCause(t)
+        return (root.message ?: root.javaClass.simpleName).orEmpty()
     }
 
     private fun chooseBestMessage(rootMessage: String, outerMessage: String): String {

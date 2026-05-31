@@ -16,15 +16,19 @@ object AppRoutes {
     const val SettingsPattern = "settings/{server}/{email}"
 
     fun messages(session: SavedSession): String {
-        return "messages/${encodeRouteSegment(session.server)}/${encodeRouteSegment(session.email)}/${encodeRouteSegment(session.accountId)}"
+        return "messages/${encodeRouteSegment(session.server)}" +
+            "/${encodeRouteSegment(session.email)}/${encodeRouteSegment(session.accountId)}"
     }
 
     fun message(session: SavedSession, messageId: String): String {
-        return "message/${encodeRouteSegment(session.server)}/${encodeRouteSegment(session.email)}/${encodeRouteSegment(session.accountId)}/${encodeRouteSegment(messageId)}"
+        return "message/${encodeRouteSegment(session.server)}" +
+            "/${encodeRouteSegment(session.email)}/${encodeRouteSegment(session.accountId)}" +
+            "/${encodeRouteSegment(messageId)}"
     }
 
     fun compose(server: String, email: String, accountId: String, draftToken: String = "-"): String {
-        return "compose/${encodeRouteSegment(server)}/${encodeRouteSegment(email)}/${encodeRouteSegment(accountId)}/${encodeRouteSegment(draftToken)}"
+        return "compose/${encodeRouteSegment(server)}/${encodeRouteSegment(email)}" +
+            "/${encodeRouteSegment(accountId)}/${encodeRouteSegment(draftToken)}"
     }
 
     fun search(server: String, email: String, accountId: String): String {

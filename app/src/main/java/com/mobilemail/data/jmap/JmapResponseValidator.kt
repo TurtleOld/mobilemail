@@ -13,7 +13,7 @@ internal object JmapResponseValidator {
                 val type = errorPayload?.optString("type").orEmpty().ifBlank { "unknown" }
                 val description =
                     errorPayload?.optString("description").orEmpty().ifBlank { "JMAP method error" }
-                throw Exception("JMAP method error [$type]: $description")
+                error("JMAP method error [$type]: $description")
             }
         }
         return response

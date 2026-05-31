@@ -1,7 +1,8 @@
 package com.mobilemail.ui.messagedetail.content
 
 private val disallowedHtmlTagsRegex = Regex(
-    pattern = "(?is)<(script|iframe|object|embed|base|meta|link)(?:\\s[^>]*)?>.*?</\\1\\s*>|<(script|iframe|object|embed|base|meta|link)(?:\\s[^>]*)?/?>"
+    pattern = "(?is)<(script|iframe|object|embed|base|meta|link)(?:\\s[^>]*)?>.*?</\\1\\s*>" +
+        "|<(script|iframe|object|embed|base|meta|link)(?:\\s[^>]*)?/?>"
 )
 
 private val inlineEventHandlersRegex = Regex(pattern = "(?i)\\son[a-z]+\\s*=\\s*(['\"]).*?\\1")

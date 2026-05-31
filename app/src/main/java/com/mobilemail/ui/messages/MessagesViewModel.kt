@@ -602,7 +602,8 @@ class MessagesViewModel(
                 } else {
                     _uiState.value = action.restoreState.copy(
                         notification = NotificationState.Snackbar(
-                            message = "Не удалось синхронизировать изменения: ${ErrorMapper.mapException(result.exception).getUserMessage()}",
+                            message = "Не удалось синхронизировать изменения: " +
+                                ErrorMapper.mapException(result.exception).getUserMessage(),
                             duration = SnackbarDuration.Long
                         )
                     )

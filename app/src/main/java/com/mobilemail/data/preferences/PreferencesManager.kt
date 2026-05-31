@@ -89,7 +89,8 @@ class PreferencesManager(private val context: Context) {
         val accountId = preferences[SAVED_ACCOUNT_ID_KEY]
         val isSaved = preferences[SESSION_SAVED_KEY] ?: false
 
-        return if (isSaved && !server.isNullOrBlank() && !email.isNullOrBlank() && !accountId.isNullOrBlank()) {
+        val hasCredentials = !server.isNullOrBlank() && !email.isNullOrBlank()
+        return if (isSaved && hasCredentials && !accountId.isNullOrBlank()) {
             SavedSession(server, email, accountId)
         } else {
             null

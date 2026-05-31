@@ -9,6 +9,17 @@ import com.mobilemail.data.model.MessageListItem
 import java.time.Instant
 import java.util.Date
 
+data class SearchParams(
+    val query: String,
+    val folderId: String? = null,
+    val unreadOnly: Boolean = false,
+    val hasAttachments: Boolean = false,
+    val starredOnly: Boolean = false,
+    val importantOnly: Boolean = false,
+    val senderQuery: String = "",
+    val dateRange: SearchRepository.DateRange = SearchRepository.DateRange.ANY
+)
+
 class SearchRepository(
     private val jmapClient: JmapApi
 ) {
@@ -26,6 +37,7 @@ class SearchRepository(
         LAST_365_DAYS
     }
 
+    @Suppress("LongParameterList")
     suspend fun searchMessages(
         query: String,
         folderId: String? = null,
@@ -37,18 +49,21 @@ class SearchRepository(
         dateRange: DateRange = DateRange.ANY,
         limit: Int = 50
     ): Result<List<MessageListItem>> = searchMessagesPage(
-        query = query,
-        folderId = folderId,
-        unreadOnly = unreadOnly,
-        hasAttachments = hasAttachments,
-        starredOnly = starredOnly,
-        importantOnly = importantOnly,
-        senderQuery = senderQuery,
-        dateRange = dateRange,
+        params = SearchParams(
+            query = query,
+            folderId = folderId,
+            unreadOnly = unreadOnly,
+            hasAttachments = hasAttachments,
+            starredOnly = starredOnly,
+            importantOnly = importantOnly,
+            senderQuery = senderQuery,
+            dateRange = dateRange
+        ),
         position = 0,
         limit = limit
     ).map { it.items }
 
+    @Suppress("LongParameterList")
     suspend fun searchMessagesPage(
         query: String,
         folderId: String? = null,
@@ -60,58 +75,46 @@ class SearchRepository(
         dateRange: DateRange = DateRange.ANY,
         position: Int = 0,
         limit: Int = 50
+    ): Result<SearchPage> = searchMessagesPage(
+        params = SearchParams(
+            query = query,
+            folderId = folderId,
+            unreadOnly = unreadOnly,
+            hasAttachments = hasAttachments,
+            starredOnly = starredOnly,
+            importantOnly = importantOnly,
+            senderQuery = senderQuery,
+            dateRange = dateRange
+        ),
+        position = position,
+        limit = limit
+    )
+
+    suspend fun searchMessagesPage(
+        params: SearchParams,
+        position: Int = 0,
+        limit: Int = 50
     ): Result<SearchPage> = runCatchingSuspend {
         val session = jmapClient.getSession()
-        val accountId = session.primaryAccounts?.mail 
+        val accountId = session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
-        
-        val trimmedQuery = query.trim()
-        val conditions = mutableListOf<Map<String, Any>>()
-        if (folderId != null) {
-            conditions += mapOf("inMailbox" to folderId)
-        }
-        if (unreadOnly) {
-            conditions += mapOf("notKeyword" to "\$seen")
-        }
-        if (hasAttachments) {
-            conditions += mapOf("hasAttachment" to true)
-        }
-        if (starredOnly) {
-            conditions += mapOf("hasKeyword" to "\$flagged")
-        }
-        if (importantOnly) {
-            conditions += mapOf("hasKeyword" to "\$important")
-        }
-        if (trimmedQuery.isNotBlank()) {
-            conditions += mapOf("text" to trimmedQuery)
-        }
-        if (senderQuery.isNotBlank()) {
-            conditions += mapOf("from" to senderQuery.trim())
-        }
-        val dateFrom = dateRangeStart(dateRange)
-        if (dateFrom != null) {
-            conditions += mapOf("after" to dateFrom)
-        }
-        val filter = when (conditions.size) {
-            0 -> null
-            1 -> conditions.first()
-            else -> mapOf("operator" to "AND", "conditions" to conditions)
-        }
+            ?: error("AccountId не найден")
+
+        val filter = buildFilter(params)
 
         val queryResult = jmapClient.queryEmails(
-            mailboxId = folderId,
+            mailboxId = params.folderId,
             accountId = accountId,
             position = position,
             limit = limit,
             filter = filter,
             searchText = null
         )
-        
+
         if (queryResult.ids.isEmpty()) {
             return@runCatchingSuspend SearchPage(emptyList(), null, false)
         }
-        
+
         val emails = jmapClient.getEmails(
             ids = queryResult.ids,
             accountId = accountId,
@@ -121,8 +124,39 @@ class SearchRepository(
                 "size", "keywords"
             )
         )
-        
-        val items = emails.map { email ->
+
+        val items = mapEmailsToSearchItems(emails, params)
+        SearchPage(
+            items = items,
+            nextPosition = (position + queryResult.ids.size).takeIf { queryResult.ids.size >= limit },
+            hasMore = queryResult.ids.size >= limit
+        )
+    }
+
+    private fun buildFilter(params: SearchParams): Map<String, Any>? {
+        val trimmedQuery = params.query.trim()
+        val conditions = mutableListOf<Map<String, Any>>()
+        if (params.folderId != null) conditions += mapOf("inMailbox" to params.folderId)
+        if (params.unreadOnly) conditions += mapOf("notKeyword" to "\$seen")
+        if (params.hasAttachments) conditions += mapOf("hasAttachment" to true)
+        if (params.starredOnly) conditions += mapOf("hasKeyword" to "\$flagged")
+        if (params.importantOnly) conditions += mapOf("hasKeyword" to "\$important")
+        if (trimmedQuery.isNotBlank()) conditions += mapOf("text" to trimmedQuery)
+        if (params.senderQuery.isNotBlank()) conditions += mapOf("from" to params.senderQuery.trim())
+        val dateFrom = dateRangeStart(params.dateRange)
+        if (dateFrom != null) conditions += mapOf("after" to dateFrom)
+        return when (conditions.size) {
+            0 -> null
+            1 -> conditions.first()
+            else -> mapOf("operator" to "AND", "conditions" to conditions)
+        }
+    }
+
+    private fun mapEmailsToSearchItems(
+        emails: List<com.mobilemail.data.model.JmapEmail>,
+        params: SearchParams
+    ): List<MessageListItem> {
+        return emails.map { email ->
             val from = email.from?.firstOrNull() ?: EmailAddress(email = "unknown")
             val isUnread = email.keywords?.get("\$seen") != true
             val isStarred = email.keywords?.get("\$flagged") == true
@@ -132,25 +166,8 @@ class SearchRepository(
             } catch (e: Exception) {
                 Date()
             }
-            
-            // Парсим вложения для точного определения их наличия
-            val hasRealAttachments = if (email.bodyStructure != null) {
-                try {
-                    val bodyStructureJson = when (email.bodyStructure) {
-                        is org.json.JSONObject -> email.bodyStructure
-                        is org.json.JSONArray -> email.bodyStructure
-                        else -> null
-                    }
-                    val parsedAttachments = com.mobilemail.data.repository.AttachmentParser.parseAttachments(bodyStructureJson)
-                    parsedAttachments.isNotEmpty()
-                } catch (e: Exception) {
-                    android.util.Log.e("SearchRepository", "Ошибка парсинга вложений для поиска", e)
-                    email.hasAttachment == true
-                }
-            } else {
-                email.hasAttachment == true
-            }
-            
+            val hasRealAttachments = resolveHasAttachments(email)
+
             MessageListItem(
                 id = email.id,
                 threadId = email.threadId,
@@ -167,16 +184,26 @@ class SearchRepository(
                 size = email.size
             )
         }.filter { message ->
-            matchesSender(message, senderQuery) &&
-                matchesDateRange(message.date, dateRange) &&
-                (!starredOnly || message.flags.starred) &&
-                (!importantOnly || message.flags.important)
+            matchesSender(message, params.senderQuery) &&
+                matchesDateRange(message.date, params.dateRange) &&
+                (!params.starredOnly || message.flags.starred) &&
+                (!params.importantOnly || message.flags.important)
         }
-        SearchPage(
-            items = items,
-            nextPosition = (position + queryResult.ids.size).takeIf { queryResult.ids.size >= limit },
-            hasMore = queryResult.ids.size >= limit
-        )
+    }
+
+    private fun resolveHasAttachments(email: com.mobilemail.data.model.JmapEmail): Boolean {
+        if (email.bodyStructure == null) return email.hasAttachment == true
+        return try {
+            val bodyStructureJson = when (email.bodyStructure) {
+                is org.json.JSONObject -> email.bodyStructure
+                is org.json.JSONArray -> email.bodyStructure
+                else -> null
+            }
+            AttachmentParser.parseAttachments(bodyStructureJson).isNotEmpty()
+        } catch (e: Exception) {
+            android.util.Log.e("SearchRepository", "Ошибка парсинга вложений для поиска", e)
+            email.hasAttachment == true
+        }
     }
 
     private fun matchesSender(message: MessageListItem, senderQuery: String): Boolean {

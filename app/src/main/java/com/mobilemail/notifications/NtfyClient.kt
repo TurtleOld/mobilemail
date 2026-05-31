@@ -32,7 +32,7 @@ class NtfyClient(context: Context) {
 
         httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
-                throw IllegalStateException("ntfy fetch failed: ${response.code}")
+                error("ntfy fetch failed: ${response.code}")
             }
 
             val body = response.body?.string().orEmpty()

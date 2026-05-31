@@ -53,6 +53,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
         _uiState.value = _uiState.value.copy(server = server)
     }
     
+    @Suppress("LongMethod")
     fun startOAuthLogin() {
         val state = _uiState.value
         

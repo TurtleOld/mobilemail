@@ -53,7 +53,6 @@ fun SearchScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pagingItems = viewModel.pagedResults.collectAsLazyPagingItems()
     val snackbarHostState = rememberFeatureScreenSnackbarHostState()
-    val scope = rememberCoroutineScope()
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var showFolderDialog by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
@@ -222,7 +221,8 @@ fun SearchScreen(
                     ) {
                         SearchSmartFilter.entries.forEach { filter ->
                             val isSelected = when (filter) {
-                                SearchSmartFilter.RECENT -> uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_7_DAYS
+                                SearchSmartFilter.RECENT ->
+                                    uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_7_DAYS
                                 SearchSmartFilter.UNREAD -> uiState.unreadOnly
                                 SearchSmartFilter.ATTACHMENTS -> uiState.hasAttachments
                                 SearchSmartFilter.STARRED -> uiState.starredOnly
@@ -294,8 +294,13 @@ fun SearchScreen(
                             )
                             DateFilterChip(
                                 label = "Год",
-                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_365_DAYS,
-                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.LAST_365_DAYS) }
+                                selected = uiState.dateRange ==
+                                    com.mobilemail.data.repository.SearchRepository.DateRange.LAST_365_DAYS,
+                                onClick = {
+                                    viewModel.setDateRange(
+                                        com.mobilemail.data.repository.SearchRepository.DateRange.LAST_365_DAYS
+                                    )
+                                }
                             )
                         }
 

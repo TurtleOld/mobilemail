@@ -30,7 +30,8 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
                         context = applicationContext,
                         payload = resolved.payload,
                         fallbackTitle = resolved.fallbackTitle,
-                        fallbackBody = resolved.payload.subject ?: applicationContext.getString(com.mobilemail.R.string.notification_new_message_body)
+                        fallbackBody = resolved.payload.subject
+                            ?: applicationContext.getString(com.mobilemail.R.string.notification_new_message_body)
                     )
                 }
             } catch (error: Exception) {

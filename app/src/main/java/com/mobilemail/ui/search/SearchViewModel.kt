@@ -8,6 +8,7 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.model.Folder
 import com.mobilemail.data.model.FolderRole

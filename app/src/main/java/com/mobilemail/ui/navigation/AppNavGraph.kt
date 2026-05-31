@@ -25,7 +25,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navOptions
-import com.mobilemail.data.jmap.JmapClient
 import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.model.MessageDetail
@@ -117,7 +116,6 @@ fun AppNavGraph(
                             clearAllTokens = { tokenStore.clearAllTokens() },
                             clearJmapCaches = {
                                 JmapOAuthClient.clearCache()
-                                JmapClient.clearCache()
                             }
                         )
                         navController.navigate(AppRoutes.Login) {
@@ -368,7 +366,6 @@ fun AppNavGraph(
                             }
                         )
                         JmapOAuthClient.clearCache()
-                        JmapClient.clearCache()
                         val target = nextSession?.let { AppRoutes.messages(it) } ?: AppRoutes.Login
                         navController.navigate(target) {
                             popUpTo(0) { inclusive = true }

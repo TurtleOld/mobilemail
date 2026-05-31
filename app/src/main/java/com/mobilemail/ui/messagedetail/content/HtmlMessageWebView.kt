@@ -42,7 +42,6 @@ internal fun HtmlMessageWebView(
     blockRemoteLoads: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val (minHeight, defaultHeight) = rememberHtmlWebViewHeightDefaults()
     var webViewHeight by remember(contentKey) { mutableStateOf(defaultHeight) }
     var isLoading by remember(contentKey) { mutableStateOf(true) }

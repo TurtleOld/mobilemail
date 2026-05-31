@@ -20,11 +20,9 @@ class ComposeRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
 
-        if (to.isEmpty()) {
-            throw IllegalArgumentException("Не указан получатель")
-        }
+        require(to.isNotEmpty()) { "Не указан получатель" }
 
         jmapClient.sendEmail(
             from = from,
@@ -43,7 +41,7 @@ class ComposeRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
 
         jmapClient.getEmailSubmission(submissionId = submissionId, accountId = accountId)
     }
@@ -56,7 +54,7 @@ class ComposeRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
 
         jmapClient.uploadAttachment(data, mimeType, filename, accountId)
     }
@@ -72,7 +70,7 @@ class ComposeRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
 
         jmapClient.saveDraft(
             from = from,

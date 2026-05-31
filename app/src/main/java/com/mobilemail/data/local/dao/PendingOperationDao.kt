@@ -15,7 +15,8 @@ interface PendingOperationDao {
     @Query("SELECT * FROM pending_operations WHERE status IN ('pending', 'failed') ORDER BY createdAt ASC LIMIT :limit")
     suspend fun getProcessable(limit: Int = 50): List<PendingOperationEntity>
 
-    @Query("UPDATE pending_operations SET status = :status, attemptCount = :attemptCount, lastError = :lastError, updatedAt = :updatedAt WHERE id = :id")
+    @Query("UPDATE pending_operations SET status = :status, attemptCount = :attemptCount, " +
+        "lastError = :lastError, updatedAt = :updatedAt WHERE id = :id")
     suspend fun updateStatus(id: Long, status: String, attemptCount: Int, lastError: String?, updatedAt: Long)
 
     @Query("DELETE FROM pending_operations WHERE id = :id")
@@ -45,7 +46,8 @@ interface PendingOperationDao {
     @Query("UPDATE pending_operations SET status = 'pending', lastError = NULL, updatedAt = :updatedAt WHERE id = :id")
     suspend fun retryById(id: Long, updatedAt: Long)
 
-    @Query("UPDATE pending_operations SET status = 'pending', lastError = NULL, updatedAt = :updatedAt WHERE status IN ('failed', 'permanent_failed')")
+    @Query("UPDATE pending_operations SET status = 'pending', lastError = NULL, " +
+        "updatedAt = :updatedAt WHERE status IN ('failed', 'permanent_failed')")
     suspend fun retryAllFailed(updatedAt: Long)
 
     @Query("DELETE FROM pending_operations WHERE status IN ('failed', 'permanent_failed')")

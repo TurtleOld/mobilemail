@@ -19,6 +19,14 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import javax.net.ssl.SSLException
 
+data class SendParams(
+    val to: List<String>,
+    val subject: String,
+    val body: String,
+    val attachments: List<com.mobilemail.data.model.Attachment>,
+    val draftId: String?
+)
+
 data class OfflineQueueSummary(
     val processedCount: Int,
     val failedCount: Int,
@@ -52,11 +60,7 @@ object OfflineQueueManager {
         server: String,
         email: String,
         accountId: String,
-        to: List<String>,
-        subject: String,
-        body: String,
-        attachments: List<Attachment>,
-        draftId: String?
+        params: SendParams
     ) {
         enqueue(
             application = application,
@@ -65,12 +69,12 @@ object OfflineQueueManager {
             email = email,
             accountId = accountId,
             payload = JSONObject().apply {
-                put("to", JSONArray().apply { to.forEach { put(it) } })
-                put("subject", subject)
-                put("body", body)
-                put("draftId", draftId)
+                put("to", JSONArray().apply { params.to.forEach { put(it) } })
+                put("subject", params.subject)
+                put("body", params.body)
+                put("draftId", params.draftId)
                 put("attachments", JSONArray().apply {
-                    attachments.forEach { attachment ->
+                    params.attachments.forEach { attachment ->
                         put(
                             JSONObject().apply {
                                 put("id", attachment.id)
@@ -87,6 +91,25 @@ object OfflineQueueManager {
         )
         OfflineQueueWorker.scheduleNow(application)
     }
+
+    @Suppress("LongParameterList")
+    suspend fun enqueueSend(
+        application: Application,
+        server: String,
+        email: String,
+        accountId: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<Attachment>,
+        draftId: String?
+    ) = enqueueSend(
+        application = application,
+        server = server,
+        email = email,
+        accountId = accountId,
+        params = SendParams(to = to, subject = subject, body = body, attachments = attachments, draftId = draftId)
+    )
 
     suspend fun enqueueDelete(
         application: Application,

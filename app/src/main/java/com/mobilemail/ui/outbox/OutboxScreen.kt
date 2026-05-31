@@ -152,7 +152,11 @@ private fun PendingOperationCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Text(operationTypeLabel(operation.type), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
                 Row {
                     if (operation.status == "failed" || operation.status == "permanent_failed") {

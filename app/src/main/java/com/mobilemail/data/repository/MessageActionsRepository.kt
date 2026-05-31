@@ -16,7 +16,7 @@ class MessageActionsRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
 
         requireSuccess(
             success = jmapClient.updateEmailKeywords(messageId, keywords, accountId),
@@ -36,7 +36,7 @@ class MessageActionsRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
         
         requireSuccess(
             success = jmapClient.deleteEmail(messageId, accountId),
@@ -52,7 +52,7 @@ class MessageActionsRepository(
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail 
             ?: session.accounts.keys.firstOrNull()
-            ?: throw IllegalStateException("AccountId не найден")
+            ?: error("AccountId не найден")
         
         requireSuccess(
             success = jmapClient.moveEmail(messageId, fromMailboxId, toMailboxId, accountId),

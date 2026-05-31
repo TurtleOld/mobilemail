@@ -4,6 +4,7 @@ import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import com.mobilemail.data.common.fold
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.data.repository.SearchParams
 import com.mobilemail.data.repository.SearchRepository
 
 data class SearchPagingParams(
@@ -24,14 +25,16 @@ class SearchPagingSource(
     override suspend fun load(loadParams: LoadParams<Int>): LoadResult<Int, MessageListItem> {
         val position = loadParams.key ?: 0
         return repository.searchMessagesPage(
-            query = params.query,
-            senderQuery = params.senderQuery,
-            folderId = params.folderId,
-            unreadOnly = params.unreadOnly,
-            hasAttachments = params.hasAttachments,
-            starredOnly = params.starredOnly,
-            importantOnly = params.importantOnly,
-            dateRange = params.dateRange,
+            params = SearchParams(
+                query = params.query,
+                folderId = params.folderId,
+                unreadOnly = params.unreadOnly,
+                hasAttachments = params.hasAttachments,
+                starredOnly = params.starredOnly,
+                importantOnly = params.importantOnly,
+                senderQuery = params.senderQuery,
+                dateRange = params.dateRange
+            ),
             position = position,
             limit = loadParams.loadSize
         ).fold(

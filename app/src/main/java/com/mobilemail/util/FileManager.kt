@@ -86,7 +86,7 @@ object FileManager {
             context.contentResolver.openOutputStream(it)?.use { out ->
                 out.write(data)
             }
-        } ?: throw IllegalStateException("Не удалось создать файл в Downloads")
+        } ?: error("Не удалось создать файл в Downloads")
         
         return uri
     }
