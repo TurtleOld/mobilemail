@@ -98,12 +98,11 @@ jobs:
           path: app/build/outputs/apk/release/app-release.apk
           if-no-files-found: error
 
-      - name: Create GitHub release with APK
+      - name: Upload APK to GitHub release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
-          gh release create "$RELEASE_TAG" \
-            --title "MobileMail ${APP_VERSION_NAME}" \
-            --generate-notes \
-            app/build/outputs/apk/release/app-release.apk
+          gh release upload "$RELEASE_TAG" \
+            app/build/outputs/apk/release/app-release.apk \
+            --clobber

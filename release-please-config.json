@@ -18,7 +18,7 @@
       "versioning": "default",
       "version-file": "version.txt",
       "changelog-path": "CHANGELOG.md",
-      "skip-github-release": true,
+      "skip-github-release": false,
       "include-component-in-tag": false,
       "tag-separator": ""
     }
