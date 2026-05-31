@@ -34,6 +34,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.domain.model.MessageListItem
+import com.mobilemail.domain.repository.DateRange
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import com.mobilemail.ui.theme.EmailShapes
@@ -222,7 +223,7 @@ fun SearchScreen(
                         SearchSmartFilter.entries.forEach { filter ->
                             val isSelected = when (filter) {
                                 SearchSmartFilter.RECENT ->
-                                    uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_7_DAYS
+                                    uiState.dateRange == DateRange.LAST_7_DAYS
                                 SearchSmartFilter.UNREAD -> uiState.unreadOnly
                                 SearchSmartFilter.ATTACHMENTS -> uiState.hasAttachments
                                 SearchSmartFilter.STARRED -> uiState.starredOnly
@@ -274,31 +275,31 @@ fun SearchScreen(
                         ) {
                             DateFilterChip(
                                 label = "Любая дата",
-                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.ANY,
-                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.ANY) }
+                                selected = uiState.dateRange == DateRange.ANY,
+                                onClick = { viewModel.setDateRange(DateRange.ANY) }
                             )
                             DateFilterChip(
                                 label = "Сегодня",
-                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.TODAY,
-                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.TODAY) }
+                                selected = uiState.dateRange == DateRange.TODAY,
+                                onClick = { viewModel.setDateRange(DateRange.TODAY) }
                             )
                             DateFilterChip(
                                 label = "7 дней",
-                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_7_DAYS,
-                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.LAST_7_DAYS) }
+                                selected = uiState.dateRange == DateRange.LAST_7_DAYS,
+                                onClick = { viewModel.setDateRange(DateRange.LAST_7_DAYS) }
                             )
                             DateFilterChip(
                                 label = "30 дней",
-                                selected = uiState.dateRange == com.mobilemail.data.repository.SearchRepository.DateRange.LAST_30_DAYS,
-                                onClick = { viewModel.setDateRange(com.mobilemail.data.repository.SearchRepository.DateRange.LAST_30_DAYS) }
+                                selected = uiState.dateRange == DateRange.LAST_30_DAYS,
+                                onClick = { viewModel.setDateRange(DateRange.LAST_30_DAYS) }
                             )
                             DateFilterChip(
                                 label = "Год",
                                 selected = uiState.dateRange ==
-                                    com.mobilemail.data.repository.SearchRepository.DateRange.LAST_365_DAYS,
+                                    DateRange.LAST_365_DAYS,
                                 onClick = {
                                     viewModel.setDateRange(
-                                        com.mobilemail.data.repository.SearchRepository.DateRange.LAST_365_DAYS
+                                        DateRange.LAST_365_DAYS
                                     )
                                 }
                             )

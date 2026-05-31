@@ -13,10 +13,11 @@ import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageListItem
-import com.mobilemail.data.paging.SearchPagingParams
 import com.mobilemail.data.paging.SearchPagingSource
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.SearchRepository
+import com.mobilemail.domain.repository.DateRange
+import com.mobilemail.domain.repository.SearchQuery
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.NotificationState
@@ -32,13 +33,13 @@ import kotlinx.coroutines.launch
 
 enum class SearchSmartFilter(
     val label: String,
-    val dateRange: SearchRepository.DateRange = SearchRepository.DateRange.ANY,
+    val dateRange: DateRange = DateRange.ANY,
     val unreadOnly: Boolean = false,
     val hasAttachments: Boolean = false,
     val starredOnly: Boolean = false,
     val importantOnly: Boolean = false
 ) {
-    RECENT("7 дней", dateRange = SearchRepository.DateRange.LAST_7_DAYS),
+    RECENT("7 дней", dateRange = DateRange.LAST_7_DAYS),
     UNREAD("Непрочитанные", unreadOnly = true),
     ATTACHMENTS("Вложения", hasAttachments = true),
     STARRED("Избранное", starredOnly = true),
@@ -54,7 +55,7 @@ data class SearchUiState(
     val hasAttachments: Boolean = false,
     val starredOnly: Boolean = false,
     val importantOnly: Boolean = false,
-    val dateRange: SearchRepository.DateRange = SearchRepository.DateRange.ANY,
+    val dateRange: DateRange = DateRange.ANY,
     val showAdvancedFilters: Boolean = false,
     val hasSearched: Boolean = false,
     val isLoading: Boolean = false,
@@ -63,7 +64,7 @@ data class SearchUiState(
 ) : FeatureScreenUiState {
     val hasActiveFilters: Boolean
         get() = selectedFolder != null || unreadOnly || hasAttachments || starredOnly || importantOnly ||
-            dateRange != SearchRepository.DateRange.ANY || senderQuery.isNotBlank()
+            dateRange != DateRange.ANY || senderQuery.isNotBlank()
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -80,11 +81,11 @@ class SearchViewModel(
     private lateinit var mailRepository: MailRepository
     private lateinit var searchRepository: SearchRepository
 
-    private val activeSearchParams = MutableStateFlow<SearchPagingParams?>(null)
+    private val activeSearchQuery = MutableStateFlow<SearchQuery?>(null)
 
-    val pagedResults: Flow<PagingData<MessageListItem>> = activeSearchParams
-        .flatMapLatest { params ->
-            if (params == null || !::searchRepository.isInitialized) {
+    val pagedResults: Flow<PagingData<MessageListItem>> = activeSearchQuery
+        .flatMapLatest { query ->
+            if (query == null || !::searchRepository.isInitialized) {
                 flowOf(PagingData.empty())
             } else {
                 Pager(
@@ -94,7 +95,7 @@ class SearchViewModel(
                         prefetchDistance = 10,
                         enablePlaceholders = false
                     ),
-                    pagingSourceFactory = { SearchPagingSource(searchRepository, params) }
+                    pagingSourceFactory = { SearchPagingSource(searchRepository, query) }
                 ).flow
             }
         }
@@ -175,7 +176,7 @@ class SearchViewModel(
         refreshIfNeeded()
     }
 
-    fun setDateRange(range: SearchRepository.DateRange) {
+    fun setDateRange(range: DateRange) {
         _uiState.value = _uiState.value.copy(dateRange = range)
         refreshIfNeeded()
     }
@@ -192,7 +193,7 @@ class SearchViewModel(
             hasAttachments = false,
             starredOnly = false,
             importantOnly = false,
-            dateRange = SearchRepository.DateRange.ANY
+            dateRange = DateRange.ANY
         )
         refreshIfNeeded()
     }
@@ -211,12 +212,12 @@ class SearchViewModel(
     fun performSearch() {
         val currentQuery = _uiState.value.query.trim()
         if (currentQuery.isBlank() && !_uiState.value.hasActiveFilters) {
-            activeSearchParams.value = null
+            activeSearchQuery.value = null
             _uiState.value = _uiState.value.copy(hasSearched = false)
             return
         }
 
-        activeSearchParams.value = SearchPagingParams(
+        activeSearchQuery.value = SearchQuery(
             query = currentQuery,
             senderQuery = _uiState.value.senderQuery,
             folderId = _uiState.value.selectedFolder?.id,
