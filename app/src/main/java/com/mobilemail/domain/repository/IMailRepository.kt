@@ -1,6 +1,6 @@
 package com.mobilemail.domain.repository
 
-import com.mobilemail.data.common.Result
+import com.mobilemail.domain.common.Result
 import com.mobilemail.domain.model.Account
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.MessageDetail

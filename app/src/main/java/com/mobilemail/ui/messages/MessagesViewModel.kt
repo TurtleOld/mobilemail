@@ -22,6 +22,7 @@ import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
+import com.mobilemail.domain.common.Result
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -548,9 +549,9 @@ class MessagesViewModel(
                     )
                 }
                 if (failure != null) {
-                    com.mobilemail.data.common.Result.Error(failure!!)
+                    Result.Error(failure!!)
                 } else {
-                    com.mobilemail.data.common.Result.Success(Unit)
+                    Result.Success(Unit)
                 }
             },
             onQueued = {
@@ -585,11 +586,11 @@ class MessagesViewModel(
     private suspend fun finalizePendingAction(action: PendingFolderAction) {
         pendingFolderAction = null
         when (val result = action.commit()) {
-            is com.mobilemail.data.common.Result.Success<*> -> {
+            is Result.Success<*> -> {
                 refreshFoldersPreservingSelection()
                 _uiState.value.selectedFolder?.let { loadMessages(it.id, reset = true) }
             }
-            is com.mobilemail.data.common.Result.Error -> {
+            is Result.Error -> {
                 if (OfflineQueueManager.shouldQueue(result.exception)) {
                     action.onQueued()
                     refreshFoldersPreservingSelection()
