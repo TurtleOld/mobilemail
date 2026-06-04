@@ -36,6 +36,7 @@ class OAuthTokenRefreshIntegrationTest {
                 authorizationEndpoint = null,
                 registrationEndpoint = null,
                 introspectionEndpoint = null,
+                revocationEndpoint = null,
                 grantTypesSupported = emptyList(),
                 responseTypesSupported = null,
                 scopesSupported = null
@@ -77,6 +78,7 @@ class OAuthTokenRefreshIntegrationTest {
                 authorizationEndpoint = null,
                 registrationEndpoint = null,
                 introspectionEndpoint = null,
+                revocationEndpoint = null,
                 grantTypesSupported = emptyList(),
                 responseTypesSupported = null,
                 scopesSupported = null
@@ -112,6 +114,7 @@ class OAuthTokenRefreshIntegrationTest {
                 authorizationEndpoint = null,
                 registrationEndpoint = null,
                 introspectionEndpoint = null,
+                revocationEndpoint = null,
                 grantTypesSupported = emptyList(),
                 responseTypesSupported = null,
                 scopesSupported = null

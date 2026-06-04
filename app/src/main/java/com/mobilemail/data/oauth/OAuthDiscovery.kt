@@ -29,6 +29,7 @@ data class OAuthServerMetadata(
     val authorizationEndpoint: String?,
     val registrationEndpoint: String?,
     val introspectionEndpoint: String?,
+    val revocationEndpoint: String?,
     val grantTypesSupported: List<String>,
     val responseTypesSupported: List<String>?,
     val scopesSupported: List<String>?
@@ -111,6 +112,14 @@ class OAuthDiscovery(private val client: OkHttpClient) {
             try {
                 val metadata = attemptSingleRequest(request, attempt)
                 return UrlAttemptResult(metadata = metadata)
+            } catch (e: OAuthException) {
+                if (e.statusCode == null) {
+                    // Validation errors (e.g. unsupported grant type) are terminal — no point retrying.
+                    return UrlAttemptResult(terminalError = e)
+                }
+                Log.w("OAuthDiscovery", "OAuthException при выполнении запроса, попытка ${attempt + 1}/3: ${e.message}")
+                lastException = e
+                if (attempt < 2) kotlinx.coroutines.delay((attempt + 1) * 1000L)
             } catch (e: java.io.EOFException) {
                 Log.w("OAuthDiscovery", "EOFException при выполнении запроса, попытка ${attempt + 1}/3")
                 lastException = e
@@ -173,6 +182,7 @@ class OAuthDiscovery(private val client: OkHttpClient) {
             val authorizationEndpoint = json.optNonBlankString("authorization_endpoint")
             val registrationEndpoint = json.optNonBlankString("registration_endpoint")
             val introspectionEndpoint = json.optNonBlankString("introspection_endpoint")
+            val revocationEndpoint = json.optNonBlankString("revocation_endpoint")
             val grantTypesSupported = json.optJsonArrayToList("grant_types_supported") ?: emptyList()
             val responseTypesSupported = json.optJsonArrayToList("response_types_supported")
             val scopesSupported = json.optJsonArrayToList("scopes_supported")
@@ -191,6 +201,7 @@ class OAuthDiscovery(private val client: OkHttpClient) {
                 authorizationEndpoint = authorizationEndpoint,
                 registrationEndpoint = registrationEndpoint,
                 introspectionEndpoint = introspectionEndpoint,
+                revocationEndpoint = revocationEndpoint,
                 grantTypesSupported = grantTypesSupported,
                 responseTypesSupported = responseTypesSupported,
                 scopesSupported = scopesSupported
@@ -218,6 +229,16 @@ class OAuthDiscovery(private val client: OkHttpClient) {
             Log.e("OAuthDiscovery", "Discovery response missing required fields!")
             Log.e("OAuthDiscovery", "Available fields: ${json.keys().asSequence().toList()}")
             throw OAuthException("Discovery response missing required OAuth endpoints", null)
+        }
+
+        val grantTypes = json.optJsonArrayToList("grant_types_supported") ?: emptyList()
+        val deviceCodeGrant = "urn:ietf:params:oauth:grant-type:device_code"
+        if (grantTypes.isNotEmpty() && deviceCodeGrant !in grantTypes) {
+            Log.e("OAuthDiscovery", "Server does not support device_code grant. Supported: $grantTypes")
+            throw OAuthException(
+                "Server does not support Device Authorization Grant (device_code). Supported grant types: ${grantTypes.joinToString()}",
+                null
+            )
         }
     }
 
