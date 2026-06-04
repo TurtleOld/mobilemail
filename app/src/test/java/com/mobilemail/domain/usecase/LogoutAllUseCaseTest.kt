@@ -41,7 +41,7 @@ class LogoutAllUseCaseTest {
         useCase(
             accountIds = listOf("acc-1"),
             unsubscribeTopic = { calls += "unsubscribe" },
-            revokeAllTokens = { throw RuntimeException("network error") },
+            revokeAllTokens = { throw java.io.IOException("network error") },
             clearAllSessions = { calls += "clearSessions" },
             clearAllTokens = { calls += "clearTokens" },
             clearJmapCaches = { calls += "clearCaches" }

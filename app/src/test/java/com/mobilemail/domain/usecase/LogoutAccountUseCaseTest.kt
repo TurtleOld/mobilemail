@@ -51,7 +51,7 @@ class LogoutAccountUseCaseTest {
         useCase(
             session = session,
             unsubscribeTopic = { calls += "unsubscribe" },
-            revokeTokens = { _, _ -> throw RuntimeException("network error") },
+            revokeTokens = { _, _ -> throw java.io.IOException("network error") },
             clearTokens = { _, _ -> calls += "clear" },
             removeSavedAccount = { _, _ -> null }
         )
