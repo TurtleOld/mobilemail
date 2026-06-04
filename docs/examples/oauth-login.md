@@ -1,14 +1,15 @@
 # Пример OAuth авторизации
 
-Полный пример реализации OAuth авторизации в Android приложении.
+Полный пример реализации OAuth авторизации в Android приложении. Имена классов в примере
+используют префикс `Sample`, чтобы не пересекаться с production-кодом приложения.
 
 ## ViewModel для OAuth авторизации
 
 ```kotlin
-class OAuthLoginViewModel(application: Application) : AndroidViewModel(application) {
+class SampleOAuthLoginViewModel(application: Application) : AndroidViewModel(application) {
     private val tokenStore = TokenStore(application)
-    private val _uiState = MutableStateFlow(OAuthLoginUiState())
-    val uiState: StateFlow<OAuthLoginUiState> = _uiState
+    private val _uiState = MutableStateFlow(SampleOAuthLoginUiState())
+    val uiState: StateFlow<SampleOAuthLoginUiState> = _uiState
     
     private var deviceFlowClient: DeviceFlowClient? = null
     
@@ -34,7 +35,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
                 
                 deviceFlowClient = DeviceFlowClient(
                     metadata = metadata,
-                    clientId = CLIENT_ID,
+                    clientId = BuildConfig.OAUTH_CLIENT_ID,
                     client = DeviceFlowClient.createClient()
                 )
                 
@@ -106,7 +107,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
             accountId = server,
             tokenStore = tokenStore,
             metadata = metadata,
-            clientId = CLIENT_ID
+            clientId = BuildConfig.OAUTH_CLIENT_ID
         )
         
         // Продолжить работу с приложением
@@ -132,7 +133,7 @@ class OAuthLoginViewModel(application: Application) : AndroidViewModel(applicati
 
 ```kotlin
 @Composable
-fun OAuthLoginScreen(viewModel: OAuthLoginViewModel) {
+fun SampleOAuthLoginScreen(viewModel: SampleOAuthLoginViewModel) {
     val uiState by viewModel.uiState.collectAsState()
     
     Column(

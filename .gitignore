@@ -30,6 +30,8 @@ dist/
 .env
 .env.local
 *.env.*
+!.env.example
+local.properties
 
 # Coverage reports
 coverage/
@@ -52,3 +54,4 @@ Thumbs.db
 
 app/src/google-services.json
 app/google-services.json
+.kilo*

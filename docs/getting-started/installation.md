@@ -43,16 +43,15 @@ APK файл будет находиться в `app/build/outputs/apk/debug/`
 
 ### Настройка OAuth Client ID
 
-Для работы OAuth авторизации необходимо настроить Client ID:
+Для работы OAuth авторизации необходимо настроить Client ID через переменную окружения
+или локальный `.env` файл:
 
-1. Получите Client ID от администратора почтового сервера
-2. Обновите константу в коде:
-
-```kotlin
-companion object {
-    private const val CLIENT_ID = "your-client-id"
-}
+```bash
+OAUTH_CLIENT_ID=your-client-id
 ```
+
+Можно скопировать `.env.example` в `.env` и заменить значение на Client ID,
+полученный от администратора почтового сервера. Файл `.env` игнорируется Git.
 
 ### Настройка сервера
 
