@@ -222,6 +222,16 @@ class OAuthDiscovery(private val client: OkHttpClient) {
             Log.e("OAuthDiscovery", "Available fields: ${json.keys().asSequence().toList()}")
             throw OAuthException("Discovery response missing required OAuth endpoints", null)
         }
+
+        val grantTypes = json.optJsonArrayToList("grant_types_supported") ?: emptyList()
+        val deviceCodeGrant = "urn:ietf:params:oauth:grant-type:device_code"
+        if (grantTypes.isNotEmpty() && deviceCodeGrant !in grantTypes) {
+            Log.e("OAuthDiscovery", "Server does not support device_code grant. Supported: $grantTypes")
+            throw OAuthException(
+                "Server does not support Device Authorization Grant (device_code). Supported grant types: ${grantTypes.joinToString()}",
+                null
+            )
+        }
     }
 
     private fun JSONObject.optNonBlankString(key: String): String? {
