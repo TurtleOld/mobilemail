@@ -85,7 +85,7 @@ jobs:
           NTFY_URL: ${{ secrets.NTFY_URL }}
           NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
           NTFY_TOPIC_PATTERN: ${{ secrets.NTFY_TOPIC_PATTERN }}
-          OAUTH_CLIENT_ID: ${{ OAUTH_CLIENT_ID }}
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
         run: |
           chmod +x ./gradlew
           ./gradlew --no-daemon --build-cache :app:assembleRelease \
