@@ -28,6 +28,7 @@ import androidx.navigation.navOptions
 import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.domain.model.MessageDetail
+import com.mobilemail.data.oauth.OAuthTokenRevocation
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
@@ -108,10 +109,20 @@ fun AppNavGraph(
                 },
                 onLogout = {
                     activityScope.launch {
-                        val accountIds = preferencesManager.getSavedAccounts().map { it.accountId }
+                        val savedAccounts = preferencesManager.getSavedAccounts()
                         logoutAllUseCase(
-                            accountIds = accountIds,
+                            accountIds = savedAccounts.map { it.accountId },
                             unsubscribeTopic = accountPushTopicsPort::unsubscribe,
+                            revokeAllTokens = {
+                                savedAccounts.forEach { session ->
+                                    revokeTokensBestEffort(
+                                        server = session.server,
+                                        email = session.email,
+                                        tokenStore = tokenStore,
+                                        preferencesManager = preferencesManager
+                                    )
+                                }
+                            },
                             clearAllSessions = { preferencesManager.clearAllSessions() },
                             clearAllTokens = { tokenStore.clearAllTokens() },
                             clearJmapCaches = {
@@ -358,6 +369,14 @@ fun AppNavGraph(
                         val nextSession = logoutAccountUseCase(
                             session = SavedSession(server, email, accountId),
                             unsubscribeTopic = accountPushTopicsPort::unsubscribe,
+                            revokeTokens = { targetServer, targetEmail ->
+                                revokeTokensBestEffort(
+                                    server = targetServer,
+                                    email = targetEmail,
+                                    tokenStore = tokenStore,
+                                    preferencesManager = preferencesManager
+                                )
+                            },
                             clearTokens = { targetServer, targetEmail ->
                                 tokenStore.clearTokens(targetServer, targetEmail)
                             },
@@ -536,6 +555,25 @@ fun AppNavGraph(
             )
         }
     }
+}
+
+private suspend fun revokeTokensBestEffort(
+    server: String,
+    email: String,
+    tokenStore: TokenStore,
+    preferencesManager: PreferencesManager
+) {
+    val stored = tokenStore.getTokens(server, email) ?: return
+    val metadata = preferencesManager.getOAuthMetadata(server) ?: return
+    val endpoint = metadata.revocationEndpoint ?: return
+
+    val revocation = OAuthTokenRevocation(
+        revocationEndpoint = endpoint,
+        clientId = server,
+        client = OAuthTokenRevocation.createClient()
+    )
+    stored.refreshToken?.let { revocation.revokeToken(it, "refresh_token") }
+    revocation.revokeToken(stored.accessToken, "access_token")
 }
 
 private fun replyDraftRoute(

@@ -29,6 +29,7 @@ data class OAuthServerMetadata(
     val authorizationEndpoint: String?,
     val registrationEndpoint: String?,
     val introspectionEndpoint: String?,
+    val revocationEndpoint: String?,
     val grantTypesSupported: List<String>,
     val responseTypesSupported: List<String>?,
     val scopesSupported: List<String>?
@@ -173,6 +174,7 @@ class OAuthDiscovery(private val client: OkHttpClient) {
             val authorizationEndpoint = json.optNonBlankString("authorization_endpoint")
             val registrationEndpoint = json.optNonBlankString("registration_endpoint")
             val introspectionEndpoint = json.optNonBlankString("introspection_endpoint")
+            val revocationEndpoint = json.optNonBlankString("revocation_endpoint")
             val grantTypesSupported = json.optJsonArrayToList("grant_types_supported") ?: emptyList()
             val responseTypesSupported = json.optJsonArrayToList("response_types_supported")
             val scopesSupported = json.optJsonArrayToList("scopes_supported")
@@ -191,6 +193,7 @@ class OAuthDiscovery(private val client: OkHttpClient) {
                 authorizationEndpoint = authorizationEndpoint,
                 registrationEndpoint = registrationEndpoint,
                 introspectionEndpoint = introspectionEndpoint,
+                revocationEndpoint = revocationEndpoint,
                 grantTypesSupported = grantTypesSupported,
                 responseTypesSupported = responseTypesSupported,
                 scopesSupported = scopesSupported

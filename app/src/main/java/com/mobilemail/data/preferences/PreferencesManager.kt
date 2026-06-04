@@ -192,6 +192,7 @@ class PreferencesManager(private val context: Context) {
             put("authorizationEndpoint", metadata.authorizationEndpoint)
             put("registrationEndpoint", metadata.registrationEndpoint)
             put("introspectionEndpoint", metadata.introspectionEndpoint)
+            put("revocationEndpoint", metadata.revocationEndpoint)
             put("grantTypesSupported", metadata.grantTypesSupported.joinToString(","))
             put("responseTypesSupported", metadata.responseTypesSupported?.joinToString(","))
             put("scopesSupported", metadata.scopesSupported?.joinToString(","))
@@ -215,6 +216,7 @@ class PreferencesManager(private val context: Context) {
             val authorizationEndpoint = json.optNullableString("authorizationEndpoint")
             val registrationEndpoint = json.optNullableString("registrationEndpoint")
             val introspectionEndpoint = json.optNullableString("introspectionEndpoint")
+            val revocationEndpoint = json.optNullableString("revocationEndpoint")
             val grantTypesSupported = json.optString("grantTypesSupported", "").split(",").filter { it.isNotBlank() }
             val responseTypesSupported = json.optNullableString("responseTypesSupported")?.split(",")?.filter { it.isNotBlank() }
             val scopesSupported = json.optNullableString("scopesSupported")?.split(",")?.filter { it.isNotBlank() }
@@ -230,6 +232,7 @@ class PreferencesManager(private val context: Context) {
                 authorizationEndpoint = authorizationEndpoint,
                 registrationEndpoint = registrationEndpoint,
                 introspectionEndpoint = introspectionEndpoint,
+                revocationEndpoint = revocationEndpoint,
                 grantTypesSupported = grantTypesSupported,
                 responseTypesSupported = responseTypesSupported,
                 scopesSupported = scopesSupported
