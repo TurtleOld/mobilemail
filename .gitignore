@@ -30,6 +30,7 @@ dist/
 .env
 .env.local
 *.env.*
+local.properties
 
 # Coverage reports
 coverage/
