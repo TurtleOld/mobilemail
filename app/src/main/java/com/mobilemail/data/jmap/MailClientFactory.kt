@@ -1,6 +1,7 @@
 package com.mobilemail.data.jmap
 
 import android.app.Application
+import com.mobilemail.BuildConfig
 import com.mobilemail.data.oauth.OAuthDiscovery
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
@@ -31,7 +32,7 @@ object MailClientFactory {
             accountId = accountId,
             tokenStore = tokenStore,
             metadata = metadata,
-            clientId = "mail-client"
+            clientId = BuildConfig.OAUTH_CLIENT_ID
         )
     }
 }

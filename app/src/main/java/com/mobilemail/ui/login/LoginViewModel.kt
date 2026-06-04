@@ -5,6 +5,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.BuildConfig
 import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.domain.model.Account
 import com.mobilemail.data.oauth.DeviceFlowClient
@@ -51,9 +52,7 @@ class LoginViewModel(
     private var deviceFlowClient: DeviceFlowClient? = null
     private var discovery: OAuthDiscovery? = null
 
-    companion object {
-        private const val CLIENT_ID = "mail-client"
-    }
+    private val oauthClientId = BuildConfig.OAUTH_CLIENT_ID
 
     init {
         if (!autoLoginEnabled) {
@@ -159,7 +158,7 @@ class LoginViewModel(
             accountId = accountId,
             tokenStore = tokenStore,
             metadata = metadata,
-            clientId = CLIENT_ID
+            clientId = oauthClientId
         )
 
         val repository = MailRepository(jmapClient)
@@ -290,7 +289,7 @@ class LoginViewModel(
     private fun setupDeviceFlow(metadata: OAuthServerMetadata) {
         deviceFlowClient = DeviceFlowClient(
             metadata = metadata,
-            clientId = CLIENT_ID,
+            clientId = oauthClientId,
             client = DeviceFlowClient.createClient()
         )
     }
@@ -371,7 +370,7 @@ class LoginViewModel(
                 accountId = tempEmail,
                 tokenStore = tokenStore,
                 metadata = metadata,
-                clientId = CLIENT_ID
+                clientId = oauthClientId
             )
 
             val repository = MailRepository(jmapClient)

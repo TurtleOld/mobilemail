@@ -35,7 +35,7 @@ class SampleOAuthLoginViewModel(application: Application) : AndroidViewModel(app
                 
                 deviceFlowClient = DeviceFlowClient(
                     metadata = metadata,
-                    clientId = CLIENT_ID,
+                    clientId = BuildConfig.OAUTH_CLIENT_ID,
                     client = DeviceFlowClient.createClient()
                 )
                 
@@ -107,7 +107,7 @@ class SampleOAuthLoginViewModel(application: Application) : AndroidViewModel(app
             accountId = server,
             tokenStore = tokenStore,
             metadata = metadata,
-            clientId = CLIENT_ID
+            clientId = BuildConfig.OAUTH_CLIENT_ID
         )
         
         // Продолжить работу с приложением

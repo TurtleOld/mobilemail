@@ -998,7 +998,6 @@ $dokka.location:com.mobilemail.ui.login/LoginUiState/oauthUserCode/#/PointingToD
 $dokka.location:com.mobilemail.ui.login/LoginUiState/oauthVerificationUri/#/PointingToDeclaration/-mobile-mail/com.mobilemail.ui.login/-login-ui-state/oauth-verification-uri.html
 $dokka.location:com.mobilemail.ui.login/LoginUiState/oauthVerificationUriComplete/#/PointingToDeclaration/-mobile-mail/com.mobilemail.ui.login/-login-ui-state/oauth-verification-uri-complete.html
 $dokka.location:com.mobilemail.ui.login/LoginUiState/server/#/PointingToDeclaration/-mobile-mail/com.mobilemail.ui.login/-login-ui-state/server.html
-$dokka.location:com.mobilemail.ui.login/LoginViewModel.Companion///PointingToDeclaration/-mobile-mail/com.mobilemail.ui.login/-login-view-model/-companion/index.html
 $dokka.location:com.mobilemail.ui.login/LoginViewModel///PointingToDeclaration/-mobile-mail/com.mobilemail.ui.login/-login-view-model/index.html
 $dokka.location:com.mobilemail.ui.login/LoginViewModel/LoginViewModel/#android.app.Application#kotlin.Boolean/PointingToDeclaration/-mobile-mail/com.mobilemail.ui.login/-login-view-model/-login-view-model.html
 $dokka.location:com.mobilemail.ui.login/LoginViewModel/cancelOAuthLogin/#/PointingToDeclaration/-mobile-mail/com.mobilemail.ui.login/-login-view-model/cancel-o-auth-login.html

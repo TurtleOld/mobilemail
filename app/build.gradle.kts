@@ -91,6 +91,7 @@ android {
         buildConfigField("String", "NTFY_URL", "\"${optionalSecret("NTFY_URL") ?: ""}\"")
         buildConfigField("String", "NTFY_TOKEN", "\"${optionalSecret("NTFY_TOKEN") ?: ""}\"")
         buildConfigField("String", "NTFY_TOPIC_PATTERN", "\"${optionalSecret("NTFY_TOPIC_PATTERN") ?: ""}\"")
+        buildConfigField("String", "OAUTH_CLIENT_ID", "\"${secret("OAUTH_CLIENT_ID")}\"")
     }
 
     buildFeatures {
