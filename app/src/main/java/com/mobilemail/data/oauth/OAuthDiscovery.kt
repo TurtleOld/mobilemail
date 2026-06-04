@@ -112,6 +112,14 @@ class OAuthDiscovery(private val client: OkHttpClient) {
             try {
                 val metadata = attemptSingleRequest(request, attempt)
                 return UrlAttemptResult(metadata = metadata)
+            } catch (e: OAuthException) {
+                if (e.statusCode == null) {
+                    // Validation errors (e.g. unsupported grant type) are terminal — no point retrying.
+                    return UrlAttemptResult(terminalError = e)
+                }
+                Log.w("OAuthDiscovery", "OAuthException при выполнении запроса, попытка ${attempt + 1}/3: ${e.message}")
+                lastException = e
+                if (attempt < 2) kotlinx.coroutines.delay((attempt + 1) * 1000L)
             } catch (e: java.io.EOFException) {
                 Log.w("OAuthDiscovery", "EOFException при выполнении запроса, попытка ${attempt + 1}/3")
                 lastException = e
