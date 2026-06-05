@@ -84,7 +84,7 @@ class JmapOAuthClient(
         .writeTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .connectionPool(ConnectionPool(2, 2, TimeUnit.MINUTES))
-        .protocols(listOf(Protocol.HTTP_1_1))
+        .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
         .build()
 
     private val tokenRefresh = OAuthTokenRefresh(metadata, clientId, client)
