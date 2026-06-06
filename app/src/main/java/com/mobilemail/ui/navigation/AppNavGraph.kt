@@ -32,6 +32,7 @@ import com.mobilemail.data.oauth.OAuthTokenRevocation
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
+import com.mobilemail.data.preferences.SwipeAction
 import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.domain.usecase.HandleMessagesStartupUseCase
 import com.mobilemail.domain.usecase.LogoutAccountUseCase
@@ -204,6 +205,8 @@ fun AppNavGraph(
             val accountId = routeArgs.accountId
             val currentSession = remember(server, email, accountId) { SavedSession(server, email, accountId) }
             val savedAccounts by preferencesManager.savedAccounts.collectAsState(initial = emptyList())
+            val swipeRightAction by preferencesManager.swipeRightAction.collectAsState(initial = SwipeAction.ARCHIVE)
+            val swipeLeftAction  by preferencesManager.swipeLeftAction.collectAsState(initial = SwipeAction.DELETE)
 
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
@@ -358,12 +361,11 @@ fun AppNavGraph(
                         }
                     }
                 },
-                onOutboxClick = {
-                    navController.navigate(AppRoutes.outbox(server, email, accountId))
-                },
                 onSettingsClick = {
                     navController.navigate(AppRoutes.settings(server, email))
                 },
+                swipeRightAction = swipeRightAction,
+                swipeLeftAction = swipeLeftAction,
                 onLogout = {
                     activityScope.launch {
                         val nextSession = logoutAccountUseCase(

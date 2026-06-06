@@ -24,6 +24,8 @@ class PreferencesManager(private val context: Context) {
         private val SAVED_ACCOUNTS_KEY = stringPreferencesKey("saved_accounts")
         private val NOTIFICATION_PERMISSION_REQUESTED_KEY = booleanPreferencesKey("notification_permission_requested")
         private val BLOCK_REMOTE_CONTENT_KEY = booleanPreferencesKey("block_remote_content")
+        private val SWIPE_RIGHT_ACTION_KEY = stringPreferencesKey("swipe_right_action")
+        private val SWIPE_LEFT_ACTION_KEY  = stringPreferencesKey("swipe_left_action")
     }
 
     private fun signatureKey(server: String, email: String) =
@@ -169,6 +171,26 @@ class PreferencesManager(private val context: Context) {
         }
     }
 
+    val swipeRightAction: Flow<SwipeAction> = context.dataStore.data.map { preferences ->
+        preferences[SWIPE_RIGHT_ACTION_KEY]
+            ?.let { runCatching { SwipeAction.valueOf(it) }.getOrNull() }
+            ?: SwipeAction.ARCHIVE
+    }
+
+    val swipeLeftAction: Flow<SwipeAction> = context.dataStore.data.map { preferences ->
+        preferences[SWIPE_LEFT_ACTION_KEY]
+            ?.let { runCatching { SwipeAction.valueOf(it) }.getOrNull() }
+            ?: SwipeAction.DELETE
+    }
+
+    suspend fun setSwipeRightAction(action: SwipeAction) {
+        context.dataStore.edit { it[SWIPE_RIGHT_ACTION_KEY] = action.name }
+    }
+
+    suspend fun setSwipeLeftAction(action: SwipeAction) {
+        context.dataStore.edit { it[SWIPE_LEFT_ACTION_KEY] = action.name }
+    }
+
     fun signature(server: String, email: String): Flow<String?> = context.dataStore.data.map { preferences ->
         preferences[signatureKey(server, email)]
     }
@@ -284,4 +306,15 @@ private fun serializeAccounts(accounts: List<SavedSession>): String {
 private fun JSONObject.optNullableString(key: String): String? {
     val value = optString(key, "")
     return value.takeIf { it.isNotBlank() }
+}
+
+enum class SwipeAction {
+    ARCHIVE, DELETE, MARK_READ, NONE;
+
+    fun label(): String = when (this) {
+        ARCHIVE    -> "Архивировать"
+        DELETE     -> "Удалить"
+        MARK_READ  -> "Отметить прочитанным"
+        NONE       -> "Ничего"
+    }
 }

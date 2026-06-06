@@ -16,8 +16,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Card
+import com.mobilemail.data.preferences.SwipeAction
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,10 +63,16 @@ fun SettingsScreen(
     val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
     var signature by remember { mutableStateOf("") }
     var blockRemoteContent by remember { mutableStateOf(true) }
+    var swipeRightAction by remember { mutableStateOf(SwipeAction.ARCHIVE) }
+    var swipeLeftAction  by remember { mutableStateOf(SwipeAction.DELETE) }
 
     LaunchedEffect(server, email) {
         signature = preferencesManager.getSignature(server, email).orEmpty()
         blockRemoteContent = preferencesManager.isBlockRemoteContentEnabled()
+        preferencesManager.swipeRightAction.collect { swipeRightAction = it }
+    }
+    LaunchedEffect(Unit) {
+        preferencesManager.swipeLeftAction.collect { swipeLeftAction = it }
     }
 
     Scaffold(
@@ -98,9 +108,19 @@ fun SettingsScreen(
                         blockRemoteContent = blockRemoteContent,
                         onBlockRemoteContentChange = { enabled ->
                             blockRemoteContent = enabled
-                            scope.launch {
-                                preferencesManager.setBlockRemoteContent(enabled)
-                            }
+                            scope.launch { preferencesManager.setBlockRemoteContent(enabled) }
+                        }
+                    )
+                    GesturesSection(
+                        swipeRightAction = swipeRightAction,
+                        swipeLeftAction = swipeLeftAction,
+                        onSwipeRightChange = { action ->
+                            swipeRightAction = action
+                            scope.launch { preferencesManager.setSwipeRightAction(action) }
+                        },
+                        onSwipeLeftChange = { action ->
+                            swipeLeftAction = action
+                            scope.launch { preferencesManager.setSwipeLeftAction(action) }
                         }
                     )
                 }
@@ -132,9 +152,19 @@ fun SettingsScreen(
                     blockRemoteContent = blockRemoteContent,
                     onBlockRemoteContentChange = { enabled ->
                         blockRemoteContent = enabled
-                        scope.launch {
-                            preferencesManager.setBlockRemoteContent(enabled)
-                        }
+                        scope.launch { preferencesManager.setBlockRemoteContent(enabled) }
+                    }
+                )
+                GesturesSection(
+                    swipeRightAction = swipeRightAction,
+                    swipeLeftAction = swipeLeftAction,
+                    onSwipeRightChange = { action ->
+                        swipeRightAction = action
+                        scope.launch { preferencesManager.setSwipeRightAction(action) }
+                    },
+                    onSwipeLeftChange = { action ->
+                        swipeLeftAction = action
+                        scope.launch { preferencesManager.setSwipeLeftAction(action) }
                     }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
@@ -262,6 +292,83 @@ private fun SecuritySection(
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun GesturesSection(
+    swipeRightAction: SwipeAction,
+    swipeLeftAction: SwipeAction,
+    onSwipeRightChange: (SwipeAction) -> Unit,
+    onSwipeLeftChange: (SwipeAction) -> Unit,
+) {
+    Text(
+        text = "Жесты",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium
+    )
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            SwipeActionPickerRow(
+                label = "Свайп вправо →",
+                selected = swipeRightAction,
+                onChange = onSwipeRightChange,
+            )
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            SwipeActionPickerRow(
+                label = "← Свайп влево",
+                selected = swipeLeftAction,
+                onChange = onSwipeLeftChange,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SwipeActionPickerRow(
+    label: String,
+    selected: SwipeAction,
+    onChange: (SwipeAction) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = true }
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = selected.label(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            SwipeAction.entries.forEach { action ->
+                DropdownMenuItem(
+                    text = { Text(action.label()) },
+                    onClick = {
+                        onChange(action)
+                        expanded = false
+                    },
+                    trailingIcon = if (action == selected) {
+                        { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                    } else null
+                )
+            }
         }
     }
 }

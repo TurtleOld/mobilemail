@@ -21,13 +21,13 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.MarkEmailRead
 import androidx.compose.material.icons.filled.MarkEmailUnread
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -62,6 +62,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.preferences.SavedSession
+import com.mobilemail.data.preferences.SwipeAction
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import kotlinx.coroutines.launch
@@ -83,9 +84,10 @@ fun MessagesScreen(
     onComposeClick: () -> Unit = {},
     onAddAccountClick: () -> Unit = {},
     onSwitchAccount: (SavedSession) -> Unit = {},
-    onOutboxClick: () -> Unit = {},
     onSettingsClick: () -> Unit = {},
-    onLogout: () -> Unit = {}
+    onLogout: () -> Unit = {},
+    swipeRightAction: SwipeAction = SwipeAction.ARCHIVE,
+    swipeLeftAction: SwipeAction = SwipeAction.DELETE,
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pagingItems = viewModel.pagedMessages.collectAsLazyPagingItems()
@@ -172,10 +174,6 @@ fun MessagesScreen(
                     onSwitchAccount(account)
                 },
                 onCompose = onComposeClick,
-                onQueue = {
-                    if (!isExpandedLayout) scope.launch { drawerState.close() }
-                    onOutboxClick()
-                },
                 onSettings = onSettingsClick,
             )
         } else {
@@ -184,8 +182,6 @@ fun MessagesScreen(
                 activeAccountEmail = activeAccountEmail,
                 folders = uiState.folders,
                 selectedFolder = uiState.selectedFolder,
-                pendingQueueCount = uiState.pendingQueueCount,
-                queueAttentionCount = uiState.queueAttentionCount,
                 onComposeClick = onComposeClick,
                 onAddAccountClick = {
                     if (!isExpandedLayout) scope.launch { drawerState.close() }
@@ -194,10 +190,6 @@ fun MessagesScreen(
                 onSwitchAccount = { account ->
                     if (!isExpandedLayout) scope.launch { drawerState.close() }
                     onSwitchAccount(account)
-                },
-                onOutboxClick = {
-                    if (!isExpandedLayout) scope.launch { drawerState.close() }
-                    onOutboxClick()
                 },
                 onSettingsClick = onSettingsClick,
                 onFolderSelected = { folder ->
@@ -222,6 +214,7 @@ fun MessagesScreen(
             },
             topBar = {
                 if (uiState.selectedMessageIds.isNotEmpty()) {
+                    var showSelectionMenu by remember { mutableStateOf(false) }
                     TopAppBar(
                         title = { Text("${uiState.selectedMessageIds.size} выбрано") },
                         navigationIcon = {
@@ -231,10 +224,7 @@ fun MessagesScreen(
                         },
                         actions = {
                             IconButton(onClick = { viewModel.markSelectedReadStatus(isUnread = false) }) {
-                                Icon(Icons.Default.MarkEmailRead, contentDescription = "Отметить прочитанным")
-                            }
-                            IconButton(onClick = { viewModel.markSelectedReadStatus(isUnread = true) }) {
-                                Icon(Icons.Default.MarkEmailUnread, contentDescription = "Отметить непрочитанным")
+                                Icon(Icons.Default.MarkEmailRead, contentDescription = "Прочитано")
                             }
                             IconButton(onClick = { viewModel.archiveSelected() }) {
                                 Icon(Icons.Default.Archive, contentDescription = "Архивировать")
@@ -242,14 +232,47 @@ fun MessagesScreen(
                             IconButton(onClick = { viewModel.deleteSelected() }) {
                                 Icon(Icons.Default.Delete, contentDescription = "Удалить")
                             }
-                            IconButton(onClick = { viewModel.reportSpamSelected() }) {
-                                Icon(Icons.Default.Report, contentDescription = "В спам")
-                            }
-                            IconButton(onClick = { showMoveDialog = true }) {
-                                Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = "Переместить")
-                            }
-                            IconButton(onClick = { viewModel.selectAll() }) {
-                                Icon(Icons.Default.SelectAll, contentDescription = "Выбрать все")
+                            Box {
+                                IconButton(onClick = { showSelectionMenu = true }) {
+                                    Icon(Icons.Default.MoreVert, contentDescription = "Ещё")
+                                }
+                                DropdownMenu(
+                                    expanded = showSelectionMenu,
+                                    onDismissRequest = { showSelectionMenu = false }
+                                ) {
+                                    DropdownMenuItem(
+                                        text = { Text("Отметить непрочитанным") },
+                                        leadingIcon = { Icon(Icons.Default.MarkEmailUnread, null) },
+                                        onClick = {
+                                            showSelectionMenu = false
+                                            viewModel.markSelectedReadStatus(isUnread = true)
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Переместить") },
+                                        leadingIcon = { Icon(Icons.AutoMirrored.Filled.DriveFileMove, null) },
+                                        onClick = {
+                                            showSelectionMenu = false
+                                            showMoveDialog = true
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("В спам") },
+                                        leadingIcon = { Icon(Icons.Default.Report, null) },
+                                        onClick = {
+                                            showSelectionMenu = false
+                                            viewModel.reportSpamSelected()
+                                        }
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Выбрать все") },
+                                        leadingIcon = { Icon(Icons.Default.SelectAll, null) },
+                                        onClick = {
+                                            showSelectionMenu = false
+                                            viewModel.selectAll()
+                                        }
+                                    )
+                                }
                             }
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
@@ -287,6 +310,8 @@ fun MessagesScreen(
                 readStatusOverrides = uiState.readStatusOverrides,
                 selectedIds = uiState.selectedMessageIds,
                 selectedMessageId = uiState.selectedMessageId,
+                swipeRightAction = swipeRightAction,
+                swipeLeftAction = swipeLeftAction,
                 onMessageClick = { messageId ->
                     if (uiState.selectedMessageIds.isNotEmpty()) {
                         viewModel.toggleMessageSelection(messageId)
@@ -300,6 +325,7 @@ fun MessagesScreen(
                 onMessageLongClick = { messageId -> viewModel.toggleMessageSelection(messageId) },
                 onSwipeArchive = { messageId -> viewModel.archiveMessage(messageId) },
                 onSwipeDelete = { messageId -> viewModel.deleteMessageWithUndo(messageId) },
+                onSwipeMarkRead = { messageId -> viewModel.updateMessageReadStatus(messageId, isUnread = false) },
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(padding)
@@ -360,12 +386,9 @@ private fun MailNavigationContent(
     activeAccountEmail: String,
     folders: List<com.mobilemail.domain.model.Folder>,
     selectedFolder: com.mobilemail.domain.model.Folder?,
-    pendingQueueCount: Int,
-    queueAttentionCount: Int,
     onComposeClick: () -> Unit,
     onAddAccountClick: () -> Unit,
     onSwitchAccount: (SavedSession) -> Unit,
-    onOutboxClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onFolderSelected: (com.mobilemail.domain.model.Folder) -> Unit
 ) {
@@ -435,26 +458,6 @@ private fun MailNavigationContent(
             label = { Text("Написать письмо") },
             selected = false,
             onClick = onComposeClick,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-        )
-
-        NavigationDrawerItem(
-            icon = { Icon(Icons.Default.Schedule, contentDescription = null) },
-            label = {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Очередь")
-                    when {
-                        queueAttentionCount > 0 -> Badge(containerColor = MaterialTheme.colorScheme.error) {
-                            Text(queueAttentionCount.toString(), style = MaterialTheme.typography.labelSmall)
-                        }
-                        pendingQueueCount > 0 -> Badge(containerColor = MaterialTheme.colorScheme.primary) {
-                            Text(pendingQueueCount.toString(), style = MaterialTheme.typography.labelSmall)
-                        }
-                    }
-                }
-            },
-            selected = false,
-            onClick = onOutboxClick,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
         )
 
@@ -591,6 +594,9 @@ fun MessagesList(
     onMessageLongClick: (String) -> Unit,
     onSwipeArchive: (String) -> Unit,
     onSwipeDelete: (String) -> Unit,
+    onSwipeMarkRead: (String) -> Unit = {},
+    swipeRightAction: SwipeAction = SwipeAction.ARCHIVE,
+    swipeLeftAction: SwipeAction = SwipeAction.DELETE,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
@@ -632,11 +638,22 @@ fun MessagesList(
         } else {
             LazyColumn(
                 state = listState,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(8.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 88.dp)
             ) {
+                var lastSectionLabel = ""
+                for (index in 0 until pagingItems.itemCount) {
+                    val message = pagingItems.peek(index)
+                        ?.takeIf { it.id !in hiddenMessageIds }
+                        ?: continue
+                    val sectionLabel = dateSectionLabel(message.date)
+                    if (sectionLabel != lastSectionLabel) {
+                        lastSectionLabel = sectionLabel
+                        item(key = "section_$sectionLabel") {
+                            DateSectionHeader(label = sectionLabel)
+                        }
+                    }
+                }
                 items(
                     count = pagingItems.itemCount,
                     key = pagingItems.itemKey { it.id }
@@ -647,7 +664,6 @@ fun MessagesList(
                             message.copy(flags = message.flags.copy(unread = isUnread))
                         } ?: message
                         if (selectedIds.isNotEmpty()) {
-                            // При активном выборе — только EmailListItem с combinedClickable
                             MessageItem(
                                 message = displayedMessage,
                                 isSelected = selectedIds.contains(message.id),
@@ -664,6 +680,9 @@ fun MessagesList(
                                 onLongClick = { onMessageLongClick(message.id) },
                                 onArchive = { onSwipeArchive(message.id) },
                                 onDelete = { onSwipeDelete(message.id) },
+                                onMarkRead = { onSwipeMarkRead(message.id) },
+                                swipeRightAction = swipeRightAction,
+                                swipeLeftAction = swipeLeftAction,
                             )
                         }
                     }
