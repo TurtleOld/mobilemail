@@ -1,14 +1,14 @@
 package com.mobilemail.ui.login
 
-import android.net.Uri
 import android.content.Intent
+import androidx.core.net.toUri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import com.mobilemail.ui.common.isExpandedWindowWidth
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.contentDescription
@@ -22,6 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.R
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
+import kotlinx.coroutines.delay
 
 @Composable
 fun LoginScreen(
@@ -30,10 +31,25 @@ fun LoginScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = rememberFeatureScreenSnackbarHostState()
-    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
+    val isExpandedLayout = isExpandedWindowWidth()
     var hasOpenedAuthPage by remember { mutableStateOf(false) }
     val context = LocalContext.current
     val verificationUri = uiState.oauthVerificationUriComplete ?: uiState.oauthVerificationUri
+
+    // Remaining seconds until device-code expires; null when no code is active.
+    var remainingSeconds by remember(uiState.oauthExpiresAt) {
+        mutableStateOf(uiState.oauthExpiresAt?.let { ((it - System.currentTimeMillis()) / 1000).coerceAtLeast(0) })
+    }
+    LaunchedEffect(uiState.oauthExpiresAt) {
+        val expiresAt = uiState.oauthExpiresAt ?: return@LaunchedEffect
+        while (true) {
+            val remaining = ((expiresAt - System.currentTimeMillis()) / 1000).coerceAtLeast(0)
+            remainingSeconds = remaining
+            if (remaining <= 0L) break
+            delay(1_000)
+        }
+    }
+    val isCodeExpired = remainingSeconds != null && remainingSeconds!! <= 0L
 
     LaunchedEffect(uiState.account) {
         uiState.account?.let { account ->
@@ -101,43 +117,82 @@ fun LoginScreen(
 
                     val oauthUserCode = uiState.oauthUserCode
                     if (oauthUserCode != null) {
+                        val cardColor = if (isCodeExpired)
+                            MaterialTheme.colorScheme.errorContainer
+                        else
+                            MaterialTheme.colorScheme.primaryContainer
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.primaryContainer
-                            )
+                            colors = CardDefaults.cardColors(containerColor = cardColor)
                         ) {
                             Column(
                                 modifier = Modifier.padding(16.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text(
-                                    text = "Код авторизации:",
-                                    style = MaterialTheme.typography.labelMedium
-                                )
-                                Text(
-                                    text = oauthUserCode,
-                                    style = MaterialTheme.typography.headlineMedium,
-                                    modifier = Modifier.semantics {
-                                        contentDescription = "Код авторизации $oauthUserCode"
-                                    }
-                                )
-                                if (verificationUri != null) {
+                                if (isCodeExpired) {
+                                    Text(
+                                        text = "Время ожидания истекло",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                    Text(
+                                        text = "Код авторизации больше не действителен. Начните процесс заново.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
                                     Button(
                                         onClick = {
-                                            openAuthorizationPage(context, verificationUri)
-                                            hasOpenedAuthPage = true
+                                            viewModel.cancelOAuthLogin()
+                                            hasOpenedAuthPage = false
                                         },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error
+                                        )
+                                    ) {
+                                        Text("Войти заново")
+                                    }
+                                } else {
+                                    Text(
+                                        text = "Код авторизации:",
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                    Text(
+                                        text = oauthUserCode,
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        modifier = Modifier.semantics {
+                                            contentDescription = "Код авторизации $oauthUserCode"
+                                        }
+                                    )
+                                    remainingSeconds?.let { secs ->
+                                        val mins = secs / 60
+                                        val s = secs % 60
+                                        Text(
+                                            text = "Действителен ещё %d:%02d".format(mins, s),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (secs <= 30)
+                                                MaterialTheme.colorScheme.error
+                                            else
+                                                MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                    if (verificationUri != null) {
+                                        Button(
+                                            onClick = {
+                                                openAuthorizationPage(context, verificationUri)
+                                                hasOpenedAuthPage = true
+                                            },
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            Text("Открыть страницу авторизации")
+                                        }
+                                    }
+                                    TextButton(
+                                        onClick = { viewModel.cancelOAuthLogin() },
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Text("Открыть страницу авторизации")
+                                        Text("Отменить")
                                     }
-                                }
-                                TextButton(
-                                    onClick = { viewModel.cancelOAuthLogin() },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text("Отменить")
                                 }
                             }
                         }
@@ -166,7 +221,7 @@ fun LoginScreen(
 }
 
 private fun openAuthorizationPage(context: android.content.Context, uri: String) {
-    val parsed = Uri.parse(uri)
+    val parsed = uri.toUri()
     if (parsed.scheme != "https" && parsed.scheme != "http") return
     val intent = Intent(Intent.ACTION_VIEW, parsed).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
