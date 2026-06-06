@@ -72,18 +72,12 @@ fun optionalSecret(name: String): String? {
 
 android {
     namespace = "com.mobilemail"
-    compileSdk {
-        version = release(36) {
-            minorApiLevel = 1
-        }
-    }
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "com.mobilemail"
-        minSdk = 26
-        targetSdk {
-            version = release(36)
-        }
+        minSdk = 31
+        targetSdk = 37
         versionCode = optionalProp("VERSION_CODE")?.toIntOrNull() ?: 1
         versionName = optionalProp("VERSION_NAME") ?: "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

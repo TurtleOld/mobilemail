@@ -37,9 +37,6 @@ import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.domain.repository.DateRange
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
-import com.mobilemail.ui.theme.EmailShapes
-import com.mobilemail.ui.theme.EmailTypography
-import com.mobilemail.ui.theme.ExtendedTheme
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -172,8 +169,8 @@ fun SearchScreen(
                     .fillMaxWidth()
                     .padding(16.dp),
                 tonalElevation = if (isExpandedLayout) 1.dp else 0.dp,
-                color = if (isExpandedLayout) ExtendedTheme.colors.chromeMuted else ExtendedTheme.colors.surfaceReading,
-                shape = EmailShapes.searchBar
+                color = if (isExpandedLayout) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
+                shape = MaterialTheme.shapes.extraLarge
             ) {
                 Column(
                     modifier = Modifier.padding(if (isExpandedLayout) 20.dp else 0.dp),
@@ -433,8 +430,8 @@ fun MessageItem(
             }
             .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = ExtendedTheme.colors.surfaceReading),
-        shape = EmailShapes.emailCard
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = MaterialTheme.shapes.large
     ) {
         Column(
             modifier = Modifier
@@ -455,13 +452,14 @@ fun MessageItem(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(CircleShape)
-                                .background(ExtendedTheme.colors.unreadBadge)
+                                .background(MaterialTheme.colorScheme.primary)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                     }
+                    val senderWeight = if (message.flags.unread) FontWeight.Bold else FontWeight.SemiBold
                     Text(
                         text = message.from.name ?: message.from.email,
-                        style = if (message.flags.unread) EmailTypography.emailSenderUnread else EmailTypography.emailSender,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = senderWeight),
                         modifier = Modifier.weight(1f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -469,9 +467,9 @@ fun MessageItem(
                 }
                 Text(
                     text = dateFormat.format(message.date),
-                    style = EmailTypography.emailTimestamp,
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = if (message.flags.unread) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (message.flags.unread) ExtendedTheme.colors.unreadBadge else MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (message.flags.unread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
 
@@ -479,7 +477,7 @@ fun MessageItem(
 
             Text(
                 text = message.subject,
-                style = EmailTypography.emailSubject,
+                style = MaterialTheme.typography.bodyLarge,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -488,7 +486,7 @@ fun MessageItem(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = message.snippet,
-                    style = EmailTypography.emailPreview,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
@@ -500,7 +498,7 @@ fun MessageItem(
                 Text(
                     text = "Есть вложения",
                     style = MaterialTheme.typography.labelSmall,
-                    color = ExtendedTheme.colors.attachment
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
         }

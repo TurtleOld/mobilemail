@@ -24,8 +24,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.domain.model.MessageDetail
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.ui.messagedetail.ClickableTextWithLinks
-import com.mobilemail.ui.theme.EmailTypography
-import com.mobilemail.ui.theme.ExtendedTheme
 
 @Composable
 internal fun MessageBodySection(
@@ -65,7 +63,7 @@ internal fun MessageBodySection(
         } ?: message.body.text?.let { text ->
             ClickableTextWithLinks(
                 text = text,
-                style = EmailTypography.emailBody,
+                style = MaterialTheme.typography.bodyLarge,
                 modifier = Modifier.padding(vertical = 4.dp),
                 context = context
             )
@@ -83,7 +81,7 @@ private fun RemoteContentBlockedCard(onAllowRemoteContent: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = 12.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = ExtendedTheme.colors.chromeMuted)
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(
             modifier = Modifier

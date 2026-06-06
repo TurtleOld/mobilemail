@@ -35,9 +35,7 @@ import com.mobilemail.domain.model.MessageDetail
 import com.mobilemail.ui.messagedetail.content.MessageBodySection
 import com.mobilemail.ui.messagedetail.content.openExternalUriSafely
 import com.mobilemail.domain.model.MessageListItem
-import com.mobilemail.ui.theme.EmailShapes
-import com.mobilemail.ui.theme.EmailTypography
-import com.mobilemail.ui.theme.ExtendedTheme
+import com.mobilemail.ui.common.MonogramAvatar
 import java.util.regex.Pattern
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.ui.common.FeatureScreenEffects
@@ -131,6 +129,33 @@ fun MessageDetailScreen(
 
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
+            bottomBar = {
+                uiState.message?.let { message ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Button(
+                            onClick = { onReply?.invoke(message) },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Default.Reply, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Ответить")
+                        }
+                        OutlinedButton(
+                            onClick = { onForward?.invoke(message) },
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Icon(Icons.Default.Forward, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Переслать")
+                        }
+                    }
+                }
+            },
             topBar = {
                 TopAppBar(
                     title = { 
@@ -307,10 +332,29 @@ fun MessageContent(
     ) {
         Text(
             text = message.subject,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
+            style = MaterialTheme.typography.headlineSmall,
+            modifier = Modifier.padding(bottom = 4.dp, top = 4.dp),
         )
+
+        // Отправитель с аватаром
+        Row(
+            modifier = Modifier.padding(bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            MonogramAvatar(name = message.from.name ?: message.from.email, size = 46.dp)
+            Spacer(Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = message.from.name ?: message.from.email,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = dateFormat.format(message.date),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
 
         if (isExpandedLayout) {
             Row(
@@ -359,7 +403,7 @@ fun MessageContent(
 
         Text(
             text = dateFormat.format(message.date),
-            style = EmailTypography.emailTimestamp,
+            style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 16.dp)
         )
@@ -434,11 +478,11 @@ private fun ConversationHeader(
                             onThreadMessageClick?.invoke(threadMessage.id)
                         },
                     color = if (isCurrent) {
-                        ExtendedTheme.colors.threadHighlight
+                        MaterialTheme.colorScheme.secondaryContainer
                     } else {
-                        ExtendedTheme.colors.surfaceElevated
+                        MaterialTheme.colorScheme.surfaceContainerLow
                     },
-                    shape = EmailShapes.emailCard
+                    shape = MaterialTheme.shapes.large
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
                         Row(
@@ -514,12 +558,12 @@ private fun ConversationMessageCard(
             .padding(bottom = 12.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = when {
-                isCurrent -> ExtendedTheme.colors.threadHighlight
-                isExpanded -> ExtendedTheme.colors.surfaceElevated
-                else -> ExtendedTheme.colors.surfaceReading
+                isCurrent -> MaterialTheme.colorScheme.secondaryContainer
+                isExpanded -> MaterialTheme.colorScheme.surfaceContainerLow
+                else -> MaterialTheme.colorScheme.surface
             }
         ),
-        shape = EmailShapes.emailCard
+        shape = MaterialTheme.shapes.large
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(
@@ -530,13 +574,13 @@ private fun ConversationMessageCard(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = message.from.name ?: message.from.email,
-                        style = EmailTypography.emailSenderUnread,
+                        style = MaterialTheme.typography.titleMedium,
                         fontWeight = if (isCurrent || message.flags.unread) FontWeight.Bold else FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = recipientSummary(message),
-                        style = EmailTypography.emailPreview,
+                        style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = if (isExpanded) 3 else 1,
                         overflow = TextOverflow.Ellipsis
@@ -546,7 +590,7 @@ private fun ConversationMessageCard(
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
                         text = dateFormat.format(message.date),
-                        style = EmailTypography.emailTimestamp,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     if (isCurrent) {
@@ -564,7 +608,7 @@ private fun ConversationMessageCard(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = message.subject,
-                style = EmailTypography.emailSubject,
+                style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Medium
             )
 
@@ -584,7 +628,7 @@ private fun ConversationMessageCard(
 
             if (isExpanded) {
                 Spacer(modifier = Modifier.height(12.dp))
-                Divider()
+                HorizontalDivider()
                 Spacer(modifier = Modifier.height(12.dp))
                 if (message.attachments.isNotEmpty()) {
                     Text(

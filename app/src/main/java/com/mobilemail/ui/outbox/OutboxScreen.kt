@@ -18,7 +18,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -173,7 +173,7 @@ private fun PendingOperationCard(
             Text("Попыток: ${operation.attemptCount}")
             Text("Создано: ${formatter.format(Date(operation.createdAt))}")
             if (!operation.lastError.isNullOrBlank()) {
-                Divider()
+                HorizontalDivider()
                 Text(operation.lastError ?: "", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
         }
