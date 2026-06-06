@@ -1,5 +1,46 @@
 # Changelog
 
+## [1.4.0](https://github.com/TurtleOld/mobilemail/compare/v1.3.0...v1.4.0) (2026-06-06)
+
+
+### Features
+
+* **drawer:** fix folder order and remove unused Queue menu item ([6ac765f](https://github.com/TurtleOld/mobilemail/commit/6ac765f9789953bdb3bfa95908bb4d5728e45984))
+* **login:** countdown timer and retry for expired device auth code ([#38](https://github.com/TurtleOld/mobilemail/issues/38)) ([80aa9dc](https://github.com/TurtleOld/mobilemail/commit/80aa9dc1cc3e5ec6d78ce2fbd402ff3b10d451ec))
+* **login:** show countdown timer and retry button for expired device code ([8b28332](https://github.com/TurtleOld/mobilemail/commit/8b2833201402b85ea39b321096f3306fffad3139))
+* **messagedetail:** compact screen layout ([f7cac7b](https://github.com/TurtleOld/mobilemail/commit/f7cac7bf97571d313e0aa9fed6e00233155e8cb3))
+* **messages:** redesign inbox list to flat rows with date section headers ([9ee99f5](https://github.com/TurtleOld/mobilemail/commit/9ee99f5a5d60b0e4b3c122b617baedb9e98c4ad0))
+* **notifications:** add notification privacy mode for lock screen ([23a2c08](https://github.com/TurtleOld/mobilemail/commit/23a2c08f3ec93149c34a1b0642cc191dd6c8cf92))
+* **notifications:** add notification privacy mode for lock screen ([#36](https://github.com/TurtleOld/mobilemail/issues/36)) ([7060faf](https://github.com/TurtleOld/mobilemail/commit/7060faf2323474ddde423f36eea25251faa71473))
+* **settings:** configurable swipe actions per direction ([9a9683a](https://github.com/TurtleOld/mobilemail/commit/9a9683a314a4da28cdc3ea45ffbdf875a7fd47e4))
+* **ui:** add auth-expired banner and suppress its snackbar duplicate ([e3eb7de](https://github.com/TurtleOld/mobilemail/commit/e3eb7de99a4ff938922ca2b172777c77c52f9a79))
+* **ui:** add offline banner with connectivity monitoring ([e2c4fea](https://github.com/TurtleOld/mobilemail/commit/e2c4fea8877587570f788db5524027a231857e8a))
+* **ui:** add pull-to-refresh in messages, search and outbox screens ([90910b6](https://github.com/TurtleOld/mobilemail/commit/90910b657d66118f6f530da766b1583875e78417))
+* **ui:** replace initial-load spinners with shimmer skeleton ([90c62b5](https://github.com/TurtleOld/mobilemail/commit/90c62b55cc4a57ea2eadbf49af6f05211c399cd9))
+* **ui:** replace manual screenWidthDp check with WindowSizeClass adaptive API ([3ba5551](https://github.com/TurtleOld/mobilemail/commit/3ba5551076c132b9de4839b2a2c89f609713c911))
+* **ui:** skeleton loaders, pull-to-refresh, offline/auth banners, adaptive layout ([#30](https://github.com/TurtleOld/mobilemail/issues/30)) ([c8c7cc3](https://github.com/TurtleOld/mobilemail/commit/c8c7cc3e0f63ff0d99484d2be90229201c6b14ba))
+
+
+### Bug Fixes
+
+* **auth:** clear PIN and Room database on full logout ([f9be432](https://github.com/TurtleOld/mobilemail/commit/f9be432868022c22c62b68d551b2372a19cd01eb))
+* **auth:** clear PIN and Room database on full logout ([#35](https://github.com/TurtleOld/mobilemail/issues/35)) ([de44331](https://github.com/TurtleOld/mobilemail/commit/de443310b2fe97b641c2af63685a00f7c09062b2))
+* **auth:** prevent double token refresh on concurrent 401 responses ([15a1af7](https://github.com/TurtleOld/mobilemail/commit/15a1af77aa845bf455b4a9c0fb8ddab9930eb6c6))
+* **auth:** prevent double token refresh on concurrent 401 responses ([#34](https://github.com/TurtleOld/mobilemail/issues/34)) ([dda552c](https://github.com/TurtleOld/mobilemail/commit/dda552c5757aa5c525d3e2f567458250013a053c))
+* **auth:** validate URI scheme before opening OAuth authorization page ([5716f7c](https://github.com/TurtleOld/mobilemail/commit/5716f7c8318d1206002596f256d66ad6973948a9))
+* **files:** prevent path traversal in attachment filename handling ([a7f20f3](https://github.com/TurtleOld/mobilemail/commit/a7f20f313606600120dd361c63318950a7f8cee0))
+* **messages:** persist mark-as-read on refresh and fallback archive to trash ([4f21f69](https://github.com/TurtleOld/mobilemail/commit/4f21f690f0d2f74fdaa89c2e1188a54d6a5a3078))
+* **messages:** persist mark-as-read on refresh and fallback archive to trash ([#28](https://github.com/TurtleOld/mobilemail/issues/28)) ([cb5e128](https://github.com/TurtleOld/mobilemail/commit/cb5e12887cb940b97c097304d1ee025fd63d7ab7))
+* **nav:** hide login form during session check, show spinner instead ([f5329f3](https://github.com/TurtleOld/mobilemail/commit/f5329f39f884f6a3df51bae5598ffef698959179))
+* **notifications:** validate server URL scheme from incoming intent extras ([1c75b9a](https://github.com/TurtleOld/mobilemail/commit/1c75b9aa30e764d81689add120c7942f1c98cbf2))
+* **security:** address URI redirect, path traversal, intent hijacking and timing side-channel ([#32](https://github.com/TurtleOld/mobilemail/issues/32)) ([9cb4600](https://github.com/TurtleOld/mobilemail/commit/9cb46003e73043af375b069773f2ed63351bc7a0))
+* **security:** block unsafe URI schemes in WebView (data:, file:, intent://) ([9d9b53b](https://github.com/TurtleOld/mobilemail/commit/9d9b53b640494ee6f638d8eae8ae6d3f8800b4f1))
+* **security:** block unsafe URI schemes in WebView (data:, file:, intent://) ([#37](https://github.com/TurtleOld/mobilemail/issues/37)) ([b0f45d0](https://github.com/TurtleOld/mobilemail/commit/b0f45d0e9e1d0086bceeb605089a09317b4f4f37))
+* **security:** eliminate timing side-channel in PIN PBKDF2 verification ([589b5d3](https://github.com/TurtleOld/mobilemail/commit/589b5d33d8fa0a85077f1b136b9ad939c1cfe23b))
+* **ui:** replace collectAsState with collectAsStateWithLifecycle across all screens ([93ee8ba](https://github.com/TurtleOld/mobilemail/commit/93ee8baf1f672b256969a8ee3d69510da8abee41))
+* **vm:** move MailClientFactory.create out of runBlocking into viewModelScope ([9229926](https://github.com/TurtleOld/mobilemail/commit/922992620a724efc2ca73dbaf647b32b95d7addf))
+* **vm:** move MailClientFactory.create out of runBlocking into viewModelScope ([#31](https://github.com/TurtleOld/mobilemail/issues/31)) ([22489ae](https://github.com/TurtleOld/mobilemail/commit/22489ae396aa1aaaf63df9d7b80248c3711e4b9c))
+
 ## [1.3.0](https://github.com/TurtleOld/mobilemail/compare/v1.2.0...v1.3.0) (2026-06-06)
 
 
