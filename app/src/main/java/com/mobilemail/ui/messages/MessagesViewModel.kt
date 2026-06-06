@@ -196,10 +196,6 @@ class MessagesViewModel(
         }
     }
     
-    fun loadMoreMessages() {
-        // Paging handles prefetch automatically.
-    }
-
     fun refresh() {
         _uiState.value = _uiState.value.copy(
             hiddenMessageIds = emptySet(),
@@ -325,6 +321,13 @@ class MessagesViewModel(
 
     fun clearSelection() {
         _uiState.value = _uiState.value.copy(selectedMessageIds = emptySet())
+    }
+
+    fun markSelectedReadStatus(isUnread: Boolean) {
+        val ids = _uiState.value.selectedMessageIds.toList()
+        if (ids.isEmpty()) return
+        ids.forEach { updateMessageReadStatus(it, isUnread = isUnread) }
+        clearSelection()
     }
 
     fun updateVisibleMessages(messages: List<MessageListItem>) {

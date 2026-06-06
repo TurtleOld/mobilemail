@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Report
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.MarkEmailRead
+import androidx.compose.material.icons.filled.MarkEmailUnread
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
@@ -60,9 +62,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.preferences.SavedSession
-import com.mobilemail.ui.theme.EmailShapes
-import com.mobilemail.ui.theme.EmailTypography
-import com.mobilemail.ui.theme.ExtendedTheme
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import kotlinx.coroutines.launch
@@ -154,46 +153,73 @@ fun MessagesScreen(
         )
     }
 
+    val currentSession = accounts.firstOrNull { it.email == activeAccountEmail }
+        ?: accounts.firstOrNull()
+
     val navigationContent: @Composable () -> Unit = {
-        MailNavigationContent(
-            accounts = accounts,
-            activeAccountEmail = activeAccountEmail,
-            folders = uiState.folders,
-            selectedFolder = uiState.selectedFolder,
-            pendingQueueCount = uiState.pendingQueueCount,
-            queueAttentionCount = uiState.queueAttentionCount,
-            onComposeClick = onComposeClick,
-            onAddAccountClick = {
-                if (!isExpandedLayout) {
-                    scope.launch { drawerState.close() }
+        if (currentSession != null) {
+            MailDrawerContent(
+                currentSession = currentSession,
+                accounts = accounts,
+                folders = uiState.folders,
+                selectedFolderId = uiState.selectedFolder?.id,
+                onFolderSelected = { folder ->
+                    viewModel.selectFolder(folder)
+                    if (!isExpandedLayout) scope.launch { drawerState.close() }
+                },
+                onSwitchAccount = { account ->
+                    if (!isExpandedLayout) scope.launch { drawerState.close() }
+                    onSwitchAccount(account)
+                },
+                onCompose = onComposeClick,
+                onQueue = {
+                    if (!isExpandedLayout) scope.launch { drawerState.close() }
+                    onOutboxClick()
+                },
+                onSettings = onSettingsClick,
+            )
+        } else {
+            MailNavigationContent(
+                accounts = accounts,
+                activeAccountEmail = activeAccountEmail,
+                folders = uiState.folders,
+                selectedFolder = uiState.selectedFolder,
+                pendingQueueCount = uiState.pendingQueueCount,
+                queueAttentionCount = uiState.queueAttentionCount,
+                onComposeClick = onComposeClick,
+                onAddAccountClick = {
+                    if (!isExpandedLayout) scope.launch { drawerState.close() }
+                    onAddAccountClick()
+                },
+                onSwitchAccount = { account ->
+                    if (!isExpandedLayout) scope.launch { drawerState.close() }
+                    onSwitchAccount(account)
+                },
+                onOutboxClick = {
+                    if (!isExpandedLayout) scope.launch { drawerState.close() }
+                    onOutboxClick()
+                },
+                onSettingsClick = onSettingsClick,
+                onFolderSelected = { folder ->
+                    viewModel.selectFolder(folder)
+                    if (!isExpandedLayout) scope.launch { drawerState.close() }
                 }
-                onAddAccountClick()
-            },
-            onSwitchAccount = { account ->
-                if (!isExpandedLayout) {
-                    scope.launch { drawerState.close() }
-                }
-                onSwitchAccount(account)
-            },
-            onOutboxClick = {
-                if (!isExpandedLayout) {
-                    scope.launch { drawerState.close() }
-                }
-                onOutboxClick()
-            },
-            onSettingsClick = onSettingsClick,
-            onFolderSelected = { folder ->
-                viewModel.selectFolder(folder)
-                if (!isExpandedLayout) {
-                    scope.launch { drawerState.close() }
-                }
-            }
-        )
+            )
+        }
     }
 
     val screenContent: @Composable () -> Unit = {
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
+            floatingActionButton = {
+                if (uiState.selectedMessageIds.isEmpty()) {
+                    ExtendedFloatingActionButton(
+                        onClick = onComposeClick,
+                        icon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                        text = { Text("Написать") },
+                    )
+                }
+            },
             topBar = {
                 if (uiState.selectedMessageIds.isNotEmpty()) {
                     TopAppBar(
@@ -204,17 +230,23 @@ fun MessagesScreen(
                             }
                         },
                         actions = {
+                            IconButton(onClick = { viewModel.markSelectedReadStatus(isUnread = false) }) {
+                                Icon(Icons.Default.MarkEmailRead, contentDescription = "Отметить прочитанным")
+                            }
+                            IconButton(onClick = { viewModel.markSelectedReadStatus(isUnread = true) }) {
+                                Icon(Icons.Default.MarkEmailUnread, contentDescription = "Отметить непрочитанным")
+                            }
                             IconButton(onClick = { viewModel.archiveSelected() }) {
                                 Icon(Icons.Default.Archive, contentDescription = "Архивировать")
+                            }
+                            IconButton(onClick = { viewModel.deleteSelected() }) {
+                                Icon(Icons.Default.Delete, contentDescription = "Удалить")
                             }
                             IconButton(onClick = { viewModel.reportSpamSelected() }) {
                                 Icon(Icons.Default.Report, contentDescription = "В спам")
                             }
                             IconButton(onClick = { showMoveDialog = true }) {
                                 Icon(Icons.Default.DriveFileMove, contentDescription = "Переместить")
-                            }
-                            IconButton(onClick = { viewModel.deleteSelected() }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Удалить")
                             }
                             IconButton(onClick = { viewModel.selectAll() }) {
                                 Icon(Icons.Default.SelectAll, contentDescription = "Выбрать все")
@@ -282,7 +314,7 @@ fun MessagesScreen(
                     .fillMaxHeight()
                     .width(300.dp),
                 tonalElevation = 1.dp,
-                color = ExtendedTheme.colors.chromeMuted
+                color = MaterialTheme.colorScheme.surfaceVariant
             ) {
                 navigationContent()
             }
@@ -292,7 +324,7 @@ fun MessagesScreen(
                     .width(1.dp)
                     .padding(vertical = 12.dp)
             ) {
-                Divider(modifier = Modifier.fillMaxSize())
+                HorizontalDivider(modifier = Modifier.fillMaxSize())
             }
             Row(modifier = Modifier.weight(1f)) {
                 Box(modifier = Modifier.weight(0.9f)) {
@@ -304,7 +336,7 @@ fun MessagesScreen(
                         .width(1.dp)
                         .padding(vertical = 12.dp)
                 ) {
-                    Divider(modifier = Modifier.fillMaxSize())
+                    HorizontalDivider(modifier = Modifier.fillMaxSize())
                 }
                 Box(modifier = Modifier.weight(1.1f)) {
                     detailPane(uiState.selectedMessageId)
@@ -314,11 +346,7 @@ fun MessagesScreen(
     } else {
         ModalNavigationDrawer(
             drawerState = drawerState,
-            drawerContent = {
-                ModalDrawerSheet {
-                    navigationContent()
-                }
-            }
+            drawerContent = { navigationContent() },
         ) {
             screenContent()
         }
@@ -375,7 +403,7 @@ private fun MailNavigationContent(
                     }
                 )
             }
-            Divider()
+            HorizontalDivider()
             DropdownMenuItem(
                 text = { Text("Добавить аккаунт") },
                 onClick = {
@@ -417,10 +445,10 @@ private fun MailNavigationContent(
                     Text("Очередь")
                     when {
                         queueAttentionCount > 0 -> Badge(containerColor = MaterialTheme.colorScheme.error) {
-                            Text(queueAttentionCount.toString(), style = EmailTypography.badgeCount)
+                            Text(queueAttentionCount.toString(), style = MaterialTheme.typography.labelSmall)
                         }
-                        pendingQueueCount > 0 -> Badge(containerColor = ExtendedTheme.colors.unreadBadge) {
-                            Text(pendingQueueCount.toString(), style = EmailTypography.badgeCount)
+                        pendingQueueCount > 0 -> Badge(containerColor = MaterialTheme.colorScheme.primary) {
+                            Text(pendingQueueCount.toString(), style = MaterialTheme.typography.labelSmall)
                         }
                     }
                 }
@@ -438,7 +466,7 @@ private fun MailNavigationContent(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
         )
 
-        Divider(modifier = Modifier.padding(vertical = 8.dp))
+        HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
 
         FoldersList(
             folders = folders,
@@ -485,7 +513,7 @@ fun FoldersList(
 
         if (defaultFolders.isNotEmpty() && customFolders.isNotEmpty()) {
             item {
-                Divider(modifier = Modifier.padding(vertical = 8.dp))
+                HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             }
         }
 
@@ -519,8 +547,8 @@ fun FolderItem(
                 }
             }
             .clickable(onClick = onClick),
-        color = if (isSelected) ExtendedTheme.colors.selectionHighlight else ExtendedTheme.colors.surfaceReading,
-        shape = EmailShapes.folderItem,
+        color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.large,
         tonalElevation = if (isSelected) 1.dp else 0.dp
     ) {
         Row(
@@ -537,15 +565,15 @@ fun FolderItem(
             Spacer(modifier = Modifier.width(8.dp))
             Text(
                 text = folder.name,
-                style = EmailTypography.folderName,
+                style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.weight(1f)
             )
             if (folder.unreadCount > 0) {
                 Badge(
-                    containerColor = ExtendedTheme.colors.unreadBadge,
+                    containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 ) {
-                    Text(folder.unreadCount.toString(), style = EmailTypography.badgeCount)
+                    Text(folder.unreadCount.toString(), style = MaterialTheme.typography.labelSmall)
                 }
             }
         }
@@ -618,15 +646,26 @@ fun MessagesList(
                         val displayedMessage = readStatusOverrides[message.id]?.let { isUnread ->
                             message.copy(flags = message.flags.copy(unread = isUnread))
                         } ?: message
-                        MessageItem(
-                            message = displayedMessage,
-                            isSelected = selectedIds.contains(message.id),
-                            isActive = selectedMessageId == message.id,
-                            onClick = { onMessageClick(message.id) },
-                            onLongClick = { onMessageLongClick(message.id) },
-                            onSwipeArchive = { onSwipeArchive(message.id) },
-                            onSwipeDelete = { onSwipeDelete(message.id) }
-                        )
+                        if (selectedIds.isNotEmpty()) {
+                            // При активном выборе — только EmailListItem с combinedClickable
+                            MessageItem(
+                                message = displayedMessage,
+                                isSelected = selectedIds.contains(message.id),
+                                isActive = selectedMessageId == message.id,
+                                onClick = { onMessageClick(message.id) },
+                                onLongClick = { onMessageLongClick(message.id) },
+                                onSwipeArchive = { onSwipeArchive(message.id) },
+                                onSwipeDelete = { onSwipeDelete(message.id) }
+                            )
+                        } else {
+                            SwipeableEmailItem(
+                                message = displayedMessage,
+                                onClick = { onMessageClick(message.id) },
+                                onLongClick = { onMessageLongClick(message.id) },
+                                onArchive = { onSwipeArchive(message.id) },
+                                onDelete = { onSwipeDelete(message.id) },
+                            )
+                        }
                     }
                 }
 
@@ -701,7 +740,7 @@ fun MessageItem(
     val backgroundColor = when {
         offsetX > 0f -> MaterialTheme.colorScheme.secondaryContainer
         offsetX < 0f -> MaterialTheme.colorScheme.errorContainer
-        else -> ExtendedTheme.colors.chromeMuted
+        else -> MaterialTheme.colorScheme.surfaceVariant
     }
     val backgroundAlignment = when {
         offsetX > 0f -> Alignment.CenterStart
@@ -784,10 +823,10 @@ fun MessageItem(
             ),
             colors = CardDefaults.cardColors(
                 containerColor = when {
-                    isSelected -> ExtendedTheme.colors.selectionHighlight
-                    isActive -> ExtendedTheme.colors.threadHighlight
+                    isSelected -> MaterialTheme.colorScheme.secondaryContainer
+                    isActive -> MaterialTheme.colorScheme.secondaryContainer
                     isUnread -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f)
-                    else -> ExtendedTheme.colors.surfaceReading
+                    else -> MaterialTheme.colorScheme.surface
                 }
             )
         ) {
@@ -801,7 +840,7 @@ fun MessageItem(
                         modifier = Modifier
                             .fillMaxHeight()
                             .width(4.dp)
-                            .background(ExtendedTheme.colors.unreadBadge)
+                            .background(MaterialTheme.colorScheme.primary)
                     )
                 }
                 Row(
@@ -836,13 +875,14 @@ fun MessageItem(
                                     modifier = Modifier
                                         .size(8.dp)
                                         .clip(androidx.compose.foundation.shape.CircleShape)
-                                        .background(ExtendedTheme.colors.unreadBadge)
+                                        .background(MaterialTheme.colorScheme.primary)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                             }
+                            val senderWeight = if (isUnread) FontWeight.Bold else FontWeight.SemiBold
                             Text(
                                 text = message.from.name ?: message.from.email,
-                                style = if (isUnread) EmailTypography.emailSenderUnread else EmailTypography.emailSender,
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = senderWeight),
                                 color = if (isUnread) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f),
                                 maxLines = 1,
@@ -851,17 +891,18 @@ fun MessageItem(
                         }
                         Text(
                             text = dateFormat.format(message.date),
-                            style = EmailTypography.emailTimestamp,
+                            style = MaterialTheme.typography.labelSmall,
                             fontWeight = if (isUnread) FontWeight.SemiBold else FontWeight.Normal,
-                            color = if (isUnread) ExtendedTheme.colors.unreadBadge else MaterialTheme.colorScheme.onSurfaceVariant
+                            color = if (isUnread) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
                     Spacer(modifier = Modifier.height(4.dp))
 
+                    val subjectWeight = if (isUnread) FontWeight.Bold else FontWeight.SemiBold
                     Text(
                         text = message.subject,
-                        style = if (isUnread) EmailTypography.emailSubjectUnread else EmailTypography.emailSubject,
+                        style = MaterialTheme.typography.bodyLarge.copy(fontWeight = subjectWeight),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -870,7 +911,7 @@ fun MessageItem(
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = message.snippet,
-                            style = EmailTypography.emailPreview,
+                            style = MaterialTheme.typography.bodyMedium,
                             fontWeight = if (isUnread) FontWeight.Medium else FontWeight.Normal,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -884,14 +925,14 @@ fun MessageItem(
                             Icon(
                                 imageVector = Icons.Default.DriveFileMove,
                                 contentDescription = null,
-                                tint = ExtendedTheme.colors.attachment,
+                                tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(14.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "Есть вложения",
                                 style = MaterialTheme.typography.labelSmall,
-                                color = ExtendedTheme.colors.attachment
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
