@@ -166,7 +166,9 @@ fun LoginScreen(
 }
 
 private fun openAuthorizationPage(context: android.content.Context, uri: String) {
-    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+    val parsed = Uri.parse(uri)
+    if (parsed.scheme != "https" && parsed.scheme != "http") return
+    val intent = Intent(Intent.ACTION_VIEW, parsed).apply {
         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     context.startActivity(intent)

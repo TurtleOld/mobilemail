@@ -88,9 +88,11 @@ class PinManager(context: Context) {
     }
 
     private fun verifyPbkdf2(pin: String, storedHash: String): Boolean {
-        val saltBase64 = secureStore.getString(KEY_PIN_SALT) ?: return false
-        val salt = runCatching { Base64.decode(saltBase64, Base64.DEFAULT) }.getOrNull() ?: return false
-        val inputHash = hashPinPbkdf2(pin, salt)
+        val saltBase64 = secureStore.getString(KEY_PIN_SALT)
+        val salt = saltBase64?.let { runCatching { Base64.decode(it, Base64.DEFAULT) }.getOrNull() }
+        // Always hash to avoid timing leak on missing salt; result discarded if salt absent
+        val inputHash = if (salt != null) hashPinPbkdf2(pin, salt) else hashPinPbkdf2(pin, ByteArray(16))
+        if (salt == null) return false
         return MessageDigest.isEqual(storedHash.toByteArray(), inputHash.toByteArray())
     }
 
