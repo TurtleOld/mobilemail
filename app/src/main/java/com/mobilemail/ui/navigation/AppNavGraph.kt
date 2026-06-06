@@ -26,7 +26,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import androidx.navigation.navOptions
 import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.domain.model.MessageDetail
@@ -357,10 +356,7 @@ fun AppNavGraph(
                             },
                             onMessageDeleted = bridgeCoordinator::onMessageDeleted,
                             onMessageMoved = bridgeCoordinator::onMessageMoved,
-                            onReadStatusChanged = bridgeCoordinator::onReadStatusChanged,
-                            onThreadMessageClick = { threadMessageId ->
-                                viewModel.selectMessage(threadMessageId)
-                            }
+                            onReadStatusChanged = bridgeCoordinator::onReadStatusChanged
                         )
                     }
                 },
@@ -562,20 +558,7 @@ fun AppNavGraph(
                 },
                 onMessageDeleted = bridgeCoordinator::onMessageDeleted,
                 onMessageMoved = bridgeCoordinator::onMessageMoved,
-                onReadStatusChanged = bridgeCoordinator::onReadStatusChanged,
-                onThreadMessageClick = { threadMessageId ->
-                    if (threadMessageId != messageId) {
-                        navController.navigate(
-                            AppRoutes.message(
-                                SavedSession(server, email, accountId),
-                                threadMessageId
-                            ),
-                            navOptions {
-                                launchSingleTop = true
-                            }
-                        )
-                    }
-                }
+                onReadStatusChanged = bridgeCoordinator::onReadStatusChanged
             )
         }
     }

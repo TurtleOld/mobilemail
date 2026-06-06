@@ -11,7 +11,5 @@ interface IMailRepository {
     suspend fun getFolders(): Result<List<Folder>>
     suspend fun getMessages(folderId: String, position: Int = 0, limit: Int = 50): Result<List<MessageListItem>>
     suspend fun getMessage(messageId: String): Result<MessageDetail>
-    suspend fun getThreadMessages(threadId: String, limit: Int = 100): Result<List<MessageListItem>>
-    suspend fun getThreadDetails(threadId: String, limit: Int = 100): Result<List<MessageDetail>>
     suspend fun updateMessageReadStatus(messageId: String, isUnread: Boolean)
 }

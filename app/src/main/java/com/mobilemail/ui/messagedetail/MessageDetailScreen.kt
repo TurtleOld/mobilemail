@@ -23,13 +23,11 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import com.mobilemail.ui.common.isExpandedWindowWidth
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -41,7 +39,6 @@ import androidx.compose.ui.unit.dp
 import com.mobilemail.domain.model.MessageDetail
 import com.mobilemail.ui.messagedetail.content.MessageBodySection
 import com.mobilemail.ui.messagedetail.content.openExternalUriSafely
-import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.ui.common.MonogramAvatar
 import java.util.regex.Pattern
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,8 +57,7 @@ fun MessageDetailScreen(
     onForward: ((com.mobilemail.domain.model.MessageDetail) -> Unit)? = null,
     onMessageDeleted: ((String) -> Unit)? = null,
     onReadStatusChanged: ((String, Boolean) -> Unit)? = null,
-    onMessageMoved: ((String) -> Unit)? = null,
-    onThreadMessageClick: ((String) -> Unit)? = null
+    onMessageMoved: ((String) -> Unit)? = null
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val snackbarHostState = rememberFeatureScreenSnackbarHostState()
@@ -282,9 +278,6 @@ fun MessageDetailScreen(
             uiState.message?.let { message ->
                 MessageContent(
                     message = message,
-                    threadMessages = uiState.threadMessages,
-                    threadDetails = uiState.threadDetails,
-                    onThreadMessageClick = onThreadMessageClick,
                     onDownloadAttachment = { attachmentId, filename, mimeType ->
                         viewModel.downloadAttachment(attachmentId, filename, mimeType)
                     },
@@ -313,9 +306,6 @@ fun MessageDetailScreen(
 fun MessageContent(
     message: com.mobilemail.domain.model.MessageDetail,
     modifier: Modifier = Modifier,
-    threadMessages: List<MessageListItem> = emptyList(),
-    threadDetails: List<MessageDetail> = emptyList(),
-    onThreadMessageClick: ((String) -> Unit)? = null,
     onDownloadAttachment: (String, String, String) -> Unit = { _, _, _ -> },
     onOpenAttachment: (String, String, String) -> Unit = { _, _, _ -> },
 ) {
@@ -323,14 +313,7 @@ fun MessageContent(
     val locale = configuration.locales[0]
     val dateFormat = remember(locale) { SimpleDateFormat("dd.MM.yyyy HH:mm", locale) }
     val scrollState = rememberScrollState()
-    val context = LocalContext.current
     val isExpandedLayout = isExpandedWindowWidth()
-    val conversationMessages = remember(threadDetails, message) {
-        if (threadDetails.isNotEmpty()) threadDetails else listOf(message)
-    }
-    var expandedMessageIds by remember(conversationMessages, message.id) {
-        mutableStateOf(setOf(message.id))
-    }
 
     Column(
         modifier = modifier
@@ -373,260 +356,46 @@ fun MessageContent(
             }
         }
 
-        if (conversationMessages.size > 1) {
-            ConversationHeader(
-                threadMessages = threadMessages,
-                threadDetails = conversationMessages,
-                currentMessageId = message.id,
-                onThreadMessageClick = onThreadMessageClick,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
-        }
-
-        conversationMessages.forEach { threadMessage ->
-            val isCurrent = threadMessage.id == message.id
-            val isExpanded = expandedMessageIds.contains(threadMessage.id) || isCurrent
-            ConversationMessageCard(
-                message = threadMessage,
-                isCurrent = isCurrent,
-                isExpanded = isExpanded,
-                onToggleExpanded = {
-                    expandedMessageIds = if (expandedMessageIds.contains(threadMessage.id) && !isCurrent) {
-                        expandedMessageIds - threadMessage.id
-                    } else {
-                        expandedMessageIds + threadMessage.id
-                    }
-                },
-                onFocusMessage = if (!isCurrent && onThreadMessageClick != null) {
-                    { onThreadMessageClick(threadMessage.id) }
-                } else {
-                    null
-                },
-                onDownloadAttachment = onDownloadAttachment,
-                onOpenAttachment = onOpenAttachment,
-                context = context,
-                isExpandedLayout = isExpandedLayout
-            )
-        }
-    }
-}
-
-@Composable
-private fun ConversationHeader(
-    threadMessages: List<MessageListItem>,
-    threadDetails: List<MessageDetail>,
-    currentMessageId: String,
-    onThreadMessageClick: ((String) -> Unit)?,
-    modifier: Modifier = Modifier
-) {
-    val locale = LocalConfiguration.current.locales[0]
-    val dateFormat = remember(locale) { SimpleDateFormat("dd.MM HH:mm", locale) }
-
-    Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = "Переписка (${threadMessages.size})",
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(bottom = 8.dp)
+        MessageExpandedContent(
+            message = message,
+            onDownloadAttachment = onDownloadAttachment,
+            onOpenAttachment = onOpenAttachment,
+            isExpandedLayout = isExpandedLayout
         )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            threadMessages.forEach { threadMessage ->
-                val isCurrent = threadMessage.id == currentMessageId
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .semantics {
-                            role = Role.Button
-                            stateDescription = if (isCurrent) "Открыто" else "Доступно для открытия"
-                        }
-                        .clickable(enabled = !isCurrent && onThreadMessageClick != null) {
-                            onThreadMessageClick?.invoke(threadMessage.id)
-                        },
-                    color = if (isCurrent) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerLow
-                    },
-                    shape = MaterialTheme.shapes.large
-                ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = threadMessage.from.name ?: threadMessage.from.email,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = if (isCurrent || threadMessage.flags.unread) FontWeight.SemiBold else FontWeight.Medium,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = dateFormat.format(threadMessage.date),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = threadMessage.subject,
-                            style = MaterialTheme.typography.bodyMedium,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (threadMessage.snippet.isNotBlank()) {
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = threadMessage.snippet,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-                        if (threadDetails.any { it.id == threadMessage.id && it.attachments.isNotEmpty() }) {
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "Есть вложения",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-            }
-        }
     }
 }
 
-@Suppress("UnusedParameter")
 @Composable
-private fun ConversationMessageCard(
+private fun MessageExpandedContent(
     message: MessageDetail,
-    isCurrent: Boolean,
-    isExpanded: Boolean,
-    onToggleExpanded: () -> Unit,
-    onFocusMessage: (() -> Unit)?,
     onDownloadAttachment: (String, String, String) -> Unit,
     onOpenAttachment: (String, String, String) -> Unit,
-    context: Context,
-    isExpandedLayout: Boolean
+    isExpandedLayout: Boolean,
+    modifier: Modifier = Modifier,
 ) {
-    val locale = LocalConfiguration.current.locales[0]
-    val dateFormat = remember(locale) { SimpleDateFormat("dd.MM.yyyy HH:mm", locale) }
-    ElevatedCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = when {
-                isCurrent -> MaterialTheme.colorScheme.secondaryContainer
-                isExpanded -> MaterialTheme.colorScheme.surfaceContainerLow
-                else -> MaterialTheme.colorScheme.surface
-            }
-        ),
-        shape = MaterialTheme.shapes.large
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Top
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = message.from.name ?: message.from.email,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (isCurrent || message.flags.unread) FontWeight.Bold else FontWeight.SemiBold
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = recipientSummary(message),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = if (isExpanded) 3 else 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        text = dateFormat.format(message.date),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    if (isCurrent) {
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = "Текущее письмо",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (message.attachments.isNotEmpty()) {
             Text(
-                text = message.subject,
-                style = MaterialTheme.typography.bodyLarge,
-                fontWeight = FontWeight.Medium
+                text = "Вложения (${message.attachments.size})",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 8.dp)
             )
-
+            message.attachments.forEach { attachment ->
+                AttachmentItem(
+                    attachment = attachment,
+                    onDownload = { onDownloadAttachment(attachment.id, attachment.filename, attachment.mime) },
+                    onOpen = { onOpenAttachment(attachment.id, attachment.filename, attachment.mime) }
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                AssistChip(
-                    onClick = onToggleExpanded,
-                    label = { Text(if (isExpanded) "Свернуть" else "Развернуть") }
-                )
-                if (onFocusMessage != null) {
-                    AssistChip(
-                        onClick = onFocusMessage,
-                        label = { Text("Открыть отдельно") }
-                    )
-                }
-            }
-
-            if (isExpanded) {
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider()
-                Spacer(modifier = Modifier.height(12.dp))
-                if (message.attachments.isNotEmpty()) {
-                    Text(
-                        text = "Вложения (${message.attachments.size})",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    message.attachments.forEach { attachment ->
-                        AttachmentItem(
-                            attachment = attachment,
-                            onDownload = { onDownloadAttachment(attachment.id, attachment.filename, attachment.mime) },
-                            onOpen = { onOpenAttachment(attachment.id, attachment.filename, attachment.mime) }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-
-                MessageBodySection(
-                    message = message,
-                    isExpandedLayout = isExpandedLayout
-                )
-            }
         }
-    }
-}
 
-private fun recipientSummary(message: MessageDetail): String {
-    val recipients = buildList {
-        if (message.to.isNotEmpty()) add("Кому: ${message.to.joinToString(", ") { it.name ?: it.email }}")
-        if (!message.cc.isNullOrEmpty()) add("Копия: ${message.cc.joinToString(", ") { it.name ?: it.email }}")
+        MessageBodySection(
+            message = message,
+            isExpandedLayout = isExpandedLayout
+        )
     }
-    return recipients.joinToString(" • ").ifBlank { "Без получателей" }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
