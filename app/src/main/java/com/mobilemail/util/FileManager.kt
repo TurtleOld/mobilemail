@@ -38,8 +38,10 @@ object FileManager {
         if (!downloadsDir.exists()) {
             downloadsDir.mkdirs()
         }
-        
-        val file = File(downloadsDir, filename)
+
+        val safeFilename = File(filename).name
+        val file = File(downloadsDir, safeFilename)
+        check(file.canonicalPath.startsWith(downloadsDir.canonicalPath)) { "Path traversal detected" }
         var counter = 1
         var finalFile = file
         while (finalFile.exists()) {
@@ -124,8 +126,10 @@ object FileManager {
             val cacheDir = context.cacheDir
             val extension = mimeType.substringAfter('/', "").substringBefore(';').ifBlank { "bin" }
             val normalizedExtension = if (extension == "octet-stream") "bin" else extension
-            val safeFilename = if (filename.contains('.')) filename else "$filename.$normalizedExtension"
+            val baseName = File(filename).name
+            val safeFilename = if (baseName.contains('.')) baseName else "$baseName.$normalizedExtension"
             val file = File(cacheDir, safeFilename)
+            check(file.canonicalPath.startsWith(cacheDir.canonicalPath)) { "Path traversal detected" }
             
             var counter = 1
             var finalFile = file
