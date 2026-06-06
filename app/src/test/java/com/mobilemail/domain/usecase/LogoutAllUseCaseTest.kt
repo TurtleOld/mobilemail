@@ -12,14 +12,14 @@ class LogoutAllUseCaseTest {
         val calls = mutableListOf<String>()
         val accountIds = listOf("acc-1", "acc-2")
 
-        useCase(
+        useCase(LogoutAllParams(
             accountIds = accountIds,
             unsubscribeTopic = { id -> calls += "unsubscribe:$id" },
             revokeAllTokens = { calls += "revokeAll" },
             clearAllSessions = { calls += "clearSessions" },
             clearAllTokens = { calls += "clearTokens" },
-            clearJmapCaches = { calls += "clearCaches" }
-        )
+            clearJmapCaches = { calls += "clearCaches" },
+        ))
 
         assertEquals(
             listOf(
@@ -38,14 +38,14 @@ class LogoutAllUseCaseTest {
     fun `invoke clears state even when revokeAllTokens throws`() = runTest {
         val calls = mutableListOf<String>()
 
-        useCase(
+        useCase(LogoutAllParams(
             accountIds = listOf("acc-1"),
             unsubscribeTopic = { calls += "unsubscribe" },
             revokeAllTokens = { throw java.io.IOException("network error") },
             clearAllSessions = { calls += "clearSessions" },
             clearAllTokens = { calls += "clearTokens" },
-            clearJmapCaches = { calls += "clearCaches" }
-        )
+            clearJmapCaches = { calls += "clearCaches" },
+        ))
 
         assertEquals(
             listOf("unsubscribe", "clearSessions", "clearTokens", "clearCaches"),

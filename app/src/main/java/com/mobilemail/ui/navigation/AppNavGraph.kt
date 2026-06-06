@@ -38,6 +38,7 @@ import com.mobilemail.data.preferences.SwipeAction
 import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.domain.usecase.HandleMessagesStartupUseCase
 import com.mobilemail.domain.usecase.LogoutAccountUseCase
+import com.mobilemail.domain.usecase.LogoutAllParams
 import com.mobilemail.domain.usecase.LogoutAllUseCase
 import com.mobilemail.domain.usecase.ResolveMessagesViewModelContextUseCase
 import com.mobilemail.domain.usecase.ResolvePushNavigationUseCase
@@ -70,8 +71,11 @@ import com.mobilemail.ui.security.PinSetupScreen
 import com.mobilemail.ui.security.PinSetupViewModel
 import com.mobilemail.ui.security.PinSetupViewModelFactory
 import com.mobilemail.ui.settings.SettingsScreen
+import com.mobilemail.data.security.PinManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 @Composable
 fun AppNavGraph(
@@ -113,7 +117,7 @@ fun AppNavGraph(
                 onLogout = {
                     activityScope.launch {
                         val savedAccounts = preferencesManager.getSavedAccounts()
-                        logoutAllUseCase(
+                        logoutAllUseCase(LogoutAllParams(
                             accountIds = savedAccounts.map { it.accountId },
                             unsubscribeTopic = accountPushTopicsPort::unsubscribe,
                             revokeAllTokens = {
@@ -128,10 +132,14 @@ fun AppNavGraph(
                             },
                             clearAllSessions = { preferencesManager.clearAllSessions() },
                             clearAllTokens = { tokenStore.clearAllTokens() },
-                            clearJmapCaches = {
-                                JmapOAuthClient.clearCache()
+                            clearJmapCaches = { JmapOAuthClient.clearCache() },
+                            clearPin = {
+                                withContext(Dispatchers.IO) { PinManager(application).clearPin() }
+                            },
+                            clearDatabase = {
+                                withContext(Dispatchers.IO) { database?.clearAllTables() }
                             }
-                        )
+                        ))
                         navController.navigate(AppRoutes.Login) {
                             popUpTo(0) { inclusive = true }
                         }
@@ -239,7 +247,9 @@ fun AppNavGraph(
                     )
                 ) {
                     HandleMessagesStartupUseCase.Action.RequestNotificationPermission -> {
-                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                        }
                     }
                     HandleMessagesStartupUseCase.Action.NoPermissionRequest -> Unit
                 }
