@@ -11,18 +11,18 @@ class SearchPagingSource(
     private val repository: SearchRepository,
     private val searchQuery: SearchQuery
 ) : PagingSource<Int, MessageListItem>() {
-    override suspend fun load(loadParams: LoadParams<Int>): LoadResult<Int, MessageListItem> {
-        val position = loadParams.key ?: 0
+    override suspend fun load(params: LoadParams<Int>): LoadResult<Int, MessageListItem> {
+        val position = params.key ?: 0
         return repository.searchMessagesPage(
             searchQuery = searchQuery,
             position = position,
-            limit = loadParams.loadSize
+            limit = params.loadSize
         ).fold(
             onError = { LoadResult.Error(it) },
             onSuccess = { page ->
                 LoadResult.Page(
                     data = page.items,
-                    prevKey = if (position == 0) null else maxOf(0, position - loadParams.loadSize),
+                    prevKey = if (position == 0) null else maxOf(0, position - params.loadSize),
                     nextKey = page.nextPosition.takeIf { page.hasMore }
                 )
             }

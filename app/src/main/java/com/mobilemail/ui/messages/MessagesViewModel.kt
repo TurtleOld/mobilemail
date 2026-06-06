@@ -525,7 +525,7 @@ class MessagesViewModel(
                     )
                 }
                 if (failure != null) {
-                    Result.Error(failure!!)
+                    Result.Error(failure)
                 } else {
                     Result.Success(Unit)
                 }

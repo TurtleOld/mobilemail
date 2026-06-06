@@ -15,10 +15,10 @@ import androidx.paging.compose.itemKey
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DriveFileMove
+import androidx.compose.material.icons.automirrored.filled.ExitToApp
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.ExitToApp
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Schedule
@@ -246,7 +246,7 @@ fun MessagesScreen(
                                 Icon(Icons.Default.Report, contentDescription = "В спам")
                             }
                             IconButton(onClick = { showMoveDialog = true }) {
-                                Icon(Icons.Default.DriveFileMove, contentDescription = "Переместить")
+                                Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = "Переместить")
                             }
                             IconButton(onClick = { viewModel.selectAll() }) {
                                 Icon(Icons.Default.SelectAll, contentDescription = "Выбрать все")
@@ -274,7 +274,7 @@ fun MessagesScreen(
                                 Icon(Icons.Default.Refresh, contentDescription = "Обновить")
                             }
                             IconButton(onClick = onLogout) {
-                                Icon(Icons.Default.ExitToApp, contentDescription = "Выход")
+                                Icon(Icons.AutoMirrored.Filled.ExitToApp, contentDescription = "Выход")
                             }
                         }
                     )
@@ -923,7 +923,7 @@ fun MessageItem(
                         Spacer(modifier = Modifier.height(4.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
-                                imageVector = Icons.Default.DriveFileMove,
+                                imageVector = Icons.AutoMirrored.Filled.DriveFileMove,
                                 contentDescription = null,
                                 tint = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.size(14.dp)

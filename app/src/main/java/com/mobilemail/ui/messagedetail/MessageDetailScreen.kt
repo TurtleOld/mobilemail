@@ -8,9 +8,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.ClickableText
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DriveFileMove
+import androidx.compose.material.icons.automirrored.filled.Forward
+import androidx.compose.material.icons.automirrored.filled.Reply
+import androidx.compose.material.icons.automirrored.filled.ReplyAll
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -141,7 +147,7 @@ fun MessageDetailScreen(
                             onClick = { onReply?.invoke(message) },
                             modifier = Modifier.weight(1f),
                         ) {
-                            Icon(Icons.Default.Reply, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
                             Text("Ответить")
                         }
@@ -149,7 +155,7 @@ fun MessageDetailScreen(
                             onClick = { onForward?.invoke(message) },
                             modifier = Modifier.weight(1f),
                         ) {
-                            Icon(Icons.Default.Forward, contentDescription = null)
+                            Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null)
                             Spacer(Modifier.width(6.dp))
                             Text("Переслать")
                         }
@@ -167,7 +173,7 @@ fun MessageDetailScreen(
                     },
                     navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Назад")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Назад")
                     }
                 },
                 actions = {
@@ -209,11 +215,11 @@ fun MessageDetailScreen(
                             Icon(Icons.Default.Report, contentDescription = "В спам")
                         }
                         IconButton(onClick = { showMoveDialog = true }) {
-                            Icon(Icons.Default.DriveFileMove, contentDescription = "Переместить")
+                            Icon(Icons.AutoMirrored.Filled.DriveFileMove, contentDescription = "Переместить")
                         }
                         Box {
                             IconButton(onClick = { showReplyMenu = true }) {
-                                Icon(Icons.Default.Reply, contentDescription = "Ответить")
+                                Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = "Ответить")
                             }
                             DropdownMenu(
                                 expanded = showReplyMenu,
@@ -226,7 +232,7 @@ fun MessageDetailScreen(
                                         onReply?.invoke(message)
                                     },
                                     leadingIcon = {
-                                        Icon(Icons.Default.Reply, contentDescription = null)
+                                        Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null)
                                     }
                                 )
                                 DropdownMenuItem(
@@ -236,7 +242,7 @@ fun MessageDetailScreen(
                                         onReplyAll?.invoke(message)
                                     },
                                     leadingIcon = {
-                                        Icon(Icons.Default.ReplyAll, contentDescription = null)
+                                        Icon(Icons.AutoMirrored.Filled.ReplyAll, contentDescription = null)
                                     }
                                 )
                                 DropdownMenuItem(
@@ -246,7 +252,7 @@ fun MessageDetailScreen(
                                         onForward?.invoke(message)
                                     },
                                     leadingIcon = {
-                                        Icon(Icons.Default.Forward, contentDescription = null)
+                                        Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null)
                                     }
                                 )
                             }
@@ -765,59 +771,46 @@ fun ClickableTextWithLinks(
         "(?:(?:https?|ftp)://|www\\.)[\\w\\-]+(?:\\.[\\w\\-]+)+[\\w\\-.,@?^=%&:/~+#]*[\\w\\-@?^=%&/~+#]",
         Pattern.CASE_INSENSITIVE
     )
-    
+    val primary = MaterialTheme.colorScheme.primary
+
     val annotatedString = buildAnnotatedString {
         val matcher = urlPattern.matcher(text)
         var lastIndex = 0
-        
+
         while (matcher.find()) {
             val start = matcher.start()
             val end = matcher.end()
-            val url = matcher.group()
-            
-            if (start > lastIndex) {
-                append(text.substring(lastIndex, start))
+            var url = matcher.group()
+
+            if (start > lastIndex) append(text.substring(lastIndex, start))
+
+            if (!url.startsWith("http://") && !url.startsWith("https://")) url = "http://$url"
+            addLink(
+                url = LinkAnnotation.Url(
+                    url = url,
+                    styles = TextLinkStyles(
+                        style = SpanStyle(color = primary, textDecoration = TextDecoration.Underline)
+                    ),
+                    linkInteractionListener = { annotation ->
+                        try {
+                            openExternalUriSafely(context, Uri.parse((annotation as LinkAnnotation.Url).url))
+                        } catch (e: Exception) {
+                            android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки", e)
+                        }
+                    }
+                ),
+                start = length,
+                end = length + matcher.group().length
+            )
+            withStyle(SpanStyle(color = primary, textDecoration = TextDecoration.Underline)) {
+                append(matcher.group())
             }
-            
-            pushStringAnnotation(tag = "URL", annotation = url)
-            withStyle(
-                style = SpanStyle(
-                    color = MaterialTheme.colorScheme.primary,
-                    textDecoration = TextDecoration.Underline
-                )
-            ) {
-                append(url)
-            }
-            pop()
-            
+
             lastIndex = end
         }
-        
-        if (lastIndex < text.length) {
-            append(text.substring(lastIndex))
-        }
+
+        if (lastIndex < text.length) append(text.substring(lastIndex))
     }
-    
-    ClickableText(
-        text = annotatedString,
-        style = style,
-        modifier = modifier,
-        onClick = { offset ->
-            annotatedString.getStringAnnotations(
-                tag = "URL",
-                start = offset,
-                end = offset
-            ).firstOrNull()?.let { annotation ->
-                try {
-                    var url = annotation.item
-                    if (!url.startsWith("http://") && !url.startsWith("https://")) {
-                        url = "http://$url"
-                    }
-                    openExternalUriSafely(context, Uri.parse(url))
-                } catch (e: Exception) {
-                    android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки: ${annotation.item}", e)
-                }
-            }
-        }
-    )
+
+    Text(text = annotatedString, style = style, modifier = modifier)
 }

@@ -420,7 +420,7 @@ class ComposeViewModel(
             )
 
             if (uploadedAttachment == null) return null
-            resolved += uploadedAttachment!!
+            resolved += uploadedAttachment
         }
 
         if (resolved != attachments) {

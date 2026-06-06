@@ -36,28 +36,23 @@ class SearchRepository(
 
         val filter = buildFilter(searchQuery)
 
-        val queryResult = jmapClient.queryEmails(
+        val (queryResult, emails) = jmapClient.queryAndGetEmails(
             mailboxId = searchQuery.folderId,
             accountId = accountId,
             position = position,
             limit = limit,
             filter = filter,
-            searchText = null
-        )
-
-        if (queryResult.ids.isEmpty()) {
-            return@runCatchingSuspend SearchPage(emptyList(), null, false)
-        }
-
-        val emails = jmapClient.getEmails(
-            ids = queryResult.ids,
-            accountId = accountId,
+            searchText = null,
             properties = listOf(
                 "id", "threadId", "mailboxIds", "from", "to", "subject",
                 "receivedAt", "preview", "hasAttachment",
                 "size", "keywords"
             )
         )
+
+        if (queryResult.ids.isEmpty()) {
+            return@runCatchingSuspend SearchPage(emptyList(), null, false)
+        }
 
         val items = mapEmailsToSearchItems(emails, searchQuery)
         SearchPage(
