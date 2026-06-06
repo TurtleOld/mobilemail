@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.4.1](https://github.com/TurtleOld/mobilemail/compare/v1.4.0...v1.4.1) (2026-06-06)
+
+
+### Bug Fixes
+
+* **messages:** correct swipe and detail backgrounds ([de23b82](https://github.com/TurtleOld/mobilemail/commit/de23b82344dc74194f687edca03315866e4282d2))
+* **messages:** correct swipe and detail backgrounds ([#46](https://github.com/TurtleOld/mobilemail/issues/46)) ([5540dd6](https://github.com/TurtleOld/mobilemail/commit/5540dd6c22346a7817c223548499e081e72c4808))
+* **messages:** remove thread detail UI ([58af770](https://github.com/TurtleOld/mobilemail/commit/58af7703acbda667304f7635e8a237ad102d7af2))
+
 ## [1.4.0](https://github.com/TurtleOld/mobilemail/compare/v1.3.0...v1.4.0) (2026-06-06)
 
 
