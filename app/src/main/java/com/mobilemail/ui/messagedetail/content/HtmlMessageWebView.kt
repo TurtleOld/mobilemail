@@ -30,8 +30,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
-import com.mobilemail.ui.theme.EmailShapes
-import com.mobilemail.ui.theme.ExtendedTheme
 import kotlinx.coroutines.delay
 
 @Composable
@@ -127,8 +125,8 @@ private fun HtmlLoadingPlaceholder(minHeight: Dp) {
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = minHeight.coerceAtLeast(220.dp)),
-        color = ExtendedTheme.colors.surfaceReading,
-        shape = EmailShapes.emailCard
+        color = MaterialTheme.colorScheme.surface,
+        shape = MaterialTheme.shapes.large
     ) {
         Column(
             modifier = Modifier
