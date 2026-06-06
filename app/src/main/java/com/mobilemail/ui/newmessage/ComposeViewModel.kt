@@ -5,6 +5,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.common.fold
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Attachment
 import com.mobilemail.domain.model.toData
 import com.mobilemail.data.repository.ComposeRepository
@@ -38,9 +39,22 @@ class ComposeViewModel(
     application: Application,
     private val server: String,
     private val email: String,
-    private val accountId: String,
-    private val repository: ComposeRepository
+    private val accountId: String
 ) : AndroidViewModel(application) {
+
+    private var repository: ComposeRepository? = null
+
+    init {
+        viewModelScope.launch {
+            try {
+                val jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
+                repository = ComposeRepository(jmapClient)
+            } catch (e: Exception) {
+                Log.e("ComposeViewModel", "Ошибка инициализации клиента", e)
+                _uiState.value = _uiState.value.copy(error = ErrorMapper.mapException(e))
+            }
+        }
+    }
     companion object {
         private const val MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024L
     }
@@ -66,13 +80,22 @@ class ComposeViewModel(
         if (!validateSendInputs(recipients, trimmedSubject, trimmedBody)) return
 
         viewModelScope.launch {
+            val repo = repository ?: run {
+                _uiState.value = _uiState.value.copy(
+                    notification = NotificationState.Snackbar(
+                        message = "Клиент ещё не готов, попробуйте снова",
+                        duration = SnackbarDuration.Short
+                    )
+                )
+                return@launch
+            }
             _uiState.value = _uiState.value.copy(isSending = true)
-            val resolvedAttachments = resolveAttachmentsForSend(_uiState.value.attachments)
+            val resolvedAttachments = resolveAttachmentsForSend(_uiState.value.attachments, repo)
             if (resolvedAttachments == null) {
                 _uiState.value = _uiState.value.copy(isSending = false)
                 return@launch
             }
-            dispatchSend(recipients, trimmedSubject, trimmedBody, resolvedAttachments, onSuccess)
+            dispatchSend(recipients, trimmedSubject, trimmedBody, resolvedAttachments, repo, onSuccess)
         }
     }
 
@@ -103,9 +126,10 @@ class ComposeViewModel(
         trimmedSubject: String,
         trimmedBody: String,
         resolvedAttachments: List<Attachment>,
+        repo: ComposeRepository,
         onSuccess: () -> Unit
     ) {
-        repository.sendMessage(
+        repo.sendMessage(
             from = email,
             to = recipients,
             subject = trimmedSubject,
@@ -129,7 +153,7 @@ class ComposeViewModel(
                     )
                 )
                 onSuccess()
-                viewModelScope.launch { pollSubmissionStatus(submissionId) }
+                viewModelScope.launch { pollSubmissionStatus(submissionId, repo) }
             }
         )
     }
@@ -177,13 +201,13 @@ class ComposeViewModel(
         }
     }
 
-    private suspend fun pollSubmissionStatus(submissionId: String) {
+    private suspend fun pollSubmissionStatus(submissionId: String, repo: ComposeRepository) {
         // Пробуем 12 раз с интервалом 5 сек (≈ 1 минута)
         repeat(12) { attempt ->
             if (!viewModelScope.isActive) return
             kotlinx.coroutines.delay(5000)
 
-            repository.getEmailSubmissionStatus(submissionId).fold(
+            repo.getEmailSubmissionStatus(submissionId).fold(
                 onError = { e ->
                     Log.w("ComposeViewModel", "EmailSubmission/get недоступен или ошибка статуса", e)
                     if (attempt == 0) {
@@ -216,11 +240,12 @@ class ComposeViewModel(
                 runCatching { readAttachmentFromUri(resolver, uri) }
             }
 
+            val repo = repository
             result.fold(
                 onSuccess = { quadruple ->
                     val (name, type, bytes) = quadruple
                     val localPath = quadruple.fourth
-                    uploadAttachmentFile(name, type, bytes, localPath)
+                    uploadAttachmentFile(name, type, bytes, localPath, repo)
                 },
                 onFailure = { e ->
                     Log.e("ComposeViewModel", "Ошибка чтения вложения", e)
@@ -262,14 +287,18 @@ class ComposeViewModel(
         return Quadruple(name, type, bytes, localPath)
     }
 
-    private suspend fun uploadAttachmentFile(name: String, type: String, bytes: ByteArray, localPath: String?) {
+    private suspend fun uploadAttachmentFile(name: String, type: String, bytes: ByteArray, localPath: String?, repo: ComposeRepository?) {
         _uiState.value = _uiState.value.copy(
             notification = NotificationState.Snackbar(
                 message = "Загрузка вложения: $name",
                 duration = com.mobilemail.ui.common.SnackbarDuration.Short
             )
         )
-        repository.uploadAttachment(bytes, type, name).fold(
+        if (repo == null) {
+            handleUploadError(IllegalStateException("Клиент не готов"), name, type, bytes.size.toLong(), localPath)
+            return
+        }
+        repo.uploadAttachment(bytes, type, name).fold(
             onError = { e ->
                 Log.e("ComposeViewModel", "Ошибка загрузки вложения", e)
                 handleUploadError(e, name, type, bytes.size.toLong(), localPath)
@@ -334,8 +363,12 @@ class ComposeViewModel(
         )
 
         viewModelScope.launch {
+            val repo = repository ?: run {
+                _uiState.value = _uiState.value.copy(isSavingDraft = false)
+                return@launch
+            }
             _uiState.value = _uiState.value.copy(isSavingDraft = true)
-            repository.saveDraft(
+            repo.saveDraft(
                 from = email,
                 to = to.map { it.trim() }.filter { it.isNotBlank() },
                 subject = trimmedSubject,
@@ -379,7 +412,7 @@ class ComposeViewModel(
         return null
     }
 
-    private suspend fun resolveAttachmentsForSend(attachments: List<Attachment>): List<Attachment>? {
+    private suspend fun resolveAttachmentsForSend(attachments: List<Attachment>, repo: ComposeRepository): List<Attachment>? {
         val resolved = mutableListOf<Attachment>()
         for (attachment in attachments) {
             if (attachment.isUploaded) {
@@ -400,7 +433,7 @@ class ComposeViewModel(
 
             val bytes = withContext(Dispatchers.IO) { OfflineAttachmentStorage.read(localPath) }
             var uploadedAttachment: Attachment? = null
-            repository.uploadAttachment(bytes, attachment.mime, attachment.filename).fold(
+            repo.uploadAttachment(bytes, attachment.mime, attachment.filename).fold(
                 onError = { e ->
                     if (OfflineQueueManager.shouldQueue(e)) {
                         uploadedAttachment = attachment
