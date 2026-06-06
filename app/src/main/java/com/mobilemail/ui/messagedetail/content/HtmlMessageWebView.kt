@@ -74,15 +74,14 @@ internal fun HtmlMessageWebView(
                             view: WebView?,
                             request: WebResourceRequest?
                         ): Boolean {
-                            val targetUri = request?.url
-                            if (targetUri != null &&
-                                targetUri.scheme != "data" &&
-                                targetUri.scheme != "file"
-                            ) {
+                            val targetUri = request?.url ?: return true
+                            // Allow only safe schemes; everything else (data:, file:,
+                            // intent:, javascript:, market:, …) is blocked here.
+                            // isAllowedExternalUri permits https/http/mailto only.
+                            if (isAllowedExternalUri(targetUri)) {
                                 openExternalUriSafely(ctx, targetUri)
-                                return true
                             }
-                            return false
+                            return true
                         }
                     }
                     HtmlMessageWebViewPolicy.applySettings(
