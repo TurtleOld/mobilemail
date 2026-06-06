@@ -7,6 +7,8 @@ import androidx.paging.PagingData
 import androidx.paging.cachedIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.data.jmap.MailClientFactory
+import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.paging.MailPagingSource
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
@@ -60,9 +62,11 @@ class MessagesViewModel(
     private val server: String,
     private val email: String,
     private val accountId: String,
-    private val repository: MailRepository,
-    private val messageActionsRepository: MessageActionsRepository
+    private val database: AppDatabase? = null
 ) : ViewModel() {
+
+    private var repository: MailRepository? = null
+    private var messageActionsRepository: MessageActionsRepository? = null
 
     private data class PendingFolderAction(
         val id: String,
@@ -83,7 +87,8 @@ class MessagesViewModel(
         pagingRefreshTrigger
     ) { folderId, refreshVersion -> folderId to refreshVersion }
         .flatMapLatest { (folderId, _) ->
-            if (folderId == null) {
+            val repo = repository
+            if (folderId == null || repo == null) {
                 kotlinx.coroutines.flow.flowOf(PagingData.empty())
             } else {
                 Pager(
@@ -93,7 +98,7 @@ class MessagesViewModel(
                         prefetchDistance = 10,
                         enablePlaceholders = false
                     ),
-                    pagingSourceFactory = { MailPagingSource(repository, folderId) }
+                    pagingSourceFactory = { MailPagingSource(repo, folderId) }
                 ).flow
             }
         }
@@ -101,13 +106,31 @@ class MessagesViewModel(
 
     init {
         observeQueueStats()
-        loadFolders()
+        viewModelScope.launch {
+            try {
+                val jmapClient = MailClientFactory.create(app, server, email, accountId)
+                repository = MailRepository(
+                    jmapClient = jmapClient,
+                    messageDao = database?.messageDao(),
+                    folderDao = database?.folderDao()
+                )
+                messageActionsRepository = MessageActionsRepository(jmapClient)
+            } catch (e: Exception) {
+                android.util.Log.e("MessagesViewModel", "Ошибка инициализации клиента", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = ErrorMapper.mapException(e)
+                )
+                return@launch
+            }
+            loadFolders()
+        }
     }
 
     private fun loadFolders() {
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isLoading = true)
-            repository.getFolders().fold(
+            repository?.getFolders()?.fold(
                 onError = { e ->
                     android.util.Log.e("MessagesViewModel", "Ошибка загрузки папок", e)
                     _uiState.value = _uiState.value.copy(
@@ -161,7 +184,7 @@ class MessagesViewModel(
                 _uiState.value = currentState.copy(isLoadingMore = true)
             }
             
-            repository.getMessages(folderId, position = position).fold(
+            repository?.getMessages(folderId, position = position)?.fold(
                 onError = { e ->
                     android.util.Log.e("MessagesViewModel", "Ошибка загрузки писем", e)
                     _uiState.value = _uiState.value.copy(
@@ -233,7 +256,7 @@ class MessagesViewModel(
         val wasUnread = oldMessage?.flags?.unread == true
         
         viewModelScope.launch {
-            repository.updateMessageReadStatus(messageId, isUnread)
+            repository?.updateMessageReadStatus(messageId, isUnread)
         }
         
         val updatedMessages = currentState.messages.map { message ->
@@ -289,11 +312,12 @@ class MessagesViewModel(
 
     fun deleteSelected() {
         val selectedIds = _uiState.value.selectedMessageIds
+        val actionsRepo = messageActionsRepository ?: return
         if (selectedIds.isEmpty()) return
         scheduleFolderAction(
             messageIds = selectedIds,
             pendingMessage = if (selectedIds.size == 1) "Письмо удалено" else "Удалено писем: ${selectedIds.size}",
-            commitAction = { messageId -> messageActionsRepository.deleteMessage(messageId) },
+            commitAction = { messageId -> actionsRepo.deleteMessage(messageId) },
             enqueueAction = { messageId ->
                 OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
             },
@@ -359,36 +383,25 @@ class MessagesViewModel(
 
     fun moveSelected(toFolderId: String) {
         val currentState = _uiState.value
-        val fromFolderId = currentState.selectedFolder?.id ?: run {
-            _uiState.value = currentState.copy(
-                notification = NotificationState.Snackbar(
-                    message = "Не выбрана исходная папка",
-                    duration = SnackbarDuration.Short
-                )
-            )
-            return
-        }
-        val destinationFolder = currentState.folders.firstOrNull { it.id == toFolderId } ?: run {
-            _uiState.value = currentState.copy(
-                notification = NotificationState.Snackbar(
-                    message = "Не удалось найти целевую папку",
-                    duration = SnackbarDuration.Short
-                )
-            )
-            return
-        }
-        if (fromFolderId == toFolderId) {
-            _uiState.value = currentState.copy(
-                notification = NotificationState.Snackbar(
-                    message = "Письма уже находятся в папке ${destinationFolder.name}",
-                    duration = SnackbarDuration.Short
-                )
-            )
-            return
-        }
-
+        val fromFolderId = currentState.selectedFolder?.id
+        val destinationFolder = currentState.folders.firstOrNull { it.id == toFolderId }
         val selectedIds = currentState.selectedMessageIds.toList()
-        if (selectedIds.isEmpty()) return
+        val actionsRepo = messageActionsRepository
+
+        val errorMessage = when {
+            fromFolderId == null -> "Не выбрана исходная папка"
+            destinationFolder == null -> "Не удалось найти целевую папку"
+            fromFolderId == toFolderId -> "Письма уже находятся в папке ${destinationFolder.name}"
+            else -> null
+        }
+        if (errorMessage != null) {
+            _uiState.value = currentState.copy(
+                notification = NotificationState.Snackbar(message = errorMessage, duration = SnackbarDuration.Short)
+            )
+            return
+        }
+        if (selectedIds.isEmpty() || actionsRepo == null) return
+        if (fromFolderId == null || destinationFolder == null) return
 
         scheduleFolderAction(
             messageIds = selectedIds.toSet(),
@@ -398,7 +411,7 @@ class MessagesViewModel(
                 "Подготовлено к перемещению: ${selectedIds.size}"
             },
             commitAction = { messageId ->
-                messageActionsRepository.moveMessage(messageId, fromFolderId, toFolderId)
+                actionsRepo.moveMessage(messageId, fromFolderId, toFolderId)
             },
             enqueueAction = { messageId ->
                 OfflineQueueManager.enqueueMove(app, server, email, accountId, messageId, fromFolderId, toFolderId)
@@ -411,10 +424,11 @@ class MessagesViewModel(
     }
 
     fun deleteMessageWithUndo(messageId: String) {
+        val actionsRepo = messageActionsRepository ?: return
         scheduleFolderAction(
             messageIds = setOf(messageId),
             pendingMessage = "Письмо удалено",
-            commitAction = { id -> messageActionsRepository.deleteMessage(id) },
+            commitAction = { id -> actionsRepo.deleteMessage(id) },
             enqueueAction = { id ->
                 OfflineQueueManager.enqueueDelete(app, server, email, accountId, id)
             },
@@ -424,6 +438,7 @@ class MessagesViewModel(
     }
 
     private fun moveSingleToRole(messageId: String, role: FolderRole) {
+        val actionsRepo = messageActionsRepository ?: return
         val currentFolderId = _uiState.value.selectedFolder?.id ?: return
         val targetFolder = _uiState.value.folders.firstOrNull { it.role == role }
             ?: if (role == FolderRole.ARCHIVE) {
@@ -453,7 +468,7 @@ class MessagesViewModel(
                 "Письмо помечено как спам"
             },
             commitAction = { id ->
-                messageActionsRepository.moveMessage(id, currentFolderId, targetFolder.id)
+                actionsRepo.moveMessage(id, currentFolderId, targetFolder.id)
             },
             enqueueAction = { id ->
                 OfflineQueueManager.enqueueMove(app, server, email, accountId, id, currentFolderId, targetFolder.id)
@@ -575,7 +590,7 @@ class MessagesViewModel(
         when (val result = action.commit()) {
             is Result.Success<*> -> {
                 refreshFoldersPreservingSelection()
-                _uiState.value.selectedFolder?.let { loadMessages(it.id, reset = true) }
+                _uiState.value.selectedFolder?.let { folder -> loadMessages(folder.id, reset = true) }
             }
             is Result.Error -> {
                 if (OfflineQueueManager.shouldQueue(result.exception)) {
@@ -616,7 +631,7 @@ class MessagesViewModel(
         viewModelScope.launch {
             val queueSummary = OfflineQueueManager.processPending(app)
             refreshQueueStats()
-            repository.getFolders().fold(
+            repository?.getFolders()?.fold(
                 onError = { },
                 onSuccess = { folders ->
                     val selectedFolderId = _uiState.value.selectedFolder?.id

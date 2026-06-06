@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageDetail
@@ -41,11 +42,12 @@ data class MessageDetailUiState(
 class MessageDetailViewModel(
     application: Application,
     private val session: SavedSession,
-    private val messageId: String,
-    private val repository: MailRepository,
-    private val messageActionsRepository: MessageActionsRepository,
-    private val attachmentRepository: AttachmentRepository
+    private val messageId: String
 ) : AndroidViewModel(application) {
+
+    private var repository: MailRepository? = null
+    private var messageActionsRepository: MessageActionsRepository? = null
+    private var attachmentRepository: AttachmentRepository? = null
     private data class PendingReadStatusUpdate(
         val messageId: String,
         val isUnread: Boolean
@@ -69,8 +71,23 @@ class MessageDetailViewModel(
 
     init {
         Log.d("MessageDetailViewModel", "Инициализация: messageId=$messageId, accountId=${session.accountId}")
-        loadFolders()
-        loadMessage()
+        viewModelScope.launch {
+            try {
+                val jmapClient = MailClientFactory.create(app, session.server, session.email, session.accountId)
+                repository = MailRepository(jmapClient)
+                messageActionsRepository = MessageActionsRepository(jmapClient)
+                attachmentRepository = AttachmentRepository(jmapClient)
+            } catch (e: Exception) {
+                Log.e("MessageDetailViewModel", "Ошибка инициализации клиента", e)
+                _uiState.value = _uiState.value.copy(
+                    isLoading = false,
+                    error = ErrorMapper.mapException(e)
+                )
+                return@launch
+            }
+            loadFolders()
+            loadMessage()
+        }
     }
     
     fun setOnReadStatusChanged(callback: ((String, Boolean) -> Unit)?) {
@@ -85,7 +102,7 @@ class MessageDetailViewModel(
 
     private fun loadFolders() {
         viewModelScope.launch {
-            repository.getFolders().fold(
+            repository?.getFolders()?.fold(
                 onError = { e ->
                     _uiState.value = _uiState.value.copy(error = ErrorMapper.mapException(e))
                 },
@@ -100,7 +117,7 @@ class MessageDetailViewModel(
         viewModelScope.launch {
             Log.d("MessageDetailViewModel", "Начало загрузки письма: messageId=$messageId")
             _uiState.value = _uiState.value.copy(isLoading = true)
-            repository.getMessage(messageId).fold(
+            (repository ?: return@launch).getMessage(messageId).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка загрузки письма", e)
                     _uiState.value = _uiState.value.copy(
@@ -138,7 +155,7 @@ class MessageDetailViewModel(
 
     private fun loadThreadMessages(threadId: String) {
         viewModelScope.launch {
-            repository.getThreadMessages(threadId).fold(
+            repository?.getThreadMessages(threadId)?.fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка загрузки переписки", e)
                 },
@@ -146,7 +163,7 @@ class MessageDetailViewModel(
                     _uiState.value = _uiState.value.copy(threadMessages = threadMessages)
                 }
             )
-            repository.getThreadDetails(threadId).fold(
+            repository?.getThreadDetails(threadId)?.fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка загрузки полной переписки", e)
                 },
@@ -160,7 +177,7 @@ class MessageDetailViewModel(
     private fun markAsReadSilently(initialMessage: com.mobilemail.domain.model.MessageDetail) {
         viewModelScope.launch {
             Log.d("MessageDetailViewModel", "Начало автоматической пометки как прочитанного")
-            messageActionsRepository.markAsRead(messageId, true).fold(
+            (messageActionsRepository ?: return@launch).markAsRead(messageId, true).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка автоматической пометки как прочитанного", e)
                     if (OfflineQueueManager.shouldQueue(e)) {
@@ -204,7 +221,7 @@ class MessageDetailViewModel(
         viewModelScope.launch {
             var navigated = false
             val deleteRequest = launch {
-                messageActionsRepository.deleteMessage(messageId).fold(
+                (messageActionsRepository ?: return@launch).deleteMessage(messageId).fold(
                     onError = { e ->
                         if (OfflineQueueManager.shouldQueue(e)) {
                             OfflineQueueManager.enqueueDelete(app, session.server, session.email, session.accountId, messageId)
@@ -247,7 +264,7 @@ class MessageDetailViewModel(
         val newReadStatus = !currentMessage.flags.unread
         
         viewModelScope.launch {
-            messageActionsRepository.markAsRead(messageId, !newReadStatus).fold(
+            (messageActionsRepository ?: return@launch).markAsRead(messageId, !newReadStatus).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка изменения статуса прочитанности", e)
                     if (OfflineQueueManager.shouldQueue(e)) {
@@ -299,7 +316,7 @@ class MessageDetailViewModel(
         val newStarredStatus = !currentMessage.flags.starred
         
         viewModelScope.launch {
-            messageActionsRepository.toggleStarred(messageId, newStarredStatus).fold(
+            (messageActionsRepository ?: return@launch).toggleStarred(messageId, newStarredStatus).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка изменения статуса звездочки", e)
                     if (OfflineQueueManager.shouldQueue(e)) {
@@ -379,9 +396,10 @@ class MessageDetailViewModel(
         }
 
         val destinationFolder = _uiState.value.folders.firstOrNull { it.id == toFolderId }
+        val actionsRepo = messageActionsRepository ?: return
         scheduleDeferredAction(
             pendingMessage = "Письмо перемещается в ${destinationFolder?.name ?: "другую папку"}",
-            commitAction = { messageActionsRepository.moveMessage(messageId, sourceFolderId, toFolderId) },
+            commitAction = { actionsRepo.moveMessage(messageId, sourceFolderId, toFolderId) },
             onCommitted = {
                 onMessageRemoved?.invoke(messageId)
                 onSuccess()
@@ -514,7 +532,7 @@ class MessageDetailViewModel(
                 )
             )
             
-            attachmentRepository.downloadAttachment(attachmentId).fold(
+            (attachmentRepository ?: return@launch).downloadAttachment(attachmentId).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка загрузки вложения", e)
                     _uiState.value = _uiState.value.copy(
@@ -526,7 +544,7 @@ class MessageDetailViewModel(
                 },
                 onSuccess = { data ->
                     Log.d("MessageDetailViewModel", "Вложение загружено: ${data.size} байт")
-                    
+
                     viewModelScope.launch {
                         FileManager.saveToCache(getApplication(), filename, data, mimeType).fold(
                             onError = { e ->
@@ -560,7 +578,7 @@ class MessageDetailViewModel(
                 )
             )
             
-            attachmentRepository.downloadAttachment(attachmentId).fold(
+            (attachmentRepository ?: return@launch).downloadAttachment(attachmentId).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка загрузки вложения", e)
                     _uiState.value = _uiState.value.copy(

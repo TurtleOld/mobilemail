@@ -1,12 +1,14 @@
 package com.mobilemail.ui.search
 
+import android.app.Application
 import android.util.Log
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.paging.PagingData
 import androidx.paging.cachedIn
-import androidx.lifecycle.ViewModel
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageListItem
@@ -66,9 +68,14 @@ data class SearchUiState(
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SearchViewModel(
-    private val mailRepository: MailRepository,
-    private val searchRepository: SearchRepository
-) : ViewModel() {
+    application: Application,
+    private val server: String,
+    private val email: String,
+    private val accountId: String
+) : AndroidViewModel(application) {
+
+    private var mailRepository: MailRepository? = null
+    private var searchRepository: SearchRepository? = null
     private val _uiState = MutableStateFlow(SearchUiState())
     val uiState: StateFlow<SearchUiState> = _uiState
 
@@ -76,7 +83,8 @@ class SearchViewModel(
 
     val pagedResults: Flow<PagingData<MessageListItem>> = activeSearchQuery
         .flatMapLatest { query ->
-            if (query == null) {
+            val repo = searchRepository
+            if (query == null || repo == null) {
                 flowOf(PagingData.empty())
             } else {
                 Pager(
@@ -86,19 +94,30 @@ class SearchViewModel(
                         prefetchDistance = 10,
                         enablePlaceholders = false
                     ),
-                    pagingSourceFactory = { SearchPagingSource(searchRepository, query) }
+                    pagingSourceFactory = { SearchPagingSource(repo, query) }
                 ).flow
             }
         }
         .cachedIn(viewModelScope)
 
     init {
-        loadFolders()
+        viewModelScope.launch {
+            try {
+                val jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
+                mailRepository = MailRepository(jmapClient)
+                searchRepository = SearchRepository(jmapClient)
+            } catch (e: Exception) {
+                Log.e("SearchViewModel", "Ошибка инициализации клиента", e)
+                _uiState.value = _uiState.value.copy(error = ErrorMapper.mapException(e))
+                return@launch
+            }
+            loadFolders()
+        }
     }
 
     private fun loadFolders() {
         viewModelScope.launch {
-            mailRepository.getFolders().fold(
+            mailRepository?.getFolders()?.fold(
                 onError = { e ->
                     Log.e("SearchViewModel", "Ошибка загрузки папок", e)
                     _uiState.value = _uiState.value.copy(
