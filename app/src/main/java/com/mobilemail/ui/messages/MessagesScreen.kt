@@ -31,6 +31,8 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,7 +65,12 @@ import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.data.preferences.SwipeAction
+import com.mobilemail.ui.common.AppError
+import com.mobilemail.ui.common.AuthExpiredBanner
+import com.mobilemail.ui.common.EmailListSkeleton
 import com.mobilemail.ui.common.FeatureScreenEffects
+import com.mobilemail.ui.common.OfflineBanner
+import com.mobilemail.ui.common.isExpandedWindowWidth
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -91,7 +98,7 @@ fun MessagesScreen(
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pagingItems = viewModel.pagedMessages.collectAsLazyPagingItems()
-    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
+    val isExpandedLayout = isExpandedWindowWidth()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     val snackbarHostState = rememberFeatureScreenSnackbarHostState()
@@ -304,7 +311,16 @@ fun MessagesScreen(
                 }
             }
         ) { padding ->
-            MessagesList(
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+            ) {
+                OfflineBanner()
+                if (uiState.error is AppError.AuthError) {
+                    AuthExpiredBanner(onRelogin = onLogout)
+                }
+                MessagesList(
                 pagingItems = pagingItems,
                 hiddenMessageIds = uiState.hiddenMessageIds,
                 readStatusOverrides = uiState.readStatusOverrides,
@@ -326,10 +342,10 @@ fun MessagesScreen(
                 onSwipeArchive = { messageId -> viewModel.archiveMessage(messageId) },
                 onSwipeDelete = { messageId -> viewModel.deleteMessageWithUndo(messageId) },
                 onSwipeMarkRead = { messageId -> viewModel.updateMessageReadStatus(messageId, isUnread = false) },
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
+                onRefresh = { viewModel.refresh() },
+                modifier = Modifier.weight(1f)
             )
+            } // Column
         }
     }
 
@@ -583,6 +599,7 @@ fun FolderItem(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MessagesList(
     pagingItems: androidx.paging.compose.LazyPagingItems<MessageListItem>,
@@ -597,19 +614,26 @@ fun MessagesList(
     onSwipeMarkRead: (String) -> Unit = {},
     swipeRightAction: SwipeAction = SwipeAction.ARCHIVE,
     swipeLeftAction: SwipeAction = SwipeAction.DELETE,
+    onRefresh: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
     val refreshState = pagingItems.loadState.refresh
     val appendState = pagingItems.loadState.append
+    val isRefreshing = refreshState is LoadState.Loading && pagingItems.itemCount > 0
+    val pullRefreshState = rememberPullToRefreshState()
 
-    Box(
+    PullToRefreshBox(
+        isRefreshing = isRefreshing,
+        onRefresh = {
+            pagingItems.refresh()
+            onRefresh()
+        },
+        state = pullRefreshState,
         modifier = modifier.fillMaxSize()
     ) {
         if (refreshState is LoadState.Loading && pagingItems.itemCount == 0) {
-            CircularProgressIndicator(
-                modifier = Modifier.align(Alignment.Center)
-            )
+            EmailListSkeleton(modifier = Modifier.fillMaxSize())
         } else if (refreshState is LoadState.Error && pagingItems.itemCount == 0) {
             val message = refreshState.error.message ?: "Не удалось загрузить письма"
             Column(
