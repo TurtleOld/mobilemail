@@ -19,11 +19,12 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.TextField
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -232,39 +233,52 @@ internal fun NewMessageFormContent(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
+        val transparentColors = TextFieldDefaults.colors(
+            focusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+            unfocusedContainerColor = androidx.compose.ui.graphics.Color.Transparent,
+            focusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+            unfocusedIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+            disabledIndicatorColor = androidx.compose.ui.graphics.Color.Transparent,
+        )
         Text(
             text = "От: ${email.ifBlank { "неизвестно" }}",
             style = MaterialTheme.typography.bodySmall,
-            fontWeight = FontWeight.Medium
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.padding(horizontal = 4.dp),
         )
-        OutlinedTextField(
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        TextField(
             value = to,
             onValueChange = onToChange,
             label = { Text("Кому") },
             placeholder = { Text("example@mail.com") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = transparentColors,
         )
-        OutlinedTextField(
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        TextField(
             value = subject,
             onValueChange = onSubjectChange,
             label = { Text("Тема") },
             placeholder = { Text("Тема письма") },
             singleLine = true,
-            modifier = Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth(),
+            colors = transparentColors,
         )
-        OutlinedTextField(
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
+        TextField(
             value = body,
             onValueChange = onBodyChange,
-            label = { Text("Сообщение") },
-            placeholder = { Text("Начните писать...") },
+            placeholder = { Text("Текст письма…") },
             modifier = Modifier
                 .fillMaxWidth()
                 .height(220.dp),
-            maxLines = 10
+            maxLines = 10,
+            colors = transparentColors,
         )
         if (uiState.attachments.isNotEmpty()) {
-            Divider()
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
             Text(
                 text = "Вложения (${uiState.attachments.size}):",
                 style = MaterialTheme.typography.bodySmall,
