@@ -1,12 +1,9 @@
-import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
-
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.services)
     id("kotlin-parcelize")
     alias(libs.plugins.ksp)
-    alias(libs.plugins.dokka)
     alias(libs.plugins.baselineprofile)
     alias(libs.plugins.detekt)
 }
@@ -230,27 +227,3 @@ ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
 
-dokka {
-    dokkaPublications.html {
-        outputDirectory.set(rootProject.layout.projectDirectory.dir("docs/api"))
-        moduleName.set("MobileMail")
-    }
-
-    dokkaSourceSets {
-        configureEach {
-            includes.from("${project.rootDir}/docs/package.md")
-            
-            sourceLink {
-                localDirectory.set(file("src/main/java"))
-                remoteUrl.set(uri("https://github.com/TurtleOld/mobilemail/tree/main/app/src/main/java"))
-                remoteLineSuffix.set("#L")
-            }
-            
-            documentedVisibilities.set(setOf(VisibilityModifier.Public, VisibilityModifier.Protected))
-            
-            reportUndocumented.set(true)
-            skipEmptyPackages.set(true)
-            skipDeprecated.set(false)
-        }
-    }
-}
