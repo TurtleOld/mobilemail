@@ -1,6 +1,7 @@
 package com.mobilemail.notifications
 
 import android.content.Intent
+import android.net.Uri
 import org.json.JSONObject
 
 data class PushPayload(
@@ -46,10 +47,15 @@ object PushNotificationParser {
         if (intent == null) return null
         val extras = intent.extras ?: return null
         val messageId = extras.getString(EXTRA_MESSAGE_ID)?.trim().takeIf { !it.isNullOrEmpty() } ?: return null
+        val rawServer = extras.getString(EXTRA_SERVER)?.trim().takeIf { !it.isNullOrEmpty() }
+        val server = rawServer?.takeIf {
+            val scheme = Uri.parse(it).scheme
+            scheme == "https" || scheme == "http"
+        }
         return PushMessageTarget(
             messageId = messageId,
             accountId = extras.getString(EXTRA_ACCOUNT_ID)?.trim().takeIf { !it.isNullOrEmpty() },
-            server = extras.getString(EXTRA_SERVER)?.trim().takeIf { !it.isNullOrEmpty() },
+            server = server,
             email = extras.getString(EXTRA_EMAIL)?.trim().takeIf { !it.isNullOrEmpty() }
         )
     }
