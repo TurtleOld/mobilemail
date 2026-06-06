@@ -68,7 +68,7 @@ jobs:
           disable-animations: true
           script: |
             chmod +x ./gradlew
-            ./gradlew --no-daemon :baseline-profile:generateBaselineProfile \
+            ./gradlew --no-daemon :baseline-profile:generateReleaseBaselineProfile \
               -Pandroid.testInstrumentationRunnerArguments.targetAppId=com.mobilemail
 
       - name: Verify profile was generated
