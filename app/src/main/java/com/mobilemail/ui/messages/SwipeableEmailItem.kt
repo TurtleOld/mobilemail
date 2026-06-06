@@ -1,6 +1,5 @@
 package com.mobilemail.ui.messages
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -19,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import com.mobilemail.data.preferences.SwipeAction
@@ -29,6 +29,22 @@ private fun SwipeAction.icon(): ImageVector = when (this) {
     SwipeAction.DELETE    -> Icons.Default.Delete
     SwipeAction.MARK_READ -> Icons.Default.MarkEmailRead
     SwipeAction.NONE      -> Icons.Default.Archive
+}
+
+@Composable
+private fun SwipeAction.containerColor(): Color = when (this) {
+    SwipeAction.ARCHIVE -> MaterialTheme.colorScheme.secondaryContainer
+    SwipeAction.DELETE -> MaterialTheme.colorScheme.surfaceVariant
+    SwipeAction.MARK_READ -> MaterialTheme.colorScheme.tertiaryContainer
+    SwipeAction.NONE -> MaterialTheme.colorScheme.surface
+}
+
+@Composable
+private fun SwipeAction.contentColor(): Color = when (this) {
+    SwipeAction.ARCHIVE -> MaterialTheme.colorScheme.onSecondaryContainer
+    SwipeAction.DELETE -> MaterialTheme.colorScheme.onSurfaceVariant
+    SwipeAction.MARK_READ -> MaterialTheme.colorScheme.onTertiaryContainer
+    SwipeAction.NONE -> MaterialTheme.colorScheme.onSurface
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -44,8 +60,6 @@ fun SwipeableEmailItem(
     swipeRightAction: SwipeAction = SwipeAction.ARCHIVE,
     swipeLeftAction: SwipeAction = SwipeAction.DELETE,
 ) {
-    val cs = MaterialTheme.colorScheme
-
     fun dispatchAction(action: SwipeAction) = when (action) {
         SwipeAction.ARCHIVE   -> onArchive()
         SwipeAction.DELETE    -> onDelete()
@@ -61,9 +75,10 @@ fun SwipeableEmailItem(
     LaunchedEffect(state.currentValue) {
         when (state.currentValue) {
             SwipeToDismissBoxValue.StartToEnd -> if (enableRight) dispatchAction(swipeRightAction)
-            SwipeToDismissBoxValue.EndToStart -> if (enableLeft)  dispatchAction(swipeLeftAction)
-            SwipeToDismissBoxValue.Settled    -> Unit
+            SwipeToDismissBoxValue.EndToStart -> if (enableLeft) dispatchAction(swipeLeftAction)
+            SwipeToDismissBoxValue.Settled -> return@LaunchedEffect
         }
+        state.reset()
     }
 
     SwipeToDismissBox(
@@ -72,13 +87,15 @@ fun SwipeableEmailItem(
         enableDismissFromStartToEnd = enableRight,
         enableDismissFromEndToStart = enableLeft,
         backgroundContent = {
-            val direction = state.dismissDirection ?: return@SwipeToDismissBox
-            val toEnd   = direction == SwipeToDismissBoxValue.StartToEnd
-            val action  = if (toEnd) swipeRightAction else swipeLeftAction
+            val direction = state.dismissDirection
+            if (direction == SwipeToDismissBoxValue.Settled) return@SwipeToDismissBox
+
+            val toEnd = direction == SwipeToDismissBoxValue.StartToEnd
+            val action = if (toEnd) swipeRightAction else swipeLeftAction
             if (action == SwipeAction.NONE) return@SwipeToDismissBox
 
-            val bg   = if (toEnd) cs.secondaryContainer else cs.errorContainer
-            val tint = if (toEnd) cs.onSecondaryContainer else cs.onErrorContainer
+            val bg = action.containerColor()
+            val tint = action.contentColor()
             val align = if (toEnd) Alignment.CenterStart else Alignment.CenterEnd
 
             Surface(color = bg, modifier = Modifier.fillMaxSize()) {

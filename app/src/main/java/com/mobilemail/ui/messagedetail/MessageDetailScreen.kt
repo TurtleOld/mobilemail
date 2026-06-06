@@ -386,28 +386,70 @@ fun MessageContent(
         conversationMessages.forEach { threadMessage ->
             val isCurrent = threadMessage.id == message.id
             val isExpanded = expandedMessageIds.contains(threadMessage.id) || isCurrent
-            ConversationMessageCard(
-                message = threadMessage,
-                isCurrent = isCurrent,
-                isExpanded = isExpanded,
-                onToggleExpanded = {
-                    expandedMessageIds = if (expandedMessageIds.contains(threadMessage.id) && !isCurrent) {
-                        expandedMessageIds - threadMessage.id
+            if (isCurrent) {
+                MessageExpandedContent(
+                    message = threadMessage,
+                    onDownloadAttachment = onDownloadAttachment,
+                    onOpenAttachment = onOpenAttachment,
+                    isExpandedLayout = isExpandedLayout
+                )
+            } else {
+                ConversationMessageCard(
+                    message = threadMessage,
+                    isCurrent = false,
+                    isExpanded = isExpanded,
+                    onToggleExpanded = {
+                        expandedMessageIds = if (expandedMessageIds.contains(threadMessage.id)) {
+                            expandedMessageIds - threadMessage.id
+                        } else {
+                            expandedMessageIds + threadMessage.id
+                        }
+                    },
+                    onFocusMessage = if (onThreadMessageClick != null) {
+                        { onThreadMessageClick(threadMessage.id) }
                     } else {
-                        expandedMessageIds + threadMessage.id
-                    }
-                },
-                onFocusMessage = if (!isCurrent && onThreadMessageClick != null) {
-                    { onThreadMessageClick(threadMessage.id) }
-                } else {
-                    null
-                },
-                onDownloadAttachment = onDownloadAttachment,
-                onOpenAttachment = onOpenAttachment,
-                context = context,
-                isExpandedLayout = isExpandedLayout
-            )
+                        null
+                    },
+                    onDownloadAttachment = onDownloadAttachment,
+                    onOpenAttachment = onOpenAttachment,
+                    context = context,
+                    isExpandedLayout = isExpandedLayout
+                )
+            }
         }
+    }
+}
+
+@Composable
+private fun MessageExpandedContent(
+    message: MessageDetail,
+    onDownloadAttachment: (String, String, String) -> Unit,
+    onOpenAttachment: (String, String, String) -> Unit,
+    isExpandedLayout: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        if (message.attachments.isNotEmpty()) {
+            Text(
+                text = "Вложения (${message.attachments.size})",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+            message.attachments.forEach { attachment ->
+                AttachmentItem(
+                    attachment = attachment,
+                    onDownload = { onDownloadAttachment(attachment.id, attachment.filename, attachment.mime) },
+                    onOpen = { onOpenAttachment(attachment.id, attachment.filename, attachment.mime) }
+                )
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        MessageBodySection(
+            message = message,
+            isExpandedLayout = isExpandedLayout
+        )
     }
 }
 
@@ -442,11 +484,7 @@ private fun ConversationHeader(
                         .clickable(enabled = !isCurrent && onThreadMessageClick != null) {
                             onThreadMessageClick?.invoke(threadMessage.id)
                         },
-                    color = if (isCurrent) {
-                        MaterialTheme.colorScheme.secondaryContainer
-                    } else {
-                        MaterialTheme.colorScheme.surfaceContainerLow
-                    },
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
                     shape = MaterialTheme.shapes.large
                 ) {
                     Column(modifier = Modifier.padding(12.dp)) {
@@ -523,7 +561,6 @@ private fun ConversationMessageCard(
             .padding(bottom = 8.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = when {
-                isCurrent -> MaterialTheme.colorScheme.secondaryContainer
                 isExpanded -> MaterialTheme.colorScheme.surfaceContainerLow
                 else -> MaterialTheme.colorScheme.surface
             }
@@ -595,25 +632,10 @@ private fun ConversationMessageCard(
                 Spacer(modifier = Modifier.height(12.dp))
                 HorizontalDivider()
                 Spacer(modifier = Modifier.height(12.dp))
-                if (message.attachments.isNotEmpty()) {
-                    Text(
-                        text = "Вложения (${message.attachments.size})",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                    message.attachments.forEach { attachment ->
-                        AttachmentItem(
-                            attachment = attachment,
-                            onDownload = { onDownloadAttachment(attachment.id, attachment.filename, attachment.mime) },
-                            onOpen = { onOpenAttachment(attachment.id, attachment.filename, attachment.mime) }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                }
-
-                MessageBodySection(
+                MessageExpandedContent(
                     message = message,
+                    onDownloadAttachment = onDownloadAttachment,
+                    onOpenAttachment = onOpenAttachment,
                     isExpandedLayout = isExpandedLayout
                 )
             }

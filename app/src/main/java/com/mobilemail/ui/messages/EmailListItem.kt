@@ -77,71 +77,74 @@ fun EmailListItem(
     val unread = message.flags.unread
     val senderName = message.from.name?.ifBlank { message.from.email } ?: message.from.email
 
-    Column(
+    Surface(
         modifier = modifier
             .fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+        color = cs.surface,
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(contentAlignment = Alignment.TopEnd) {
-                val ring = if (unread)
-                    Modifier.border(2.dp, cs.primary, CircleShape) else Modifier
-                Box(ring.clip(CircleShape)) {
-                    MonogramAvatar(name = senderName, size = 48.dp)
+        Column {
+            Row(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(contentAlignment = Alignment.TopEnd) {
+                    val ring = if (unread)
+                        Modifier.border(2.dp, cs.primary, CircleShape) else Modifier
+                    Box(ring.clip(CircleShape)) {
+                        MonogramAvatar(name = senderName, size = 48.dp)
+                    }
+                    if (unread) {
+                        Surface(
+                            color = cs.primary,
+                            shape = CircleShape,
+                            border = BorderStroke(2.5.dp, cs.surface),
+                            modifier = Modifier.size(14.dp),
+                        ) {}
+                    }
                 }
-                if (unread) {
-                    Surface(
-                        color = cs.primary,
-                        shape = CircleShape,
-                        border = BorderStroke(2.5.dp, cs.surface),
-                        modifier = Modifier.size(14.dp),
-                    ) {}
-                }
-            }
 
-            Spacer(Modifier.width(14.dp))
+                Spacer(Modifier.width(14.dp))
 
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.Bottom) {
+                Column(Modifier.weight(1f)) {
+                    Row(verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = senderName,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = if (unread) FontWeight.Bold else FontWeight.Medium,
+                            color = cs.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = formatMessageTime(message.date),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (unread) cs.primary else cs.onSurfaceVariant,
+                        )
+                    }
                     Text(
-                        text = senderName,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = if (unread) FontWeight.Bold else FontWeight.Medium,
-                        color = cs.onSurface,
+                        text = message.subject,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
+                        color = if (unread) cs.onSurface else cs.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(Modifier.width(8.dp))
                     Text(
-                        text = formatMessageTime(message.date),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (unread) cs.primary else cs.onSurfaceVariant,
+                        text = message.snippet,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = cs.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(
-                    text = message.subject,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
-                    color = if (unread) cs.onSurface else cs.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = message.snippet,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = cs.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
+            HorizontalDivider(
+                modifier = Modifier.padding(start = 78.dp),
+                color = cs.outlineVariant.copy(alpha = 0.5f),
+            )
         }
-        HorizontalDivider(
-            modifier = Modifier.padding(start = 78.dp),
-            color = cs.outlineVariant.copy(alpha = 0.5f),
-        )
     }
 }
