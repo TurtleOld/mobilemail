@@ -20,6 +20,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -88,50 +89,55 @@ fun OutboxScreen(
             )
         }
     ) { padding ->
-        if (uiState.operations.isEmpty()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Text("Очередь пуста", style = MaterialTheme.typography.titleMedium)
-                Spacer(modifier = Modifier.padding(4.dp))
-                Text("Отложенные отправки и действия появятся здесь")
-            }
-        } else {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(padding)
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    QueueStatChip(label = "В очереди", count = uiState.stats.pendingCount)
-                    QueueStatChip(label = "Сбои", count = uiState.stats.failedCount)
-                    QueueStatChip(label = "Требуют внимания", count = uiState.stats.permanentFailedCount)
-                }
-                if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        AssistChip(onClick = viewModel::retryFailed, label = { Text("Повторить неуспешные") })
-                        AssistChip(onClick = viewModel::clearFailed, label = { Text("Очистить неуспешные") })
-                    }
-                }
-                LazyColumn(
+        PullToRefreshBox(
+            isRefreshing = uiState.isProcessing,
+            onRefresh = viewModel::retryNow,
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+        ) {
+            if (uiState.operations.isEmpty()) {
+                Column(
                     modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.Center,
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text("Очередь пуста", style = MaterialTheme.typography.titleMedium)
+                    Spacer(modifier = Modifier.padding(4.dp))
+                    Text("Отложенные отправки и действия появятся здесь")
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(uiState.operations, key = { it.id }) { operation ->
-                        PendingOperationCard(
-                            operation = operation,
-                            onRemove = { viewModel.remove(operation.id) },
-                            onRetry = { viewModel.retryOperation(operation.id) }
-                        )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        QueueStatChip(label = "В очереди", count = uiState.stats.pendingCount)
+                        QueueStatChip(label = "Сбои", count = uiState.stats.failedCount)
+                        QueueStatChip(label = "Требуют внимания", count = uiState.stats.permanentFailedCount)
+                    }
+                    if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            AssistChip(onClick = viewModel::retryFailed, label = { Text("Повторить неуспешные") })
+                            AssistChip(onClick = viewModel::clearFailed, label = { Text("Очистить неуспешные") })
+                        }
+                    }
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(uiState.operations, key = { it.id }) { operation ->
+                            PendingOperationCard(
+                                operation = operation,
+                                onRemove = { viewModel.remove(operation.id) },
+                                onRetry = { viewModel.retryOperation(operation.id) }
+                            )
+                        }
                     }
                 }
             }

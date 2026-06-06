@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,7 +37,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.domain.repository.DateRange
+import com.mobilemail.ui.common.EmailListSkeleton
 import com.mobilemail.ui.common.FeatureScreenEffects
+import com.mobilemail.ui.common.isMediumOrExpandedWindowWidth
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -52,7 +55,7 @@ fun SearchScreen(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pagingItems = viewModel.pagedResults.collectAsLazyPagingItems()
     val snackbarHostState = rememberFeatureScreenSnackbarHostState()
-    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
+    val isExpandedLayout = isMediumOrExpandedWindowWidth()
     var showFolderDialog by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -327,14 +330,12 @@ fun SearchScreen(
 
             // Результаты поиска
             if (pagingItems.loadState.refresh is LoadState.Loading && pagingItems.itemCount == 0) {
-                Box(
+                EmailListSkeleton(
+                    count = 6,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator()
-                }
+                        .weight(1f)
+                )
             } else if (pagingItems.itemCount == 0 && uiState.hasSearched && pagingItems.loadState.refresh !is LoadState.Loading) {
                 Box(
                     modifier = Modifier
@@ -349,10 +350,17 @@ fun SearchScreen(
                     )
                 }
             } else if (pagingItems.itemCount > 0) {
-                LazyColumn(
+                val isRefreshing = pagingItems.loadState.refresh is LoadState.Loading
+                PullToRefreshBox(
+                    isRefreshing = isRefreshing,
+                    onRefresh = { pagingItems.refresh() },
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
+                ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
                         .padding(horizontal = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
@@ -379,6 +387,7 @@ fun SearchScreen(
                         }
                     }
                 }
+                } // PullToRefreshBox
             } else {
                 Box(
                     modifier = Modifier

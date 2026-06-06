@@ -12,9 +12,11 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -79,7 +81,7 @@ fun AppNavGraph(
     modifier: Modifier = Modifier,
 ) {
     val application = LocalContext.current.applicationContext as Application
-    val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsState()
+    val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsStateWithLifecycle()
     val preferencesManager = dependencies.preferencesManager
     val tokenStore = dependencies.tokenStore
     val activityScope = dependencies.activityScope
@@ -139,6 +141,8 @@ fun AppNavGraph(
         }
 
         composable(AppRoutes.Login) {
+            var isCheckingSession by remember { mutableStateOf(true) }
+
             LaunchedEffect(Unit) {
                 val activeSession = preferencesManager.getSavedSession()
                 val savedAccounts = preferencesManager.getSavedAccounts()
@@ -155,27 +159,35 @@ fun AppNavGraph(
                     navController.navigate(AppRoutes.messages(validSession)) {
                         popUpTo(0) { inclusive = true }
                     }
+                } else {
+                    isCheckingSession = false
                 }
             }
 
-            val viewModel: LoginViewModel = viewModel(
-                factory = object : ViewModelProvider.Factory {
-                    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                        @Suppress("UNCHECKED_CAST")
-                        return LoginViewModel(application, autoLoginEnabled = true) as T
-                    }
+            if (isCheckingSession) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
                 }
-            )
-            LoginScreen(
-                viewModel = viewModel,
-                onLoginSuccess = { server, email, _, accountId ->
-                    navController.navigate(
-                        AppRoutes.messages(SavedSession(server, email, accountId))
-                    ) {
-                        popUpTo(AppRoutes.Login) { inclusive = true }
+            } else {
+                val viewModel: LoginViewModel = viewModel(
+                    factory = object : ViewModelProvider.Factory {
+                        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                            @Suppress("UNCHECKED_CAST")
+                            return LoginViewModel(application, autoLoginEnabled = true) as T
+                        }
                     }
-                }
-            )
+                )
+                LoginScreen(
+                    viewModel = viewModel,
+                    onLoginSuccess = { server, email, _, accountId ->
+                        navController.navigate(
+                            AppRoutes.messages(SavedSession(server, email, accountId))
+                        ) {
+                            popUpTo(AppRoutes.Login) { inclusive = true }
+                        }
+                    }
+                )
+            }
         }
 
         composable(AppRoutes.AddAccount) {
@@ -204,9 +216,9 @@ fun AppNavGraph(
             val email = routeArgs.email
             val accountId = routeArgs.accountId
             val currentSession = remember(server, email, accountId) { SavedSession(server, email, accountId) }
-            val savedAccounts by preferencesManager.savedAccounts.collectAsState(initial = emptyList())
-            val swipeRightAction by preferencesManager.swipeRightAction.collectAsState(initial = SwipeAction.ARCHIVE)
-            val swipeLeftAction  by preferencesManager.swipeLeftAction.collectAsState(initial = SwipeAction.DELETE)
+            val savedAccounts by preferencesManager.savedAccounts.collectAsStateWithLifecycle(initialValue = emptyList())
+            val swipeRightAction by preferencesManager.swipeRightAction.collectAsStateWithLifecycle(initialValue = SwipeAction.ARCHIVE)
+            val swipeLeftAction  by preferencesManager.swipeLeftAction.collectAsStateWithLifecycle(initialValue = SwipeAction.DELETE)
 
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
