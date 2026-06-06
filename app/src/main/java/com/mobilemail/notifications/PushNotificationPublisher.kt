@@ -18,7 +18,6 @@ object PushNotificationPublisher {
     private const val CHANNEL_ID = "mail_messages"
 
     fun ensureChannel(context: Context) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(
             CHANNEL_ID,
@@ -34,7 +33,8 @@ object PushNotificationPublisher {
         context: Context,
         payload: PushPayload,
         fallbackTitle: String?,
-        fallbackBody: String?
+        fallbackBody: String?,
+        hideDetails: Boolean = false,
     ) {
         ensureChannel(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -43,12 +43,19 @@ object PushNotificationPublisher {
             return
         }
 
-        val title = payload.fromName
-            ?: fallbackTitle
-            ?: context.getString(R.string.notification_new_message_title)
-        val body = payload.subject
-            ?: fallbackBody
-            ?: context.getString(R.string.notification_new_message_body)
+        val title: String
+        val body: String
+        if (hideDetails) {
+            title = context.getString(R.string.notification_new_message_title)
+            body = context.getString(R.string.notification_new_message_body)
+        } else {
+            title = payload.fromName
+                ?: fallbackTitle
+                ?: context.getString(R.string.notification_new_message_title)
+            body = payload.subject
+                ?: fallbackBody
+                ?: context.getString(R.string.notification_new_message_body)
+        }
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP

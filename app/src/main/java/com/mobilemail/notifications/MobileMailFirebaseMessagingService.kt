@@ -22,6 +22,8 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
 
         serviceScope.launch {
             try {
+                val preferencesManager = PreferencesManager(applicationContext)
+                val hideDetails = preferencesManager.isNotificationPrivacyEnabled()
                 val client = NtfyClient(applicationContext)
                 MobileMailPushOrchestrator
                     .resolvePendingPayloads(topic, client.fetchPendingMessages(topic))
@@ -31,7 +33,8 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
                         payload = resolved.payload,
                         fallbackTitle = resolved.fallbackTitle,
                         fallbackBody = resolved.payload.subject
-                            ?: applicationContext.getString(com.mobilemail.R.string.notification_new_message_body)
+                            ?: applicationContext.getString(com.mobilemail.R.string.notification_new_message_body),
+                        hideDetails = hideDetails,
                     )
                 }
             } catch (error: Exception) {

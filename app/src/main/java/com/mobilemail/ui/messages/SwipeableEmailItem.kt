@@ -38,11 +38,11 @@ fun SwipeableEmailItem(
     onClick: () -> Unit,
     onArchive: () -> Unit,
     onDelete: () -> Unit,
+    modifier: Modifier = Modifier,
     onMarkRead: () -> Unit = {},
     onLongClick: (() -> Unit)? = null,
     swipeRightAction: SwipeAction = SwipeAction.ARCHIVE,
     swipeLeftAction: SwipeAction = SwipeAction.DELETE,
-    modifier: Modifier = Modifier,
 ) {
     val cs = MaterialTheme.colorScheme
 

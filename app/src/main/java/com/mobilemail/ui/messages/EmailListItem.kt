@@ -31,18 +31,15 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
-private val dateFormat = SimpleDateFormat("d MMM", Locale.getDefault())
-
 fun formatMessageTime(date: Date): String {
     val cal = Calendar.getInstance()
     val today = cal.get(Calendar.DAY_OF_YEAR)
     val year = cal.get(Calendar.YEAR)
     cal.time = date
     return if (cal.get(Calendar.YEAR) == year && cal.get(Calendar.DAY_OF_YEAR) == today) {
-        timeFormat.format(date)
+        SimpleDateFormat("HH:mm", Locale.getDefault()).format(date)
     } else {
-        dateFormat.format(date)
+        SimpleDateFormat("d MMM", Locale.getDefault()).format(date)
     }
 }
 
@@ -73,8 +70,8 @@ fun DateSectionHeader(label: String, modifier: Modifier = Modifier) {
 fun EmailListItem(
     message: MessageListItem,
     onClick: () -> Unit,
-    onLongClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val cs = MaterialTheme.colorScheme
     val unread = message.flags.unread

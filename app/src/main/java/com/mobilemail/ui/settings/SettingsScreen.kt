@@ -41,8 +41,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
+import com.mobilemail.ui.common.isExpandedWindowWidth
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mobilemail.BuildConfig
@@ -60,15 +60,17 @@ fun SettingsScreen(
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    val isExpandedLayout = LocalConfiguration.current.screenWidthDp >= 840
+    val isExpandedLayout = isExpandedWindowWidth()
     var signature by remember { mutableStateOf("") }
     var blockRemoteContent by remember { mutableStateOf(true) }
+    var notificationPrivacy by remember { mutableStateOf(false) }
     var swipeRightAction by remember { mutableStateOf(SwipeAction.ARCHIVE) }
     var swipeLeftAction  by remember { mutableStateOf(SwipeAction.DELETE) }
 
     LaunchedEffect(server, email) {
         signature = preferencesManager.getSignature(server, email).orEmpty()
         blockRemoteContent = preferencesManager.isBlockRemoteContentEnabled()
+        notificationPrivacy = preferencesManager.isNotificationPrivacyEnabled()
         preferencesManager.swipeRightAction.collect { swipeRightAction = it }
     }
     LaunchedEffect(Unit) {
@@ -109,6 +111,11 @@ fun SettingsScreen(
                         onBlockRemoteContentChange = { enabled ->
                             blockRemoteContent = enabled
                             scope.launch { preferencesManager.setBlockRemoteContent(enabled) }
+                        },
+                        notificationPrivacy = notificationPrivacy,
+                        onNotificationPrivacyChange = { enabled ->
+                            notificationPrivacy = enabled
+                            scope.launch { preferencesManager.setNotificationPrivacy(enabled) }
                         }
                     )
                     GesturesSection(
@@ -153,6 +160,11 @@ fun SettingsScreen(
                     onBlockRemoteContentChange = { enabled ->
                         blockRemoteContent = enabled
                         scope.launch { preferencesManager.setBlockRemoteContent(enabled) }
+                    },
+                    notificationPrivacy = notificationPrivacy,
+                    onNotificationPrivacyChange = { enabled ->
+                        notificationPrivacy = enabled
+                        scope.launch { preferencesManager.setNotificationPrivacy(enabled) }
                     }
                 )
                 GesturesSection(
@@ -199,7 +211,9 @@ private fun AppVersionFooter() {
 @Composable
 private fun PrivacySection(
     blockRemoteContent: Boolean,
-    onBlockRemoteContentChange: (Boolean) -> Unit
+    onBlockRemoteContentChange: (Boolean) -> Unit,
+    notificationPrivacy: Boolean,
+    onNotificationPrivacyChange: (Boolean) -> Unit,
 ) {
     Text(
         text = "Конфиденциальность",
@@ -213,6 +227,13 @@ private fun PrivacySection(
                 subtitle = "Не загружать внешние изображения и трекеры в письмах",
                 checked = blockRemoteContent,
                 onCheckedChange = onBlockRemoteContentChange
+            )
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            PrivacyToggleRow(
+                title = "Скрывать детали в уведомлениях",
+                subtitle = "Показывать только «Новое письмо» без отправителя и темы на экране блокировки",
+                checked = notificationPrivacy,
+                onCheckedChange = onNotificationPrivacyChange
             )
         }
     }
