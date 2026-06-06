@@ -2,7 +2,7 @@ package com.mobilemail.ui.messagedetail
 
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -22,8 +22,9 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import com.mobilemail.ui.common.isExpandedWindowWidth
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -311,19 +312,19 @@ fun MessageDetailScreen(
 @Composable
 fun MessageContent(
     message: com.mobilemail.domain.model.MessageDetail,
+    modifier: Modifier = Modifier,
     threadMessages: List<MessageListItem> = emptyList(),
     threadDetails: List<MessageDetail> = emptyList(),
     onThreadMessageClick: ((String) -> Unit)? = null,
     onDownloadAttachment: (String, String, String) -> Unit = { _, _, _ -> },
     onOpenAttachment: (String, String, String) -> Unit = { _, _, _ -> },
-    modifier: Modifier = Modifier
 ) {
     val configuration = LocalConfiguration.current
     val locale = configuration.locales[0]
     val dateFormat = remember(locale) { SimpleDateFormat("dd.MM.yyyy HH:mm", locale) }
     val scrollState = rememberScrollState()
     val context = LocalContext.current
-    val isExpandedLayout = configuration.screenWidthDp >= 840
+    val isExpandedLayout = isExpandedWindowWidth()
     val conversationMessages = remember(threadDetails, message) {
         if (threadDetails.isNotEmpty()) threadDetails else listOf(message)
     }
@@ -730,7 +731,7 @@ fun ClickableTextWithLinks(
                     ),
                     linkInteractionListener = { annotation ->
                         try {
-                            openExternalUriSafely(context, Uri.parse((annotation as LinkAnnotation.Url).url))
+                            openExternalUriSafely(context, (annotation as LinkAnnotation.Url).url.toUri())
                         } catch (e: Exception) {
                             android.util.Log.e("MessageDetailScreen", "Ошибка открытия ссылки", e)
                         }

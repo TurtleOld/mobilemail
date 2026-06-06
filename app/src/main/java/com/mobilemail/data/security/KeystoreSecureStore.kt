@@ -2,6 +2,7 @@ package com.mobilemail.data.security
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.core.content.edit
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
@@ -22,10 +23,10 @@ class KeystoreSecureStore(
 
     fun putString(key: String, value: String?) {
         if (value == null) {
-            prefs.edit().remove(key).apply()
+            prefs.edit { remove(key) }
             return
         }
-        prefs.edit().putString(key, encrypt(value)).apply()
+        prefs.edit { putString(key, encrypt(value)) }
     }
 
     fun getString(key: String): String? {
@@ -60,13 +61,11 @@ class KeystoreSecureStore(
     fun contains(key: String): Boolean = prefs.contains(key)
 
     fun remove(vararg keys: String) {
-        val editor = prefs.edit()
-        keys.forEach(editor::remove)
-        editor.apply()
+        prefs.edit { keys.forEach { remove(it) } }
     }
 
     fun clear() {
-        prefs.edit().clear().apply()
+        prefs.edit { clear() }
     }
 
     private fun encrypt(value: String): String {

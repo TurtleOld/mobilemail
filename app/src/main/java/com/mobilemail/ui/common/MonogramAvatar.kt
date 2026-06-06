@@ -39,8 +39,8 @@ private fun monogram(name: String): String =
 @Composable
 fun MonogramAvatar(
     name: String,
-    size: Dp = 48.dp,
     modifier: Modifier = Modifier,
+    size: Dp = 48.dp,
 ) {
     val col = colorFor(name)
     Surface(

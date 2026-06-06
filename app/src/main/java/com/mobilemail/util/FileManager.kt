@@ -3,11 +3,9 @@ package com.mobilemail.util
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
-import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.util.Log
-import androidx.annotation.RequiresApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import androidx.core.content.FileProvider
@@ -22,43 +20,12 @@ object FileManager {
         mimeType: String = "application/octet-stream"
     ): com.mobilemail.data.common.Result<Uri> = withContext(Dispatchers.IO) {
         com.mobilemail.data.common.runCatchingSuspend {
-            val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                saveToDownloadsApi29Plus(context, filename, data, mimeType)
-            } else {
-                saveToDownloadsLegacy(filename, data)
-            }
+            val uri = saveToDownloadsApi29Plus(context, filename, data, mimeType)
             Log.d("FileManager", "Файл сохранен: $uri")
             uri
         }
     }
 
-    @Suppress("DEPRECATION")
-    private fun saveToDownloadsLegacy(filename: String, data: ByteArray): Uri {
-        val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-        if (!downloadsDir.exists()) {
-            downloadsDir.mkdirs()
-        }
-
-        val safeFilename = File(filename).name
-        val file = File(downloadsDir, safeFilename)
-        check(file.canonicalPath.startsWith(downloadsDir.canonicalPath)) { "Path traversal detected" }
-        var counter = 1
-        var finalFile = file
-        while (finalFile.exists()) {
-            val nameWithoutExt = file.nameWithoutExtension
-            val ext = file.extension
-            finalFile = File(downloadsDir, "$nameWithoutExt ($counter).$ext")
-            counter++
-        }
-        
-        FileOutputStream(finalFile).use { out ->
-            out.write(data)
-        }
-        
-        return Uri.fromFile(finalFile)
-    }
-
-    @RequiresApi(Build.VERSION_CODES.Q)
     private fun saveToDownloadsApi29Plus(
         context: Context,
         filename: String,
@@ -94,15 +61,9 @@ object FileManager {
     }
 
     fun getFilePath(context: Context, uri: Uri): String {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            getFilePathApi29Plus(context, uri)
-        } else {
-            uri.path ?: uri.toString()
-        }
+        return getFilePathApi29Plus(context, uri)
     }
 
-    @Suppress("DEPRECATION")
-    @RequiresApi(Build.VERSION_CODES.Q)
     private fun getFilePathApi29Plus(context: Context, uri: Uri): String {
         val projection = arrayOf(MediaStore.MediaColumns.DISPLAY_NAME)
         return context.contentResolver.query(uri, projection, null, null, null)?.use { cursor ->

@@ -106,7 +106,7 @@ fun EmailListItemSkeleton(modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun EmailListSkeleton(count: Int = 8, modifier: Modifier = Modifier) {
+fun EmailListSkeleton(modifier: Modifier = Modifier, count: Int = 8) {
     Column(modifier = modifier) {
         repeat(count) {
             EmailListItemSkeleton()
