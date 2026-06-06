@@ -2,7 +2,7 @@
 agp = "9.2.0"
 kotlin = "2.3.21"
 ksp = "2.3.9"
-google-services = "4.4.2"
+google-services = "4.4.4"
 androidx-core = "1.18.0"
 lifecycle = "2.10.0"
 activity-compose = "1.13.0"
