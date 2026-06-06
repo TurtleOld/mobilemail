@@ -2,8 +2,8 @@ package com.mobilemail.ui.messages
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -13,15 +13,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.foundation.border
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -47,6 +46,28 @@ fun formatMessageTime(date: Date): String {
     }
 }
 
+fun dateSectionLabel(date: Date): String {
+    val cal = Calendar.getInstance()
+    val todayDay = cal.get(Calendar.DAY_OF_YEAR)
+    val year = cal.get(Calendar.YEAR)
+    cal.time = date
+    return when {
+        cal.get(Calendar.YEAR) == year && cal.get(Calendar.DAY_OF_YEAR) == todayDay -> "Сегодня"
+        cal.get(Calendar.YEAR) == year && cal.get(Calendar.DAY_OF_YEAR) == todayDay - 1 -> "Вчера"
+        else -> SimpleDateFormat("d MMMM", Locale.getDefault()).format(date)
+    }
+}
+
+@Composable
+fun DateSectionHeader(label: String, modifier: Modifier = Modifier) {
+    Text(
+        text = label.uppercase(),
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier.padding(start = 20.dp, top = 12.dp, bottom = 4.dp),
+    )
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun EmailListItem(
@@ -58,18 +79,14 @@ fun EmailListItem(
     val cs = MaterialTheme.colorScheme
     val unread = message.flags.unread
     val senderName = message.from.name?.ifBlank { message.from.email } ?: message.from.email
-    val container = if (unread) cs.secondaryContainer else Color.Transparent
 
-    Surface(
-        color = container,
-        shape = MaterialTheme.shapes.large,
+    Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp)
             .combinedClickable(onClick = onClick, onLongClick = onLongClick),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(contentAlignment = Alignment.TopEnd) {
@@ -82,7 +99,7 @@ fun EmailListItem(
                     Surface(
                         color = cs.primary,
                         shape = CircleShape,
-                        border = BorderStroke(2.5.dp, container),
+                        border = BorderStroke(2.5.dp, cs.surface),
                         modifier = Modifier.size(14.dp),
                     ) {}
                 }
@@ -110,7 +127,7 @@ fun EmailListItem(
                 }
                 Text(
                     text = message.subject,
-                    style = MaterialTheme.typography.bodyLarge,
+                    style = MaterialTheme.typography.bodyMedium,
                     fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Normal,
                     color = if (unread) cs.onSurface else cs.onSurfaceVariant,
                     maxLines = 1,
@@ -118,12 +135,16 @@ fun EmailListItem(
                 )
                 Text(
                     text = message.snippet,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = cs.onSurfaceVariant,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
         }
+        HorizontalDivider(
+            modifier = Modifier.padding(start = 78.dp),
+            color = cs.outlineVariant.copy(alpha = 0.5f),
+        )
     }
 }
