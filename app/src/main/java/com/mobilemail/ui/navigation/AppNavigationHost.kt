@@ -4,7 +4,7 @@ import android.content.Intent
 import android.util.Log
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.navigation.NavDeepLinkRequest
@@ -24,7 +24,7 @@ fun AppNavigationHost(
 ) {
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
-    val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsState()
+    val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsStateWithLifecycle()
 
     RootPushNavigationEffect(
         navController = navController,

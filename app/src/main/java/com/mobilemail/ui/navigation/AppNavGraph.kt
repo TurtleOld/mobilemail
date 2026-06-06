@@ -12,7 +12,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -81,7 +81,7 @@ fun AppNavGraph(
     modifier: Modifier = Modifier,
 ) {
     val application = LocalContext.current.applicationContext as Application
-    val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsState()
+    val pendingPushTarget by PushNavigationStore.pendingTarget.collectAsStateWithLifecycle()
     val preferencesManager = dependencies.preferencesManager
     val tokenStore = dependencies.tokenStore
     val activityScope = dependencies.activityScope
@@ -216,9 +216,9 @@ fun AppNavGraph(
             val email = routeArgs.email
             val accountId = routeArgs.accountId
             val currentSession = remember(server, email, accountId) { SavedSession(server, email, accountId) }
-            val savedAccounts by preferencesManager.savedAccounts.collectAsState(initial = emptyList())
-            val swipeRightAction by preferencesManager.swipeRightAction.collectAsState(initial = SwipeAction.ARCHIVE)
-            val swipeLeftAction  by preferencesManager.swipeLeftAction.collectAsState(initial = SwipeAction.DELETE)
+            val savedAccounts by preferencesManager.savedAccounts.collectAsStateWithLifecycle(initialValue = emptyList())
+            val swipeRightAction by preferencesManager.swipeRightAction.collectAsStateWithLifecycle(initialValue = SwipeAction.ARCHIVE)
+            val swipeLeftAction  by preferencesManager.swipeLeftAction.collectAsStateWithLifecycle(initialValue = SwipeAction.DELETE)
 
             val notificationPermissionLauncher = rememberLauncherForActivityResult(
                 ActivityResultContracts.RequestPermission()
