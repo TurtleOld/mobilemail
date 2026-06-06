@@ -3,7 +3,6 @@ agp = "9.2.0"
 kotlin = "2.3.21"
 ksp = "2.3.9"
 google-services = "4.4.2"
-dokka = "2.2.0"
 androidx-core = "1.18.0"
 lifecycle = "2.10.0"
 activity-compose = "1.13.0"
@@ -40,7 +39,6 @@ kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "ko
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "google-services" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
-dokka = { id = "org.jetbrains.dokka", version.ref = "dokka" }
 android-test = { id = "com.android.test", version.ref = "agp" }
 baselineprofile = { id = "androidx.baselineprofile", version.ref = "baselineprofile" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
