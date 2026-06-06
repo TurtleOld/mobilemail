@@ -10,7 +10,6 @@ import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageDetail
-import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.repository.AttachmentRepository
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.repository.MessageActionsRepository
@@ -31,8 +30,6 @@ import java.util.UUID
 
 data class MessageDetailUiState(
     val message: MessageDetail? = null,
-    val threadMessages: List<MessageListItem> = emptyList(),
-    val threadDetails: List<MessageDetail> = emptyList(),
     val folders: List<Folder> = emptyList(),
     val isLoading: Boolean = false,
     override val error: AppError? = null,
@@ -147,28 +144,6 @@ class MessageDetailViewModel(
                         },
                         isLoading = false
                     )
-                    loadThreadMessages(message.threadId)
-                }
-            )
-        }
-    }
-
-    private fun loadThreadMessages(threadId: String) {
-        viewModelScope.launch {
-            repository?.getThreadMessages(threadId)?.fold(
-                onError = { e ->
-                    Log.e("MessageDetailViewModel", "Ошибка загрузки переписки", e)
-                },
-                onSuccess = { threadMessages ->
-                    _uiState.value = _uiState.value.copy(threadMessages = threadMessages)
-                }
-            )
-            repository?.getThreadDetails(threadId)?.fold(
-                onError = { e ->
-                    Log.e("MessageDetailViewModel", "Ошибка загрузки полной переписки", e)
-                },
-                onSuccess = { threadDetails ->
-                    _uiState.value = _uiState.value.copy(threadDetails = threadDetails)
                 }
             )
         }

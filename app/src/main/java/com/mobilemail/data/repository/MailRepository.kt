@@ -307,52 +307,6 @@ class MailRepository(
         return email.toMessageDetail(::parseAttachments, cachedReadStatus)
     }
 
-    private suspend fun getThreadMessagesData(threadId: String, limit: Int = 100): Result<List<MessageListItem>> = runCatchingSuspend {
-        val session = client.getSession()
-        val accountId = session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull()
-            ?: error("AccountId не найден")
-
-        val (queryResult, emails) = client.queryAndGetEmails(
-            accountId = accountId,
-            position = 0,
-            limit = limit,
-            filter = mapOf("threadId" to threadId),
-            properties = listOf(
-                "id", "threadId", "mailboxIds", "from", "subject",
-                "receivedAt", "preview", "hasAttachment", "size", "keywords"
-            )
-        )
-
-        if (queryResult.ids.isEmpty()) return@runCatchingSuspend emptyList()
-
-        emails.map { it.toMessageListItem(::parseAttachments) }.sortedBy { it.date }
-    }
-
-    private suspend fun getThreadDetailsData(threadId: String, limit: Int = 100): Result<List<MessageDetail>> = runCatchingSuspend {
-        val session = client.getSession()
-        val accountId = session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull()
-            ?: error("AccountId не найден")
-
-        val (queryResult, emails) = client.queryAndGetEmails(
-            accountId = accountId,
-            position = 0,
-            limit = limit,
-            filter = mapOf("threadId" to threadId),
-            properties = listOf(
-                "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
-                "subject", "receivedAt", "bodyStructure", "bodyValues", "textBody", "htmlBody",
-                "keywords", "size", "hasAttachment"
-            )
-        )
-
-        if (queryResult.ids.isEmpty()) return@runCatchingSuspend emptyList()
-
-        emails.mapNotNull { convertEmailToMessageDetail(it) }
-            .sortedBy { it.date }
-    }
-
     override suspend fun updateMessageReadStatus(messageId: String, isUnread: Boolean) {
         Log.d("MailRepository", "Обновление статуса прочитанности в кэше: messageId=$messageId, isUnread=$isUnread")
 
@@ -410,10 +364,4 @@ class MailRepository(
 
     override suspend fun getMessage(messageId: String): Result<DomainMessageDetail> =
         getMessageData(messageId).map { it.toDomain() }
-
-    override suspend fun getThreadMessages(threadId: String, limit: Int): Result<List<DomainMessageListItem>> =
-        getThreadMessagesData(threadId, limit).map { list -> list.map { it.toDomain() } }
-
-    override suspend fun getThreadDetails(threadId: String, limit: Int): Result<List<DomainMessageDetail>> =
-        getThreadDetailsData(threadId, limit).map { list -> list.map { it.toDomain() } }
 }
