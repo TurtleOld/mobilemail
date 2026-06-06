@@ -1,6 +1,5 @@
 package com.mobilemail.ui.messagedetail.content
 
-import android.os.Build
 import android.webkit.WebSettings
 import android.webkit.WebView
 
@@ -24,9 +23,7 @@ internal object HtmlMessageWebViewPolicy {
             blockNetworkImage = blockRemoteLoads
             blockNetworkLoads = blockRemoteLoads
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                safeBrowsingEnabled = true
-            }
+            safeBrowsingEnabled = true
         }
         webView.isHorizontalScrollBarEnabled = false
         webView.isVerticalScrollBarEnabled = false
