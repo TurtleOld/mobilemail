@@ -11,7 +11,22 @@ permissions:
   contents: read
 
 jobs:
+  secrets-scan:
+    name: Secret scanning (Gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Scan for secrets
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   checks:
+    name: Lint / Detekt / Unit tests
     runs-on: ubuntu-latest
 
     steps:
@@ -84,3 +99,12 @@ jobs:
           chmod +x ./gradlew
           ./gradlew --no-daemon --build-cache :app:lintDebug :app:detekt :app:testDebugUnitTest
 
+      - name: Verify baseline profile is committed
+        run: |
+          PROFILE="app/src/main/baseline-prof.txt"
+          if [ ! -f "$PROFILE" ]; then
+            echo "::error file=$PROFILE::baseline-prof.txt is missing." \
+              "Run the 'Generate Baseline Profile' workflow and commit the result."
+            exit 1
+          fi
+          echo "Baseline profile present ($(wc -l < "$PROFILE") lines)"
