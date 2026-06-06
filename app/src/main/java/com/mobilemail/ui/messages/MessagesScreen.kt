@@ -611,11 +611,11 @@ fun MessagesList(
     onMessageLongClick: (String) -> Unit,
     onSwipeArchive: (String) -> Unit,
     onSwipeDelete: (String) -> Unit,
+    modifier: Modifier = Modifier,
     onSwipeMarkRead: (String) -> Unit = {},
     swipeRightAction: SwipeAction = SwipeAction.ARCHIVE,
     swipeLeftAction: SwipeAction = SwipeAction.DELETE,
     onRefresh: () -> Unit = {},
-    modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListState()
     val refreshState = pagingItems.loadState.refresh

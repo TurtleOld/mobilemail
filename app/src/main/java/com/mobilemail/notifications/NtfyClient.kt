@@ -2,6 +2,7 @@ package com.mobilemail.notifications
 
 import android.content.Context
 import android.net.Uri
+import androidx.core.content.edit
 import com.mobilemail.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -69,7 +70,7 @@ class NtfyClient(context: Context) {
     }
 
     private fun saveCursor(topic: String, messageId: String) {
-        preferences.edit().putString(cursorKey(topic), messageId).apply()
+        preferences.edit { putString(cursorKey(topic), messageId) }
     }
 
     private fun cursorKey(topic: String): String {
