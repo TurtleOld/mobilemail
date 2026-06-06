@@ -1,0 +1,86 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits",
+    "group:allNonMajor"
+  ],
+  "timezone": "Europe/Moscow",
+  "schedule": ["before 9am on Monday"],
+  "labels": ["dependencies"],
+  "assignees": ["alexander-pavlov"],
+  "prConcurrentLimit": 5,
+  "packageRules": [
+    {
+      "description": "Compose BOM — single PR for all compose artifacts",
+      "matchPackageNames": ["androidx.compose:compose-bom"],
+      "groupName": "Compose BOM"
+    },
+    {
+      "description": "Firebase BOM — single PR",
+      "matchPackageNames": ["com.google.firebase:firebase-bom"],
+      "groupName": "Firebase BOM"
+    },
+    {
+      "description": "Kotlin + KSP must stay in sync",
+      "matchPackageNames": [
+        "org.jetbrains.kotlin:kotlin-gradle-plugin",
+        "com.google.devtools.ksp"
+      ],
+      "groupName": "Kotlin + KSP",
+      "rangeStrategy": "pin"
+    },
+    {
+      "description": "AGP + Kotlin plugin must stay in sync",
+      "matchPackageNames": [
+        "com.android.tools.build:gradle",
+        "org.jetbrains.kotlin.plugin.compose"
+      ],
+      "groupName": "AGP + Kotlin Compose plugin"
+    },
+    {
+      "description": "Test libraries — auto-merge patch updates",
+      "matchPackageNames": [
+        "junit:junit",
+        "androidx.test.ext:junit",
+        "androidx.test.espresso:espresso-core",
+        "com.squareup.okhttp3:mockwebserver",
+        "org.jetbrains.kotlinx:kotlinx-coroutines-test",
+        "app.cash.turbine:turbine",
+        "androidx.room:room-testing"
+      ],
+      "groupName": "Test dependencies",
+      "automerge": true,
+      "automergeType": "pr",
+      "matchUpdateTypes": ["patch"]
+    },
+    {
+      "description": "Gradle Wrapper",
+      "matchManagers": ["gradle-wrapper"],
+      "groupName": "Gradle Wrapper",
+      "automerge": false
+    },
+    {
+      "description": "GitHub Actions — group all action updates",
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "automerge": true,
+      "automergeType": "pr",
+      "matchUpdateTypes": ["patch", "minor"]
+    }
+  ],
+  "gradle": {
+    "fileMatch": [
+      "build\\.gradle\\.kts$",
+      "settings\\.gradle\\.kts$",
+      "gradle/libs\\.versions\\.toml$"
+    ]
+  },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "labels": ["security"],
+    "schedule": ["at any time"],
+    "prPriority": 10
+  }
+}

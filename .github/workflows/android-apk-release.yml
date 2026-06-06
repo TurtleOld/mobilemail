@@ -10,9 +10,54 @@ permissions:
   contents: write
 
 jobs:
-  release-apk:
+  pre-release-checks:
+    name: Lint / Detekt (release variant)
     runs-on: ubuntu-latest
     if: github.ref_type == 'tag' && startsWith(github.ref_name, 'v')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Accept Android SDK licenses
+        run: yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore google-services.json
+        env:
+          GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.GOOGLE_SERVICES_JSON_BASE64 }}
+        run: |
+          if [ -z "$GOOGLE_SERVICES_JSON_BASE64" ]; then
+            echo "GOOGLE_SERVICES_JSON_BASE64 secret is not set" >&2
+            exit 1
+          fi
+          echo "$GOOGLE_SERVICES_JSON_BASE64" | base64 -d > app/google-services.json
+
+      - name: Run release checks
+        env:
+          KEYSTORE_PASSWORD: android
+          KEY_ALIAS: ci
+          KEY_PASSWORD: android
+          NTFY_URL: https://ntfy.sh
+          NTFY_TOKEN: ci
+          NTFY_TOPIC_PATTERN: mobilemail/{user}
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --build-cache :app:lintRelease :app:detekt
+
+  release-apk:
+    name: Build & publish signed APK
+    runs-on: ubuntu-latest
+    needs: pre-release-checks
 
     steps:
       - name: Checkout code
