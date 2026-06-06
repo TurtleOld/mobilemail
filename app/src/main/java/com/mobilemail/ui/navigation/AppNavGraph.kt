@@ -14,7 +14,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -139,6 +141,8 @@ fun AppNavGraph(
         }
 
         composable(AppRoutes.Login) {
+            var isCheckingSession by remember { mutableStateOf(true) }
+
             LaunchedEffect(Unit) {
                 val activeSession = preferencesManager.getSavedSession()
                 val savedAccounts = preferencesManager.getSavedAccounts()
@@ -155,27 +159,35 @@ fun AppNavGraph(
                     navController.navigate(AppRoutes.messages(validSession)) {
                         popUpTo(0) { inclusive = true }
                     }
+                } else {
+                    isCheckingSession = false
                 }
             }
 
-            val viewModel: LoginViewModel = viewModel(
-                factory = object : ViewModelProvider.Factory {
-                    override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-                        @Suppress("UNCHECKED_CAST")
-                        return LoginViewModel(application, autoLoginEnabled = true) as T
-                    }
+            if (isCheckingSession) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    androidx.compose.material3.CircularProgressIndicator()
                 }
-            )
-            LoginScreen(
-                viewModel = viewModel,
-                onLoginSuccess = { server, email, _, accountId ->
-                    navController.navigate(
-                        AppRoutes.messages(SavedSession(server, email, accountId))
-                    ) {
-                        popUpTo(AppRoutes.Login) { inclusive = true }
+            } else {
+                val viewModel: LoginViewModel = viewModel(
+                    factory = object : ViewModelProvider.Factory {
+                        override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
+                            @Suppress("UNCHECKED_CAST")
+                            return LoginViewModel(application, autoLoginEnabled = true) as T
+                        }
                     }
-                }
-            )
+                )
+                LoginScreen(
+                    viewModel = viewModel,
+                    onLoginSuccess = { server, email, _, accountId ->
+                        navController.navigate(
+                            AppRoutes.messages(SavedSession(server, email, accountId))
+                        ) {
+                            popUpTo(AppRoutes.Login) { inclusive = true }
+                        }
+                    }
+                )
+            }
         }
 
         composable(AppRoutes.AddAccount) {
