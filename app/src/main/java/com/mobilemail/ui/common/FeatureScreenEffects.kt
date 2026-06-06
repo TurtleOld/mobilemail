@@ -23,6 +23,7 @@ fun FeatureScreenEffects(
 
     LaunchedEffect(uiState.error) {
         val error = uiState.error ?: return@LaunchedEffect
+        if (error is AppError.AuthError) return@LaunchedEffect
         scope.launch {
             snackbarHostState.showSnackbar(
                 message = error.getUserMessage(),
