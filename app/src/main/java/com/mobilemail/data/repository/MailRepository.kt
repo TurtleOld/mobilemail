@@ -313,25 +313,18 @@ class MailRepository(
             ?: session.accounts.keys.firstOrNull()
             ?: error("AccountId не найден")
 
-        val queryResult = client.queryEmails(
+        val (queryResult, emails) = client.queryAndGetEmails(
             accountId = accountId,
             position = 0,
             limit = limit,
-            filter = mapOf("threadId" to threadId)
-        )
-
-        if (queryResult.ids.isEmpty()) {
-            return@runCatchingSuspend emptyList()
-        }
-
-        val emails = client.getEmails(
-            ids = queryResult.ids,
-            accountId = accountId,
+            filter = mapOf("threadId" to threadId),
             properties = listOf(
                 "id", "threadId", "mailboxIds", "from", "subject",
                 "receivedAt", "preview", "hasAttachment", "size", "keywords"
             )
         )
+
+        if (queryResult.ids.isEmpty()) return@runCatchingSuspend emptyList()
 
         emails.map { it.toMessageListItem(::parseAttachments) }.sortedBy { it.date }
     }
@@ -342,26 +335,19 @@ class MailRepository(
             ?: session.accounts.keys.firstOrNull()
             ?: error("AccountId не найден")
 
-        val queryResult = client.queryEmails(
+        val (queryResult, emails) = client.queryAndGetEmails(
             accountId = accountId,
             position = 0,
             limit = limit,
-            filter = mapOf("threadId" to threadId)
-        )
-
-        if (queryResult.ids.isEmpty()) {
-            return@runCatchingSuspend emptyList()
-        }
-
-        val emails = client.getEmails(
-            ids = queryResult.ids,
-            accountId = accountId,
+            filter = mapOf("threadId" to threadId),
             properties = listOf(
                 "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc",
                 "subject", "receivedAt", "bodyStructure", "bodyValues", "textBody", "htmlBody",
                 "keywords", "size", "hasAttachment"
             )
         )
+
+        if (queryResult.ids.isEmpty()) return@runCatchingSuspend emptyList()
 
         emails.mapNotNull { convertEmailToMessageDetail(it) }
             .sortedBy { it.date }

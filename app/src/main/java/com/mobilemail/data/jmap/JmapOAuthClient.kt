@@ -289,60 +289,9 @@ class JmapOAuthClient(
         val targetAccountId = accountId ?: session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull() ?: this.accountId
 
-        val filterJson = filter?.let { JSONObject(it) } ?: JSONObject().apply {
-            if (mailboxId != null) {
-                put("inMailbox", mailboxId)
-            }
-            if (!searchText.isNullOrBlank()) {
-                put("text", searchText)
-            }
-        }
-
-        val sortArray = JSONArray().apply {
-            put(JSONObject().apply {
-                put("property", "receivedAt")
-                put("isAscending", false)
-            })
-        }
-
-        val queryParams = JSONObject().apply {
-            put("accountId", targetAccountId)
-            put("filter", filterJson)
-            put("sort", sortArray)
-            put("position", position)
-            put("limit", limit)
-        }
-
-        val methodCallArray = JSONArray().apply {
-            put("Email/query")
-            put(queryParams)
-            put("0")
-        }
-
-        val requestJson = buildJmapRequest(methodCallArray)
-
-        val apiUrl = getApiUrl()
-        val response = makeRequest(apiUrl, requestJson)
-        val methodResponses = response.getJSONArray("methodResponses")
-        val queryResponse = methodResponses.getJSONArray(0)
-
-        val queryData = queryResponse.getJSONObject(1)
-        val ids = mutableListOf<String>()
-        val idsArray = queryData.getJSONArray("ids")
-        for (i in 0 until idsArray.length()) {
-            ids.add(idsArray.getString(i))
-        }
-
-        return EmailQueryResult(
-            ids = ids,
-            position = queryData.getInt("position"),
-            total = if (queryData.has("total") && !queryData.isNull("total")) {
-                queryData.getInt("total")
-            } else {
-                null
-            },
-            queryState = queryData.optStringOrNull("queryState")
-        )
+        val methodCall = buildQueryMethodCall(targetAccountId, mailboxId, searchText, filter, position, limit, callId = "0")
+        val response = makeRequest(getApiUrl(), buildJmapRequest(methodCall))
+        return parseQueryResponse(response.getJSONArray("methodResponses").getJSONArray(0).getJSONObject(1))
     }
 
     override suspend fun getEmails(
@@ -395,6 +344,102 @@ class JmapOAuthClient(
 
         return emails
     }
+
+    override suspend fun queryAndGetEmails(
+        mailboxId: String?,
+        accountId: String?,
+        position: Int,
+        limit: Int,
+        filter: Map<String, Any>?,
+        searchText: String?,
+        properties: List<String>?
+    ): Pair<EmailQueryResult, List<JmapEmail>> {
+        val session = getSession()
+        val targetAccountId = accountId ?: session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+
+        val queryMethodCall = buildQueryMethodCall(targetAccountId, mailboxId, searchText, filter, position, limit, callId = "q0")
+        val getMethodCall = buildGetMethodCall(targetAccountId, properties, backReferenceCallId = "q0")
+
+        val methodResponses = makeRequest(getApiUrl(), buildJmapRequest(queryMethodCall, getMethodCall))
+            .getJSONArray("methodResponses")
+
+        val queryResult = parseQueryResponse(methodResponses.getJSONArray(0).getJSONObject(1))
+        val emails = if (queryResult.ids.isEmpty()) emptyList() else {
+            parseEmailList(methodResponses.getJSONArray(1).getJSONObject(1).getJSONArray("list"))
+        }
+
+        return queryResult to emails
+    }
+
+    private fun buildQueryMethodCall(
+        accountId: String,
+        mailboxId: String?,
+        searchText: String?,
+        filter: Map<String, Any>?,
+        position: Int,
+        limit: Int,
+        callId: String
+    ): JSONArray {
+        val filterJson = filter?.let { JSONObject(it) } ?: JSONObject().apply {
+            if (mailboxId != null) put("inMailbox", mailboxId)
+            if (!searchText.isNullOrBlank()) put("text", searchText)
+        }
+        val sortArray = JSONArray().apply {
+            put(JSONObject().apply {
+                put("property", "receivedAt")
+                put("isAscending", false)
+            })
+        }
+        val params = JSONObject().apply {
+            put("accountId", accountId)
+            put("filter", filterJson)
+            put("sort", sortArray)
+            put("position", position)
+            put("limit", limit)
+        }
+        return JSONArray().apply { put("Email/query"); put(params); put(callId) }
+    }
+
+    private fun buildGetMethodCall(
+        accountId: String,
+        properties: List<String>?,
+        backReferenceCallId: String
+    ): JSONArray {
+        val defaultProperties = listOf(
+            "id", "threadId", "mailboxIds", "keywords", "size",
+            "receivedAt", "hasAttachment", "preview", "subject",
+            "from", "to", "cc", "bcc", "bodyStructure", "bodyValues",
+            "textBody", "htmlBody"
+        )
+        val propertiesArray = JSONArray().apply { (properties ?: defaultProperties).forEach { put(it) } }
+        val params = JSONObject().apply {
+            put("accountId", accountId)
+            put("#ids", JSONObject().apply {
+                put("resultOf", backReferenceCallId)
+                put("name", "Email/query")
+                put("path", "/ids")
+            })
+            put("properties", propertiesArray)
+            put("fetchTextBodyValues", true)
+            put("fetchHTMLBodyValues", true)
+        }
+        return JSONArray().apply { put("Email/get"); put(params); put("g0") }
+    }
+
+    private fun parseQueryResponse(data: JSONObject): EmailQueryResult {
+        val idsArray = data.getJSONArray("ids")
+        val ids = List(idsArray.length()) { i -> idsArray.getString(i) }
+        return EmailQueryResult(
+            ids = ids,
+            position = data.getInt("position"),
+            total = if (data.has("total") && !data.isNull("total")) data.getInt("total") else null,
+            queryState = data.optStringOrNull("queryState")
+        )
+    }
+
+    private fun parseEmailList(list: JSONArray): List<JmapEmail> =
+        List(list.length()) { i -> parseEmail(list.getJSONObject(i)) }
 
     private fun parseEmail(json: JSONObject): JmapEmail {
         fun parseEmailAddresses(array: JSONArray?): List<EmailAddress>? {
@@ -471,39 +516,22 @@ class JmapOAuthClient(
         )
     }
 
-    /** Execute request with retry on EOF/IO and return raw response pair (response, body). */
+    /** Execute request with retry on transient IO errors only. Non-IO exceptions are thrown immediately. */
     private suspend fun executeWithRetry(request: Request): Pair<okhttp3.Response, String> =
         withContext(Dispatchers.IO) {
-            var lastException: Exception? = null
+            var lastException: java.io.IOException? = null
             repeat(3) { attempt ->
                 try {
                     val resp = client.newCall(request).execute()
-                    val body = try {
-                        resp.body?.string() ?: "{}"
-                    } catch (e: java.io.EOFException) {
-                        Log.w("JmapOAuthClient", "EOFException при чтении ответа makeRequest, попытка $attempt")
-                        if (attempt < 2) {
-                            delay((attempt + 1) * 1000L)
-                            throw e
-                        } else {
-                            "{}"
-                        }
-                    }
+                    val body = resp.body?.string() ?: "{}"
                     return@withContext Pair(resp, body)
-                } catch (e: java.io.EOFException) {
-                    Log.w("JmapOAuthClient", "EOFException в makeRequest, попытка ${attempt + 1}/3")
-                    lastException = e
-                    if (attempt < 2) delay((attempt + 1) * 1000L)
                 } catch (e: java.io.IOException) {
                     Log.w("JmapOAuthClient", "IOException в makeRequest, попытка ${attempt + 1}/3: ${e.message}")
                     lastException = e
                     if (attempt < 2) delay((attempt + 1) * 1000L)
-                } catch (e: Exception) {
-                    lastException = e
-                    if (attempt < 2) delay((attempt + 1) * 1000L) else throw e
                 }
             }
-            throw IllegalStateException("Не удалось выполнить запрос после 3 попыток: ${lastException?.message}", lastException)
+            throw lastException!!
         }
 
     /** Retry request after refreshing the access token and return parsed response. */
@@ -1137,7 +1165,7 @@ class JmapOAuthClient(
     }
 
     private fun buildJmapRequest(
-        methodCallArray: JSONArray,
+        vararg methodCallArrays: JSONArray,
         extraCapabilities: List<String> = emptyList()
     ): JSONObject = JSONObject().apply {
         put("using", JSONArray().apply {
@@ -1145,7 +1173,7 @@ class JmapOAuthClient(
             put("urn:ietf:params:jmap:mail")
             extraCapabilities.forEach { put(it) }
         })
-        put("methodCalls", JSONArray().apply { put(methodCallArray) })
+        put("methodCalls", JSONArray().apply { methodCallArrays.forEach { put(it) } })
     }
 
     private fun JSONObject.toMap(): Map<String, Any?> {

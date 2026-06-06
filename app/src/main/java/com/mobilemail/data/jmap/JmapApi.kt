@@ -25,6 +25,20 @@ interface JmapApi {
         properties: List<String>? = null
     ): List<JmapEmail>
 
+    /**
+     * Email/query + Email/get в одном batch-запросе с back-reference #ids.
+     * Эквивалентен паре queryEmails + getEmails, но делает один round-trip.
+     */
+    suspend fun queryAndGetEmails(
+        mailboxId: String? = null,
+        accountId: String? = null,
+        position: Int = 0,
+        limit: Int = 50,
+        filter: Map<String, Any>? = null,
+        searchText: String? = null,
+        properties: List<String>? = null
+    ): Pair<EmailQueryResult, List<JmapEmail>>
+
     suspend fun updateEmailKeywords(
         emailId: String,
         keywords: Map<String, Boolean>,
