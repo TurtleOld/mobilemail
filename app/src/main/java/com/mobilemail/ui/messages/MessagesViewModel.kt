@@ -198,8 +198,7 @@ class MessagesViewModel(
     
     fun refresh() {
         _uiState.value = _uiState.value.copy(
-            hiddenMessageIds = emptySet(),
-            readStatusOverrides = emptyMap()
+            hiddenMessageIds = emptySet()
         )
         pagingRefreshTrigger.value += 1
         refreshFoldersPreservingSelection()
@@ -426,19 +425,25 @@ class MessagesViewModel(
 
     private fun moveSingleToRole(messageId: String, role: FolderRole) {
         val currentFolderId = _uiState.value.selectedFolder?.id ?: return
-        val targetFolder = _uiState.value.folders.firstOrNull { it.role == role } ?: run {
-            _uiState.value = _uiState.value.copy(
-                notification = NotificationState.Snackbar(
-                    message = when (role) {
-                        FolderRole.ARCHIVE -> "Папка Архив недоступна"
-                        FolderRole.SPAM -> "Папка Спам недоступна"
-                        else -> "Целевая папка недоступна"
-                    },
-                    duration = SnackbarDuration.Short
+        val targetFolder = _uiState.value.folders.firstOrNull { it.role == role }
+            ?: if (role == FolderRole.ARCHIVE) {
+                _uiState.value.folders.firstOrNull { it.role == FolderRole.TRASH }
+            } else {
+                null
+            }
+            ?: run {
+                _uiState.value = _uiState.value.copy(
+                    notification = NotificationState.Snackbar(
+                        message = when (role) {
+                            FolderRole.ARCHIVE -> "Папка Архив недоступна"
+                            FolderRole.SPAM -> "Папка Спам недоступна"
+                            else -> "Целевая папка недоступна"
+                        },
+                        duration = SnackbarDuration.Short
+                    )
                 )
-            )
-            return
-        }
+                return
+            }
 
         scheduleFolderAction(
             messageIds = setOf(messageId),
@@ -457,19 +462,25 @@ class MessagesViewModel(
     }
 
     private fun moveSelectedToRole(role: FolderRole) {
-        val targetFolder = _uiState.value.folders.firstOrNull { it.role == role } ?: run {
-            _uiState.value = _uiState.value.copy(
-                notification = NotificationState.Snackbar(
-                    message = when (role) {
-                        FolderRole.ARCHIVE -> "Папка Архив недоступна"
-                        FolderRole.SPAM -> "Папка Спам недоступна"
-                        else -> "Целевая папка недоступна"
-                    },
-                    duration = SnackbarDuration.Short
+        val targetFolder = _uiState.value.folders.firstOrNull { it.role == role }
+            ?: if (role == FolderRole.ARCHIVE) {
+                _uiState.value.folders.firstOrNull { it.role == FolderRole.TRASH }
+            } else {
+                null
+            }
+            ?: run {
+                _uiState.value = _uiState.value.copy(
+                    notification = NotificationState.Snackbar(
+                        message = when (role) {
+                            FolderRole.ARCHIVE -> "Папка Архив недоступна"
+                            FolderRole.SPAM -> "Папка Спам недоступна"
+                            else -> "Целевая папка недоступна"
+                        },
+                        duration = SnackbarDuration.Short
+                    )
                 )
-            )
-            return
-        }
+                return
+            }
         moveSelected(targetFolder.id)
     }
 

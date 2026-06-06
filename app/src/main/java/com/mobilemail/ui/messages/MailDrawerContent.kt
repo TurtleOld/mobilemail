@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Archive
@@ -14,7 +15,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Drafts
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Inbox
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material3.HorizontalDivider
@@ -33,6 +33,15 @@ import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.ui.common.MonogramAvatar
+
+private val primaryFolderOrder = listOf(
+    FolderRole.INBOX,
+    FolderRole.DRAFTS,
+    FolderRole.SENT,
+    FolderRole.ARCHIVE,
+    FolderRole.SPAM,
+    FolderRole.TRASH,
+)
 
 private fun folderIcon(role: FolderRole): ImageVector = when (role) {
     FolderRole.INBOX   -> Icons.Default.Inbox
@@ -53,7 +62,6 @@ fun MailDrawerContent(
     onFolderSelected: (Folder) -> Unit,
     onSwitchAccount: (SavedSession) -> Unit,
     onCompose: () -> Unit,
-    onQueue: () -> Unit,
     onSettings: () -> Unit,
 ) {
     val cs = MaterialTheme.colorScheme
@@ -93,7 +101,6 @@ fun MailDrawerContent(
             // Действия
             Spacer(Modifier.padding(4.dp))
             DrawerActionItem("Написать письмо", Icons.Default.Edit, onClick = onCompose)
-            DrawerActionItem("Очередь", Icons.Default.Schedule, onClick = onQueue)
             DrawerActionItem("Настройки", Icons.Default.Settings, onClick = onSettings)
 
             HorizontalDivider(
@@ -102,13 +109,36 @@ fun MailDrawerContent(
             )
             DrawerSectionLabel("Папки")
 
-            folders.forEach { folder ->
+            val locale = LocalConfiguration.current.locales[0]
+            val primaryFolders = primaryFolderOrder.mapNotNull { role ->
+                folders.firstOrNull { it.role == role }
+            }
+            val customFolders = folders
+                .filter { it.role == FolderRole.CUSTOM }
+                .sortedBy { it.name.lowercase(locale) }
+
+            primaryFolders.forEach { folder ->
                 DrawerFolderItem(
                     folder = folder,
                     isSelected = folder.id == selectedFolderId,
                     onClick = { onFolderSelected(folder) },
                 )
             }
+
+            if (customFolders.isNotEmpty()) {
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 28.dp, vertical = 4.dp),
+                    color = cs.outlineVariant.copy(alpha = 0.4f),
+                )
+                customFolders.forEach { folder ->
+                    DrawerFolderItem(
+                        folder = folder,
+                        isSelected = folder.id == selectedFolderId,
+                        onClick = { onFolderSelected(folder) },
+                    )
+                }
+            }
+
             Spacer(Modifier.padding(8.dp))
         }
     }

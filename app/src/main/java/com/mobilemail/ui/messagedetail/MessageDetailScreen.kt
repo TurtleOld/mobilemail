@@ -137,27 +137,29 @@ fun MessageDetailScreen(
             snackbarHost = { SnackbarHost(snackbarHostState) },
             bottomBar = {
                 uiState.message?.let { message ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 10.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        Button(
-                            onClick = { onReply?.invoke(message) },
-                            modifier = Modifier.weight(1f),
+                    Surface(tonalElevation = 2.dp) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
-                            Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Ответить")
-                        }
-                        OutlinedButton(
-                            onClick = { onForward?.invoke(message) },
-                            modifier = Modifier.weight(1f),
-                        ) {
-                            Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null)
-                            Spacer(Modifier.width(6.dp))
-                            Text("Переслать")
+                            FilledTonalButton(
+                                onClick = { onReply?.invoke(message) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Reply, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Ответить")
+                            }
+                            OutlinedButton(
+                                onClick = { onForward?.invoke(message) },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Icon(Icons.AutoMirrored.Filled.Forward, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Spacer(Modifier.width(4.dp))
+                                Text("Переслать")
+                            }
                         }
                     }
                 }
@@ -333,86 +335,42 @@ fun MessageContent(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(scrollState)
-            .padding(16.dp)
+            .padding(horizontal = 16.dp, vertical = 8.dp)
             .semantics { contentDescription = "Содержимое письма" }
     ) {
         Text(
             text = message.subject,
-            style = MaterialTheme.typography.headlineSmall,
-            modifier = Modifier.padding(bottom = 4.dp, top = 4.dp),
+            style = MaterialTheme.typography.titleLarge,
+            modifier = Modifier.padding(bottom = 8.dp),
         )
 
-        // Отправитель с аватаром
         Row(
             modifier = Modifier.padding(bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            MonogramAvatar(name = message.from.name ?: message.from.email, size = 46.dp)
-            Spacer(Modifier.width(12.dp))
-            Column {
+            MonogramAvatar(name = message.from.name ?: message.from.email, size = 40.dp)
+            Spacer(Modifier.width(10.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = message.from.name ?: message.from.email,
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.titleSmall,
                 )
-                Text(
-                    text = dateFormat.format(message.date),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
-
-        if (isExpandedLayout) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(24.dp)
-            ) {
-                MessageEnvelope(
-                    label = "От",
-                    value = message.from.name ?: message.from.email,
-                    modifier = Modifier.weight(1f)
-                )
-                if (message.to.isNotEmpty()) {
-                    MessageEnvelope(
-                        label = "Кому",
-                        value = message.to.joinToString(", ") { addr ->
-                            when {
-                                !addr.name.isNullOrBlank() -> addr.name.orEmpty()
-                                addr.email.isNotBlank() -> addr.email
-                                else -> "(без адреса)"
-                            }
-                        },
-                        modifier = Modifier.weight(1.2f)
-                    )
-                }
-            }
-        } else {
-            MessageEnvelope(
-                label = "От",
-                value = message.from.name ?: message.from.email,
-                modifier = Modifier.fillMaxWidth()
-            )
-            if (message.to.isNotEmpty()) {
-                MessageEnvelope(
-                    label = "Кому",
-                    value = message.to.joinToString(", ") { addr ->
+                val toText = if (message.to.isNotEmpty()) {
+                    message.to.joinToString(", ") { addr ->
                         when {
                             !addr.name.isNullOrBlank() -> addr.name.orEmpty()
                             addr.email.isNotBlank() -> addr.email
                             else -> "(без адреса)"
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth()
+                    }.let { "кому: $it" }
+                } else null
+                Text(
+                    text = listOfNotNull(toText, dateFormat.format(message.date)).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
-
-        Text(
-            text = dateFormat.format(message.date),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 16.dp)
-        )
 
         if (conversationMessages.size > 1) {
             ConversationHeader(
@@ -561,7 +519,7 @@ private fun ConversationMessageCard(
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 12.dp),
+            .padding(bottom = 8.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = when {
                 isCurrent -> MaterialTheme.colorScheme.secondaryContainer
@@ -571,7 +529,7 @@ private fun ConversationMessageCard(
         ),
         shape = MaterialTheme.shapes.large
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(12.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -668,27 +626,6 @@ private fun recipientSummary(message: MessageDetail): String {
         if (!message.cc.isNullOrEmpty()) add("Копия: ${message.cc.joinToString(", ") { it.name ?: it.email }}")
     }
     return recipients.joinToString(" • ").ifBlank { "Без получателей" }
-}
-
-@Composable
-private fun MessageEnvelope(
-    label: String,
-    value: String,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier.padding(bottom = 8.dp)
-    ) {
-        Text(
-            text = "$label: ",
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
