@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.paging.LoadState
 import androidx.paging.compose.collectAsLazyPagingItems
-import androidx.paging.compose.itemKey
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
@@ -667,47 +666,44 @@ fun MessagesList(
             ) {
                 var lastSectionLabel = ""
                 for (index in 0 until pagingItems.itemCount) {
-                    val message = pagingItems.peek(index)
+                    val peeked = pagingItems.peek(index)
                         ?.takeIf { it.id !in hiddenMessageIds }
                         ?: continue
-                    val sectionLabel = dateSectionLabel(message.date)
+                    val sectionLabel = dateSectionLabel(peeked.date)
                     if (sectionLabel != lastSectionLabel) {
                         lastSectionLabel = sectionLabel
                         item(key = "section_$sectionLabel") {
                             DateSectionHeader(label = sectionLabel)
                         }
                     }
-                }
-                items(
-                    count = pagingItems.itemCount,
-                    key = pagingItems.itemKey { it.id }
-                ) { index ->
-                    val message = pagingItems[index] ?: return@items
-                    if (message.id !in hiddenMessageIds) {
-                        val displayedMessage = readStatusOverrides[message.id]?.let { isUnread ->
-                            message.copy(flags = message.flags.copy(unread = isUnread))
-                        } ?: message
-                        if (selectedIds.isNotEmpty()) {
-                            MessageItem(
-                                message = displayedMessage,
-                                isSelected = selectedIds.contains(message.id),
-                                isActive = selectedMessageId == message.id,
-                                onClick = { onMessageClick(message.id) },
-                                onLongClick = { onMessageLongClick(message.id) },
-                                onSwipeArchive = { onSwipeArchive(message.id) },
-                                onSwipeDelete = { onSwipeDelete(message.id) }
-                            )
-                        } else {
-                            SwipeableEmailItem(
-                                message = displayedMessage,
-                                onClick = { onMessageClick(message.id) },
-                                onLongClick = { onMessageLongClick(message.id) },
-                                onArchive = { onSwipeArchive(message.id) },
-                                onDelete = { onSwipeDelete(message.id) },
-                                onMarkRead = { onSwipeMarkRead(message.id) },
-                                swipeRightAction = swipeRightAction,
-                                swipeLeftAction = swipeLeftAction,
-                            )
+                    item(key = peeked.id) {
+                        val message = pagingItems[index] ?: return@item
+                        if (message.id !in hiddenMessageIds) {
+                            val displayedMessage = readStatusOverrides[message.id]?.let { isUnread ->
+                                message.copy(flags = message.flags.copy(unread = isUnread))
+                            } ?: message
+                            if (selectedIds.isNotEmpty()) {
+                                MessageItem(
+                                    message = displayedMessage,
+                                    isSelected = selectedIds.contains(message.id),
+                                    isActive = selectedMessageId == message.id,
+                                    onClick = { onMessageClick(message.id) },
+                                    onLongClick = { onMessageLongClick(message.id) },
+                                    onSwipeArchive = { onSwipeArchive(message.id) },
+                                    onSwipeDelete = { onSwipeDelete(message.id) }
+                                )
+                            } else {
+                                SwipeableEmailItem(
+                                    message = displayedMessage,
+                                    onClick = { onMessageClick(message.id) },
+                                    onLongClick = { onMessageLongClick(message.id) },
+                                    onArchive = { onSwipeArchive(message.id) },
+                                    onDelete = { onSwipeDelete(message.id) },
+                                    onMarkRead = { onSwipeMarkRead(message.id) },
+                                    swipeRightAction = swipeRightAction,
+                                    swipeLeftAction = swipeLeftAction,
+                                )
+                            }
                         }
                     }
                 }

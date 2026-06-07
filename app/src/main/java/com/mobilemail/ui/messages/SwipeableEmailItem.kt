@@ -15,7 +15,6 @@ import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -70,16 +69,18 @@ fun SwipeableEmailItem(
     val enableRight = swipeRightAction != SwipeAction.NONE
     val enableLeft  = swipeLeftAction  != SwipeAction.NONE
 
-    val state = rememberSwipeToDismissBoxState()
-
-    LaunchedEffect(state.currentValue) {
-        when (state.currentValue) {
-            SwipeToDismissBoxValue.StartToEnd -> if (enableRight) dispatchAction(swipeRightAction)
-            SwipeToDismissBoxValue.EndToStart -> if (enableLeft) dispatchAction(swipeLeftAction)
-            SwipeToDismissBoxValue.Settled -> return@LaunchedEffect
+    val state = rememberSwipeToDismissBoxState(
+        confirmValueChange = { value ->
+            when (value) {
+                SwipeToDismissBoxValue.StartToEnd -> if (enableRight) dispatchAction(swipeRightAction)
+                SwipeToDismissBoxValue.EndToStart -> if (enableLeft) dispatchAction(swipeLeftAction)
+                SwipeToDismissBoxValue.Settled -> Unit
+            }
+            // Never actually dismiss the item — let it snap back to Settled so the
+            // row stays in the list after the action is performed.
+            false
         }
-        state.reset()
-    }
+    )
 
     SwipeToDismissBox(
         state = state,
