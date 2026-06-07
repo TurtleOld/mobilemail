@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.2](https://github.com/TurtleOld/mobilemail/compare/v1.4.1...v1.4.2) (2026-06-07)
+
+
+### Bug Fixes
+
+* **messages:** interleave date headers with messages and fix stuck swipe ([589a4de](https://github.com/TurtleOld/mobilemail/commit/589a4de14273337e0ff2e41978a3ee43607b2b63))
+* **messages:** interleave date headers with messages and fix stuck swipe ([#48](https://github.com/TurtleOld/mobilemail/issues/48)) ([71819d5](https://github.com/TurtleOld/mobilemail/commit/71819d5df7e9429c3c6d66b33d4d287e01188152))
+
 ## [1.4.1](https://github.com/TurtleOld/mobilemail/compare/v1.4.0...v1.4.1) (2026-06-06)
 
 
