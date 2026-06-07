@@ -227,13 +227,6 @@ class MessagesViewModel(
         refreshFoldersPreservingSelection()
     }
 
-    fun queueMarkRead(messageId: String, isRead: Boolean) {
-        viewModelScope.launch {
-            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, isRead)
-            refreshQueueStats()
-        }
-    }
-
     fun queueStar(messageId: String, isStarred: Boolean) {
         viewModelScope.launch {
             OfflineQueueManager.enqueueToggleStar(app, server, email, accountId, messageId, isStarred)
@@ -257,8 +250,9 @@ class MessagesViewModel(
         
         viewModelScope.launch {
             repository?.updateMessageReadStatus(messageId, isUnread)
+            syncReadStatus(messageId, isUnread)
         }
-        
+
         val updatedMessages = currentState.messages.map { message ->
             if (message.id == messageId) {
                 message.copy(flags = message.flags.copy(unread = isUnread))
@@ -302,6 +296,25 @@ class MessagesViewModel(
         }
     }
 
+    private suspend fun syncReadStatus(messageId: String, isUnread: Boolean) {
+        val actionsRepo = messageActionsRepository
+        if (actionsRepo == null) {
+            OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, !isUnread)
+            refreshQueueStats()
+            return
+        }
+        actionsRepo.markAsRead(messageId, isRead = !isUnread).fold(
+            onError = { e ->
+                android.util.Log.e("MessagesViewModel", "Не удалось синхронизировать статус прочитанности на сервере", e)
+                if (OfflineQueueManager.shouldQueue(e)) {
+                    OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, !isUnread)
+                    refreshQueueStats()
+                }
+            },
+            onSuccess = {}
+        )
+    }
+
     fun clearError() {
         _uiState.value = _uiState.value.copy(error = null)
     }
@@ -320,9 +333,7 @@ class MessagesViewModel(
             commitAction = { messageId -> actionsRepo.deleteMessage(messageId) },
             enqueueAction = { messageId ->
                 OfflineQueueManager.enqueueDelete(app, server, email, accountId, messageId)
-            },
-            allowUndo = false,
-            commitDelayMs = 0L
+            }
         )
     }
 
@@ -431,9 +442,7 @@ class MessagesViewModel(
             commitAction = { id -> actionsRepo.deleteMessage(id) },
             enqueueAction = { id ->
                 OfflineQueueManager.enqueueDelete(app, server, email, accountId, id)
-            },
-            allowUndo = false,
-            commitDelayMs = 0L
+            }
         )
     }
 
@@ -513,7 +522,7 @@ class MessagesViewModel(
         if (existingAction != null) {
             viewModelScope.launch {
                 finalizePendingAction(existingAction)
-                scheduleFolderAction(messageIds, pendingMessage, commitAction, enqueueAction)
+                scheduleFolderAction(messageIds, pendingMessage, commitAction, enqueueAction, allowUndo, commitDelayMs)
             }
             return
         }
@@ -593,6 +602,7 @@ class MessagesViewModel(
                 _uiState.value.selectedFolder?.let { folder -> loadMessages(folder.id, reset = true) }
             }
             is Result.Error -> {
+                android.util.Log.e("MessagesViewModel", "Не удалось синхронизировать действие с сервером", result.exception)
                 if (OfflineQueueManager.shouldQueue(result.exception)) {
                     action.onQueued()
                     refreshFoldersPreservingSelection()
