@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.4.3](https://github.com/TurtleOld/mobilemail/compare/v1.4.2...v1.4.3) (2026-06-07)
+
+
+### Bug Fixes
+
+* **messages:** синхронизировать прочтение и удаление писем со Stalwart, добавить отмену удаления ([b41e497](https://github.com/TurtleOld/mobilemail/commit/b41e4975d3c2f5e99bbfd7be197c79e3a9d186fb))
+* **messages:** синхронизировать прочтение и удаление писем со Stalwart, добавить отмену удаления ([#50](https://github.com/TurtleOld/mobilemail/issues/50)) ([cb5abfb](https://github.com/TurtleOld/mobilemail/commit/cb5abfbe97ab7280c7ea0f18897d5c51a493ec6d))
+
 ## [1.4.2](https://github.com/TurtleOld/mobilemail/compare/v1.4.1...v1.4.2) (2026-06-07)
 
 
