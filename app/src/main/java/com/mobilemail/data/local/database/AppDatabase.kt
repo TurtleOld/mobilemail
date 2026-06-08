@@ -14,12 +14,13 @@ import com.mobilemail.data.local.dao.MessageDao
 import com.mobilemail.data.local.dao.PendingOperationDao
 import com.mobilemail.data.local.entity.FolderEntity
 import com.mobilemail.data.local.entity.MessageEntity
+import com.mobilemail.data.local.entity.MessageFtsEntity
 import com.mobilemail.data.local.entity.PendingOperationEntity
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Database(
-    entities = [MessageEntity::class, FolderEntity::class, PendingOperationEntity::class],
-    version = 3,
+    entities = [MessageEntity::class, MessageFtsEntity::class, FolderEntity::class, PendingOperationEntity::class],
+    version = 4,
     exportSchema = true
 )
 @TypeConverters(DateConverter::class, FolderRoleConverter::class)
@@ -66,7 +67,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        internal val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3)
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createMessageFtsTable(db)
+                rebuildMessageFtsIndex(db)
+                createMessageFtsTriggers(db)
+            }
+        }
+
+        internal val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
 
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
@@ -94,8 +103,88 @@ abstract class AppDatabase : RoomDatabase() {
                 DATABASE_NAME
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addCallback(object : Callback() {
+                    override fun onCreate(db: SupportSQLiteDatabase) {
+                        createMessageFtsTriggers(db)
+                    }
+                })
                 .build()
+        }
+
+        private fun createMessageFtsTable(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING FTS4(
+                    messageId TEXT NOT NULL,
+                    accountId TEXT NOT NULL,
+                    folderId TEXT NOT NULL,
+                    fromName TEXT,
+                    fromEmail TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    snippet TEXT NOT NULL,
+                    textBody TEXT,
+                    htmlBody TEXT,
+                    tokenize=unicode61
+                )
+                """.trimIndent()
+            )
+        }
+
+        private fun rebuildMessageFtsIndex(db: SupportSQLiteDatabase) {
+            db.execSQL("DELETE FROM messages_fts")
+            db.execSQL(
+                """
+                INSERT INTO messages_fts(
+                    messageId, accountId, folderId, fromName, fromEmail,
+                    subject, snippet, textBody, htmlBody
+                )
+                SELECT
+                    id, accountId, folderId, fromName, fromEmail,
+                    subject, snippet, textBody, htmlBody
+                FROM messages
+                """.trimIndent()
+            )
+        }
+
+        private fun createMessageFtsTriggers(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+                    DELETE FROM messages_fts WHERE messageId = new.id;
+                    INSERT INTO messages_fts(
+                        messageId, accountId, folderId, fromName, fromEmail,
+                        subject, snippet, textBody, htmlBody
+                    )
+                    VALUES(
+                        new.id, new.accountId, new.folderId, new.fromName, new.fromEmail,
+                        new.subject, new.snippet, new.textBody, new.htmlBody
+                    );
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+                    DELETE FROM messages_fts WHERE messageId = old.id;
+                    INSERT INTO messages_fts(
+                        messageId, accountId, folderId, fromName, fromEmail,
+                        subject, snippet, textBody, htmlBody
+                    )
+                    VALUES(
+                        new.id, new.accountId, new.folderId, new.fromName, new.fromEmail,
+                        new.subject, new.snippet, new.textBody, new.htmlBody
+                    );
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+                    DELETE FROM messages_fts WHERE messageId = old.id;
+                END
+                """.trimIndent()
+            )
         }
     }
 }

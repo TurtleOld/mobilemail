@@ -458,7 +458,7 @@ fun AppNavGraph(
             val accountId = routeArgs.accountId
 
             val viewModel: SearchViewModel = viewModel(
-                factory = SearchViewModelFactory(application, server, email, accountId)
+                factory = SearchViewModelFactory(application, server, email, accountId, database)
             )
             SearchScreen(
                 viewModel = viewModel,

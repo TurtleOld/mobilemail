@@ -22,6 +22,7 @@ import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.data.common.fold
+import com.mobilemail.data.local.database.AppDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,7 +72,8 @@ class SearchViewModel(
     application: Application,
     private val server: String,
     private val email: String,
-    private val accountId: String
+    private val accountId: String,
+    private val database: AppDatabase? = null
 ) : AndroidViewModel(application) {
 
     private var mailRepository: MailRepository? = null
@@ -105,7 +107,7 @@ class SearchViewModel(
             try {
                 val jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
                 mailRepository = MailRepository(jmapClient)
-                searchRepository = SearchRepository(jmapClient)
+                searchRepository = SearchRepository(jmapClient, database?.messageDao(), accountId)
             } catch (e: Exception) {
                 Log.e("SearchViewModel", "Ошибка инициализации клиента", e)
                 _uiState.value = _uiState.value.copy(error = ErrorMapper.mapException(e))
