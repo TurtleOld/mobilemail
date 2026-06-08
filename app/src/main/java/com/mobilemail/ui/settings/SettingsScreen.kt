@@ -21,6 +21,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Card
+import com.mobilemail.data.preferences.NotificationPrivacyMode
 import com.mobilemail.data.preferences.SwipeAction
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -63,7 +64,7 @@ fun SettingsScreen(
     val isExpandedLayout = isExpandedWindowWidth()
     var signature by remember { mutableStateOf("") }
     var blockRemoteContent by remember { mutableStateOf(true) }
-    var notificationPrivacy by remember { mutableStateOf(false) }
+    var notificationPrivacyMode by remember { mutableStateOf(NotificationPrivacyMode.SHOW_DETAILS) }
     var clearCacheOnLogout by remember { mutableStateOf(true) }
     var swipeRightAction by remember { mutableStateOf(SwipeAction.ARCHIVE) }
     var swipeLeftAction  by remember { mutableStateOf(SwipeAction.DELETE) }
@@ -71,7 +72,7 @@ fun SettingsScreen(
     LaunchedEffect(server, email) {
         signature = preferencesManager.getSignature(server, email).orEmpty()
         blockRemoteContent = preferencesManager.isBlockRemoteContentEnabled()
-        notificationPrivacy = preferencesManager.isNotificationPrivacyEnabled()
+        notificationPrivacyMode = preferencesManager.getNotificationPrivacyMode()
         clearCacheOnLogout = preferencesManager.isClearCacheOnLogoutEnabled()
         preferencesManager.swipeRightAction.collect { swipeRightAction = it }
     }
@@ -114,10 +115,10 @@ fun SettingsScreen(
                             blockRemoteContent = enabled
                             scope.launch { preferencesManager.setBlockRemoteContent(enabled) }
                         },
-                        notificationPrivacy = notificationPrivacy,
-                        onNotificationPrivacyChange = { enabled ->
-                            notificationPrivacy = enabled
-                            scope.launch { preferencesManager.setNotificationPrivacy(enabled) }
+                        notificationPrivacyMode = notificationPrivacyMode,
+                        onNotificationPrivacyModeChange = { mode ->
+                            notificationPrivacyMode = mode
+                            scope.launch { preferencesManager.setNotificationPrivacyMode(mode) }
                         },
                         clearCacheOnLogout = clearCacheOnLogout,
                         onClearCacheOnLogoutChange = { enabled ->
@@ -168,10 +169,10 @@ fun SettingsScreen(
                         blockRemoteContent = enabled
                         scope.launch { preferencesManager.setBlockRemoteContent(enabled) }
                     },
-                    notificationPrivacy = notificationPrivacy,
-                    onNotificationPrivacyChange = { enabled ->
-                        notificationPrivacy = enabled
-                        scope.launch { preferencesManager.setNotificationPrivacy(enabled) }
+                    notificationPrivacyMode = notificationPrivacyMode,
+                    onNotificationPrivacyModeChange = { mode ->
+                        notificationPrivacyMode = mode
+                        scope.launch { preferencesManager.setNotificationPrivacyMode(mode) }
                     },
                     clearCacheOnLogout = clearCacheOnLogout,
                     onClearCacheOnLogoutChange = { enabled ->
@@ -224,8 +225,8 @@ private fun AppVersionFooter() {
 private fun PrivacySection(
     blockRemoteContent: Boolean,
     onBlockRemoteContentChange: (Boolean) -> Unit,
-    notificationPrivacy: Boolean,
-    onNotificationPrivacyChange: (Boolean) -> Unit,
+    notificationPrivacyMode: NotificationPrivacyMode,
+    onNotificationPrivacyModeChange: (NotificationPrivacyMode) -> Unit,
     clearCacheOnLogout: Boolean,
     onClearCacheOnLogoutChange: (Boolean) -> Unit,
 ) {
@@ -243,11 +244,9 @@ private fun PrivacySection(
                 onCheckedChange = onBlockRemoteContentChange
             )
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
-            PrivacyToggleRow(
-                title = "Скрывать детали в уведомлениях",
-                subtitle = "Показывать только «Новое письмо» без отправителя и темы на экране блокировки",
-                checked = notificationPrivacy,
-                onCheckedChange = onNotificationPrivacyChange
+            NotificationPrivacyPickerRow(
+                selected = notificationPrivacyMode,
+                onChange = onNotificationPrivacyModeChange
             )
             HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
             PrivacyToggleRow(
@@ -256,6 +255,64 @@ private fun PrivacySection(
                 checked = clearCacheOnLogout,
                 onCheckedChange = onClearCacheOnLogoutChange
             )
+        }
+    }
+}
+
+@Composable
+private fun NotificationPrivacyPickerRow(
+    selected: NotificationPrivacyMode,
+    onChange: (NotificationPrivacyMode) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { expanded = true }
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "Уведомления о письмах",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+            Text(
+                text = selected.description(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = selected.label(),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            NotificationPrivacyMode.entries.forEach { mode ->
+                DropdownMenuItem(
+                    text = { Text(mode.label()) },
+                    onClick = {
+                        onChange(mode)
+                        expanded = false
+                    },
+                    trailingIcon = if (mode == selected) {
+                        { Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                    } else null
+                )
+            }
         }
     }
 }

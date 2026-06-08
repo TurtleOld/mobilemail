@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.mobilemail.MainActivity
 import com.mobilemail.R
+import com.mobilemail.data.preferences.NotificationPrivacyMode
 
 object PushNotificationPublisher {
     private const val CHANNEL_ID = "mail_messages"
@@ -34,8 +35,10 @@ object PushNotificationPublisher {
         payload: PushPayload,
         fallbackTitle: String?,
         fallbackBody: String?,
-        hideDetails: Boolean = false,
+        privacyMode: NotificationPrivacyMode = NotificationPrivacyMode.SHOW_DETAILS,
     ) {
+        if (privacyMode == NotificationPrivacyMode.DISABLED) return
+
         ensureChannel(context)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
@@ -43,19 +46,8 @@ object PushNotificationPublisher {
             return
         }
 
-        val title: String
-        val body: String
-        if (hideDetails) {
-            title = context.getString(R.string.notification_new_message_title)
-            body = context.getString(R.string.notification_new_message_body)
-        } else {
-            title = payload.fromName
-                ?: fallbackTitle
-                ?: context.getString(R.string.notification_new_message_title)
-            body = payload.subject
-                ?: fallbackBody
-                ?: context.getString(R.string.notification_new_message_body)
-        }
+        val title = contentTitle(context, payload, fallbackTitle, privacyMode)
+        val body = contentBody(context, payload, fallbackBody, privacyMode)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -80,8 +72,58 @@ object PushNotificationPublisher {
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(visibilityFor(privacyMode))
+            .setPublicVersion(publicVersion(context))
             .build()
 
         NotificationManagerCompat.from(context).notify(payload.target.messageId.hashCode(), notification)
+    }
+
+    private fun contentTitle(
+        context: Context,
+        payload: PushPayload,
+        fallbackTitle: String?,
+        privacyMode: NotificationPrivacyMode
+    ): String {
+        if (privacyMode == NotificationPrivacyMode.PRIVATE_CONTENT) {
+            return context.getString(R.string.notification_new_message_title)
+        }
+
+        return payload.fromName
+            ?: fallbackTitle
+            ?: context.getString(R.string.notification_new_message_title)
+    }
+
+    private fun contentBody(
+        context: Context,
+        payload: PushPayload,
+        fallbackBody: String?,
+        privacyMode: NotificationPrivacyMode
+    ): String {
+        if (privacyMode == NotificationPrivacyMode.PRIVATE_CONTENT) {
+            return context.getString(R.string.notification_new_message_body)
+        }
+
+        return payload.subject
+            ?: fallbackBody
+            ?: context.getString(R.string.notification_new_message_body)
+    }
+
+    private fun visibilityFor(privacyMode: NotificationPrivacyMode): Int {
+        return if (privacyMode == NotificationPrivacyMode.HIDE_ON_LOCK_SCREEN) {
+            NotificationCompat.VISIBILITY_SECRET
+        } else {
+            NotificationCompat.VISIBILITY_PRIVATE
+        }
+    }
+
+    private fun publicVersion(context: Context): android.app.Notification {
+        return NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(context.getString(R.string.notification_new_message_title))
+            .setContentText(context.getString(R.string.notification_new_message_body))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
     }
 }
