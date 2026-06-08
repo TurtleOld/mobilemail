@@ -59,4 +59,28 @@ class LogoutAccountUseCaseTest {
         // revocation failure must not prevent token clearing
         assertEquals(listOf("unsubscribe", "clear"), calls)
     }
+
+    @Test
+    fun `invoke clears local cache when preference is enabled`() = runTest {
+        val session = SavedSession("https://mail.example.com", "user@example.com", "acc-1")
+        val calls = mutableListOf<String>()
+
+        useCase(
+            session = session,
+            unsubscribeTopic = { calls += "unsubscribe" },
+            revokeTokens = { _, _ -> calls += "revoke" },
+            clearTokens = { _, _ -> calls += "clearTokens" },
+            removeSavedAccount = { _, _ ->
+                calls += "remove"
+                null
+            },
+            clearLocalCache = { accountId -> calls += "clearCache:$accountId" },
+            shouldClearLocalCache = { true }
+        )
+
+        assertEquals(
+            listOf("unsubscribe", "revoke", "clearTokens", "clearCache:acc-1", "remove"),
+            calls
+        )
+    }
 }

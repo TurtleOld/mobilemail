@@ -52,4 +52,25 @@ class LogoutAllUseCaseTest {
             calls
         )
     }
+
+    @Test
+    fun `invoke clears database when cache cleanup preference is enabled`() = runTest {
+        val calls = mutableListOf<String>()
+
+        useCase(LogoutAllParams(
+            accountIds = emptyList(),
+            unsubscribeTopic = { calls += "unsubscribe" },
+            revokeAllTokens = { calls += "revokeAll" },
+            clearAllSessions = { calls += "clearSessions" },
+            clearAllTokens = { calls += "clearTokens" },
+            clearJmapCaches = { calls += "clearCaches" },
+            clearDatabase = { calls += "clearDatabase" },
+            shouldClearLocalCache = { true },
+        ))
+
+        assertEquals(
+            listOf("revokeAll", "clearSessions", "clearTokens", "clearCaches", "clearDatabase"),
+            calls
+        )
+    }
 }

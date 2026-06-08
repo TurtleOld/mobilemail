@@ -9,6 +9,7 @@ data class LogoutAllParams(
     val clearJmapCaches: suspend () -> Unit,
     val clearPin: suspend () -> Unit = {},
     val clearDatabase: suspend () -> Unit = {},
+    val shouldClearLocalCache: suspend () -> Boolean = { false },
 )
 
 class LogoutAllUseCase {
@@ -23,6 +24,8 @@ class LogoutAllUseCase {
         params.clearAllTokens()
         params.clearJmapCaches()
         params.clearPin()
-        params.clearDatabase()
+        if (params.shouldClearLocalCache()) {
+            params.clearDatabase()
+        }
     }
 }

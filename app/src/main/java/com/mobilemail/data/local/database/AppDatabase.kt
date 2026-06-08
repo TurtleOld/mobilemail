@@ -1,12 +1,12 @@
 package com.mobilemail.data.local.database
 
+import android.content.Context
 import androidx.room.Database
+import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
-import android.content.Context
-import androidx.room.Room
 import com.mobilemail.data.local.converter.DateConverter
 import com.mobilemail.data.local.converter.FolderRoleConverter
 import com.mobilemail.data.local.dao.FolderDao
@@ -15,6 +15,7 @@ import com.mobilemail.data.local.dao.PendingOperationDao
 import com.mobilemail.data.local.entity.FolderEntity
 import com.mobilemail.data.local.entity.MessageEntity
 import com.mobilemail.data.local.entity.PendingOperationEntity
+import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Database(
     entities = [MessageEntity::class, FolderEntity::class, PendingOperationEntity::class],
@@ -69,15 +70,32 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
-                instance ?: Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    DATABASE_NAME
-                )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
-                    .build()
+                instance ?: buildEncryptedDatabase(context.applicationContext)
                     .also { instance = it }
             }
+        }
+
+        private fun buildEncryptedDatabase(context: Context): AppDatabase {
+            return runCatching {
+                createEncryptedDatabase(context).also { it.openHelper.writableDatabase }
+            }.getOrElse {
+                context.deleteDatabase(DATABASE_NAME)
+                createEncryptedDatabase(context).also { it.openHelper.writableDatabase }
+            }
+        }
+
+        private fun createEncryptedDatabase(context: Context): AppDatabase {
+            System.loadLibrary("sqlcipher")
+            val passphrase = DatabasePassphraseProvider(context).getOrCreatePassphrase()
+            val factory = SupportOpenHelperFactory(passphrase)
+            return Room.databaseBuilder(
+                context,
+                AppDatabase::class.java,
+                DATABASE_NAME
+            )
+                .openHelperFactory(factory)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .build()
         }
     }
 }

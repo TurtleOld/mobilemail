@@ -202,6 +202,8 @@ dependencies {
     implementation(libs.androidx.paging.compose)
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.sqlite)
+    implementation(libs.sqlcipher.android)
     ksp(libs.androidx.room.compiler)
 
     implementation(platform(libs.firebase.bom))
@@ -226,4 +228,3 @@ dependencies {
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
 }
-

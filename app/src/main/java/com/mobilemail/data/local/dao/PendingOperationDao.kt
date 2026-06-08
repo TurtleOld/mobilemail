@@ -22,6 +22,9 @@ interface PendingOperationDao {
     @Query("DELETE FROM pending_operations WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("DELETE FROM pending_operations WHERE accountId = :accountId")
+    suspend fun deleteByAccount(accountId: String)
+
     @Query("SELECT COUNT(*) FROM pending_operations WHERE status IN ('pending', 'failed')")
     suspend fun getPendingCount(): Int
 
