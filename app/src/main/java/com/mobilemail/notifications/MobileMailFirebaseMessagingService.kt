@@ -3,6 +3,7 @@ package com.mobilemail.notifications
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
+import com.mobilemail.data.preferences.NotificationPrivacyMode
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.sync.MailSyncWorker
 import com.mobilemail.util.LogRedactor
@@ -25,7 +26,10 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
         serviceScope.launch {
             try {
                 val preferencesManager = PreferencesManager(applicationContext)
-                val hideDetails = preferencesManager.isNotificationPrivacyEnabled()
+                val privacyMode = preferencesManager.getNotificationPrivacyMode()
+                if (privacyMode == NotificationPrivacyMode.DISABLED) {
+                    return@launch
+                }
                 val client = NtfyClient(applicationContext)
                 MobileMailPushOrchestrator
                     .resolvePendingPayloads(topic, client.fetchPendingMessages(topic))
@@ -36,7 +40,7 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
                         fallbackTitle = resolved.fallbackTitle,
                         fallbackBody = resolved.payload.subject
                             ?: applicationContext.getString(com.mobilemail.R.string.notification_new_message_body),
-                        hideDetails = hideDetails,
+                        privacyMode = privacyMode,
                     )
                 }
             } catch (error: Exception) {

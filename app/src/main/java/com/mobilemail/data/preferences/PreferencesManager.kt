@@ -25,6 +25,7 @@ class PreferencesManager(private val context: Context) {
         private val NOTIFICATION_PERMISSION_REQUESTED_KEY = booleanPreferencesKey("notification_permission_requested")
         private val BLOCK_REMOTE_CONTENT_KEY = booleanPreferencesKey("block_remote_content")
         private val NOTIFICATION_PRIVACY_KEY = booleanPreferencesKey("notification_privacy")
+        private val NOTIFICATION_PRIVACY_MODE_KEY = stringPreferencesKey("notification_privacy_mode")
         private val CLEAR_CACHE_ON_LOGOUT_KEY = booleanPreferencesKey("clear_cache_on_logout")
         private val SWIPE_RIGHT_ACTION_KEY = stringPreferencesKey("swipe_right_action")
         private val SWIPE_LEFT_ACTION_KEY  = stringPreferencesKey("swipe_left_action")
@@ -177,13 +178,45 @@ class PreferencesManager(private val context: Context) {
         preferences[NOTIFICATION_PRIVACY_KEY] ?: false
     }
 
+    val notificationPrivacyMode: Flow<NotificationPrivacyMode> = context.dataStore.data.map { preferences ->
+        notificationPrivacyMode(preferences)
+    }
+
     suspend fun isNotificationPrivacyEnabled(): Boolean {
-        return context.dataStore.data.first()[NOTIFICATION_PRIVACY_KEY] ?: false
+        return getNotificationPrivacyMode() == NotificationPrivacyMode.PRIVATE_CONTENT
     }
 
     suspend fun setNotificationPrivacy(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[NOTIFICATION_PRIVACY_KEY] = enabled
+            preferences[NOTIFICATION_PRIVACY_MODE_KEY] = if (enabled) {
+                NotificationPrivacyMode.PRIVATE_CONTENT.name
+            } else {
+                NotificationPrivacyMode.SHOW_DETAILS.name
+            }
+        }
+    }
+
+    suspend fun getNotificationPrivacyMode(): NotificationPrivacyMode {
+        return notificationPrivacyMode(context.dataStore.data.first())
+    }
+
+    suspend fun setNotificationPrivacyMode(mode: NotificationPrivacyMode) {
+        context.dataStore.edit { preferences ->
+            preferences[NOTIFICATION_PRIVACY_MODE_KEY] = mode.name
+            preferences[NOTIFICATION_PRIVACY_KEY] = mode == NotificationPrivacyMode.PRIVATE_CONTENT
+        }
+    }
+
+    private fun notificationPrivacyMode(preferences: Preferences): NotificationPrivacyMode {
+        val storedMode = preferences[NOTIFICATION_PRIVACY_MODE_KEY]
+            ?.let { runCatching { NotificationPrivacyMode.valueOf(it) }.getOrNull() }
+        if (storedMode != null) return storedMode
+
+        return if (preferences[NOTIFICATION_PRIVACY_KEY] == true) {
+            NotificationPrivacyMode.PRIVATE_CONTENT
+        } else {
+            NotificationPrivacyMode.SHOW_DETAILS
         }
     }
 
@@ -346,5 +379,26 @@ enum class SwipeAction {
         DELETE     -> "Удалить"
         MARK_READ  -> "Отметить прочитанным"
         NONE       -> "Ничего"
+    }
+}
+
+enum class NotificationPrivacyMode {
+    SHOW_DETAILS,
+    PRIVATE_CONTENT,
+    HIDE_ON_LOCK_SCREEN,
+    DISABLED;
+
+    fun label(): String = when (this) {
+        SHOW_DETAILS -> "Показывать детали"
+        PRIVATE_CONTENT -> "Только «Новое письмо»"
+        HIDE_ON_LOCK_SCREEN -> "Скрывать на экране блокировки"
+        DISABLED -> "Не показывать"
+    }
+
+    fun description(): String = when (this) {
+        SHOW_DETAILS -> "Отправитель и тема видны после разблокировки, на lock screen показывается безопасная версия"
+        PRIVATE_CONTENT -> "Всегда скрывать отправителя и тему"
+        HIDE_ON_LOCK_SCREEN -> "Не показывать уведомление на экране блокировки"
+        DISABLED -> "Не показывать push-уведомления о новых письмах"
     }
 }
