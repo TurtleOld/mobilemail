@@ -20,7 +20,7 @@ class AppDatabaseMigrationTest {
     )
 
     @Test
-    fun migrateFrom1To3_addsPendingOperationsAndFolderQueryState() {
+    fun migrateFrom1To5_addsPendingOperationsFolderQueryStateMessageFtsAndMessageIndexes() {
         helper.createDatabase(TEST_DB, 1).apply {
             execSQL(
                 """
@@ -62,7 +62,7 @@ class AppDatabaseMigrationTest {
 
         helper.runMigrationsAndValidate(
             TEST_DB,
-            3,
+            5,
             true,
             *AppDatabase.ALL_MIGRATIONS
         ).apply {
@@ -81,6 +81,25 @@ class AppDatabaseMigrationTest {
                     "messages index for accountId/threadId must exist",
                     cursorHasValue(cursor, "index_messages_accountId_threadId")
                 )
+                assertTrue(
+                    "messages index for accountId/folderId/date must exist",
+                    cursorHasValue(cursor, "index_messages_accountId_folderId_date")
+                )
+                assertTrue(
+                    "messages index for accountId must exist",
+                    cursorHasValue(cursor, "index_messages_accountId")
+                )
+                assertTrue(
+                    "messages index for folderId must exist",
+                    cursorHasValue(cursor, "index_messages_folderId")
+                )
+                assertTrue(
+                    "messages index for date must exist",
+                    cursorHasValue(cursor, "index_messages_date")
+                )
+            }
+            query("SELECT name FROM sqlite_master WHERE type = 'table'").use { cursor ->
+                assertTrue("messages_fts table must exist", cursorHasValue(cursor, "messages_fts"))
             }
         }
     }

@@ -20,7 +20,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Database(
     entities = [MessageEntity::class, MessageFtsEntity::class, FolderEntity::class, PendingOperationEntity::class],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(DateConverter::class, FolderRoleConverter::class)
@@ -75,7 +75,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        internal val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                createMessagePerformanceIndexes(db)
+            }
+        }
+
+        internal val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
 
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
@@ -103,7 +109,7 @@ abstract class AppDatabase : RoomDatabase() {
                 DATABASE_NAME
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         createMessageFtsTriggers(db)
@@ -129,6 +135,13 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 """.trimIndent()
             )
+        }
+
+        private fun createMessagePerformanceIndexes(db: SupportSQLiteDatabase) {
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_accountId_folderId_date ON messages(accountId, folderId, date)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_accountId ON messages(accountId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_folderId ON messages(folderId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_date ON messages(date)")
         }
 
         private fun rebuildMessageFtsIndex(db: SupportSQLiteDatabase) {
