@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.5.0](https://github.com/TurtleOld/mobilemail/compare/v1.4.3...v1.5.0) (2026-06-08)
+
+
+### Features
+
+* **search:** add offline FTS message search ([f09b7e9](https://github.com/TurtleOld/mobilemail/commit/f09b7e92b6e5146ee25f55312ad45518646d0c0e))
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([4623af0](https://github.com/TurtleOld/mobilemail/commit/4623af084b02cdbec3adf61d0ae3bb36f7239848))
+* **deps:** update all non-major dependencies ([#54](https://github.com/TurtleOld/mobilemail/issues/54)) ([99a2517](https://github.com/TurtleOld/mobilemail/commit/99a2517c7fbaf65036310fd9bf4769c7c8fb394f))
+* **notifications:** add lock screen privacy modes ([8e39b72](https://github.com/TurtleOld/mobilemail/commit/8e39b7290d93a1966db417dcde659bf1a39180cc))
+* **notifications:** add lock screen privacy modes ([#56](https://github.com/TurtleOld/mobilemail/issues/56)) ([cc5243a](https://github.com/TurtleOld/mobilemail/commit/cc5243a6cf072dcdbb0a8bc20d5fc5138f33530d))
+* **push:** proxy ntfy polling through backend ([89ad37f](https://github.com/TurtleOld/mobilemail/commit/89ad37fa5247d8d8c6a36288c34aa25b0b060b1a))
+* **security:** encrypt Room cache and clear it on logout ([b30cfb1](https://github.com/TurtleOld/mobilemail/commit/b30cfb1a09c1a69165674a37a317d986dfef76a9))
+* **sync:** add periodic mail sync fallback ([ceb0323](https://github.com/TurtleOld/mobilemail/commit/ceb0323d988b237b8f22d9ace9a4cf6d77af4d46))
+* **sync:** add periodic mail sync fallback ([#55](https://github.com/TurtleOld/mobilemail/issues/55)) ([0a00ce8](https://github.com/TurtleOld/mobilemail/commit/0a00ce8e096149ad5e61c494f459af8164d4fdbc))
+* усилить локальный кэш писем и поиск ([#52](https://github.com/TurtleOld/mobilemail/issues/52)) ([713e4d3](https://github.com/TurtleOld/mobilemail/commit/713e4d344afdb99cd818628ba8aa0767e84fa7c7))
+
+
+### Performance Improvements
+
+* **auth:** add proactive token refresh worker ([2823cb7](https://github.com/TurtleOld/mobilemail/commit/2823cb7abaffa51cc921960c5f4935ddeb9e554c))
+* **database:** add message paging indexes ([044a837](https://github.com/TurtleOld/mobilemail/commit/044a8370e238df24522a7d1cc65db91fb7b05f6c))
+
 ## [1.4.3](https://github.com/TurtleOld/mobilemail/compare/v1.4.2...v1.4.3) (2026-06-07)
 
 
