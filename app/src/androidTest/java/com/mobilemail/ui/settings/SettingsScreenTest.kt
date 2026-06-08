@@ -34,6 +34,7 @@ class SettingsScreenTest {
         composeRule.onNodeWithText("Настройки").assertIsDisplayed()
         composeRule.onNodeWithText("Безопасность").assertIsDisplayed()
         composeRule.onNodeWithText("Конфиденциальность").assertIsDisplayed()
+        composeRule.onNodeWithText("Очищать кэш при выходе").assertIsDisplayed()
         composeRule.onNodeWithText("Подпись").assertIsDisplayed()
         composeRule.onNodeWithText("Сохранить").assertIsDisplayed()
     }

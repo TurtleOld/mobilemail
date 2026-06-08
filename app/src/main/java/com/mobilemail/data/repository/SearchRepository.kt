@@ -1,11 +1,14 @@
 package com.mobilemail.data.repository
 
 import com.mobilemail.data.common.Result
+import com.mobilemail.data.common.ResultSuccess
 import com.mobilemail.data.common.runCatchingSuspend
 import com.mobilemail.data.jmap.JmapApi
+import com.mobilemail.data.local.dao.MessageDao
 import com.mobilemail.data.model.EmailAddress
 import com.mobilemail.data.model.MessageFlags
 import com.mobilemail.data.model.MessageListItem
+import com.mobilemail.data.repository.Mappers.toMessageListItem
 import com.mobilemail.domain.model.toDomain
 import com.mobilemail.domain.repository.DateRange
 import com.mobilemail.domain.repository.ISearchRepository
@@ -21,13 +24,27 @@ data class SearchPage(
 )
 
 class SearchRepository(
-    private val jmapClient: JmapApi
+    private val jmapClient: JmapApi,
+    private val messageDao: MessageDao? = null,
+    private val cachedAccountId: String? = null
 ) : ISearchRepository {
 
     suspend fun searchMessagesPage(
         searchQuery: SearchQuery,
         position: Int = 0,
         limit: Int = 50
+    ): Result<SearchPage> {
+        val remoteResult = searchRemoteMessagesPage(searchQuery, position, limit)
+        if (remoteResult is ResultSuccess) return remoteResult
+
+        return searchCachedMessagesPage(searchQuery, position, limit)
+            ?: remoteResult
+    }
+
+    private suspend fun searchRemoteMessagesPage(
+        searchQuery: SearchQuery,
+        position: Int,
+        limit: Int
     ): Result<SearchPage> = runCatchingSuspend {
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail
@@ -60,6 +77,58 @@ class SearchRepository(
             nextPosition = (position + queryResult.ids.size).takeIf { queryResult.ids.size >= limit },
             hasMore = queryResult.ids.size >= limit
         )
+    }
+
+    private suspend fun searchCachedMessagesPage(
+        searchQuery: SearchQuery,
+        position: Int,
+        limit: Int
+    ): Result<SearchPage>? {
+        val dao = messageDao ?: return null
+        val accountId = cachedAccountId ?: return null
+        return runCatchingSuspend {
+            val matchQuery = searchQuery.query.toFtsMatchQuery()
+            val dateFromMillis = dateRangeStartMillis(searchQuery.dateRange)
+            val senderLike = searchQuery.senderQuery
+                .trim()
+                .lowercase()
+                .takeIf { it.isNotBlank() }
+                ?.let { "%$it%" }
+            val items = if (matchQuery == null) {
+                dao.searchMessagesFiltered(
+                    accountId = accountId,
+                    folderId = searchQuery.folderId,
+                    senderLike = senderLike,
+                    unreadOnly = searchQuery.unreadOnly,
+                    hasAttachments = searchQuery.hasAttachments,
+                    starredOnly = searchQuery.starredOnly,
+                    importantOnly = searchQuery.importantOnly,
+                    dateFromMillis = dateFromMillis,
+                    limit = limit,
+                    offset = position
+                )
+            } else {
+                dao.searchMessagesFts(
+                    accountId = accountId,
+                    matchQuery = matchQuery,
+                    folderId = searchQuery.folderId,
+                    senderLike = senderLike,
+                    unreadOnly = searchQuery.unreadOnly,
+                    hasAttachments = searchQuery.hasAttachments,
+                    starredOnly = searchQuery.starredOnly,
+                    importantOnly = searchQuery.importantOnly,
+                    dateFromMillis = dateFromMillis,
+                    limit = limit,
+                    offset = position
+                )
+            }
+
+            SearchPage(
+                items = items.map { it.toMessageListItem().toDomain() },
+                nextPosition = (position + items.size).takeIf { items.size >= limit },
+                hasMore = items.size >= limit
+            )
+        }
     }
 
     private fun buildFilter(searchQuery: SearchQuery): Map<String, Any>? {
@@ -155,6 +224,19 @@ class SearchRepository(
         return Instant.ofEpochMilli(fromMillis).toString()
     }
 
+    private fun dateRangeStartMillis(dateRange: DateRange): Long? {
+        if (dateRange == DateRange.ANY) return null
+        val day = 24L * 60L * 60L * 1000L
+        val now = System.currentTimeMillis()
+        return when (dateRange) {
+            DateRange.ANY -> null
+            DateRange.TODAY -> now - day
+            DateRange.LAST_7_DAYS -> now - day * 7
+            DateRange.LAST_30_DAYS -> now - day * 30
+            DateRange.LAST_365_DAYS -> now - day * 365
+        }
+    }
+
     private fun matchesDateRange(date: Date, dateRange: DateRange): Boolean {
         if (dateRange == DateRange.ANY) return true
         val now = System.currentTimeMillis()
@@ -171,4 +253,12 @@ class SearchRepository(
 
     override suspend fun searchMessages(searchQuery: SearchQuery): Result<List<DomainMessageListItem>> =
         searchMessagesPage(searchQuery, limit = searchQuery.limit).map { it.items }
+}
+
+private fun String.toFtsMatchQuery(): String? {
+    val terms = Regex("""[\p{L}\p{N}]+""")
+        .findAll(this.lowercase())
+        .map { "${it.value}*" }
+        .toList()
+    return terms.takeIf { it.isNotEmpty() }?.joinToString(separator = " ")
 }

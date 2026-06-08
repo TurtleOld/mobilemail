@@ -136,8 +136,9 @@ fun AppNavGraph(
                                 withContext(Dispatchers.IO) { PinManager(application).clearPin() }
                             },
                             clearDatabase = {
-                                withContext(Dispatchers.IO) { database?.clearAllTables() }
-                            }
+                                withContext(Dispatchers.IO) { database.clearAllTables() }
+                            },
+                            shouldClearLocalCache = preferencesManager::isClearCacheOnLogoutEnabled
                         ))
                         navController.navigate(AppRoutes.Login) {
                             popUpTo(0) { inclusive = true }
@@ -402,8 +403,21 @@ fun AppNavGraph(
                             },
                             removeSavedAccount = { targetServer, targetEmail ->
                                 preferencesManager.removeSavedAccount(targetServer, targetEmail)
-                            }
+                            },
+                            clearLocalCache = { targetAccountId ->
+                                withContext(Dispatchers.IO) {
+                                    database.messageDao().deleteMessagesByAccount(targetAccountId)
+                                    database.folderDao().deleteFoldersByAccount(targetAccountId)
+                                    database.pendingOperationDao().deleteByAccount(targetAccountId)
+                                }
+                            },
+                            shouldClearLocalCache = preferencesManager::isClearCacheOnLogoutEnabled
                         )
+                        if (nextSession == null && preferencesManager.isClearCacheOnLogoutEnabled()) {
+                            withContext(Dispatchers.IO) {
+                                database.clearAllTables()
+                            }
+                        }
                         JmapOAuthClient.clearCache()
                         val target = nextSession?.let { AppRoutes.messages(it) } ?: AppRoutes.Login
                         navController.navigate(target) {
@@ -444,7 +458,7 @@ fun AppNavGraph(
             val accountId = routeArgs.accountId
 
             val viewModel: SearchViewModel = viewModel(
-                factory = SearchViewModelFactory(application, server, email, accountId)
+                factory = SearchViewModelFactory(application, server, email, accountId, database)
             )
             SearchScreen(
                 viewModel = viewModel,

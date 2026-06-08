@@ -8,7 +8,9 @@ class LogoutAccountUseCase {
         unsubscribeTopic: suspend (String) -> Unit,
         revokeTokens: suspend (String, String) -> Unit,
         clearTokens: suspend (String, String) -> Unit,
-        removeSavedAccount: suspend (String, String) -> SavedSession?
+        removeSavedAccount: suspend (String, String) -> SavedSession?,
+        clearLocalCache: suspend (String) -> Unit = {},
+        shouldClearLocalCache: suspend () -> Boolean = { false }
     ): SavedSession? {
         unsubscribeTopic(session.accountId)
         try {
@@ -17,6 +19,9 @@ class LogoutAccountUseCase {
             // best-effort: revocation failure must not block local token clearing
         }
         clearTokens(session.server, session.email)
+        if (shouldClearLocalCache()) {
+            clearLocalCache(session.accountId)
+        }
         return removeSavedAccount(session.server, session.email)
     }
 }

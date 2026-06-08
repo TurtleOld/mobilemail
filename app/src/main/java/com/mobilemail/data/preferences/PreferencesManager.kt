@@ -25,6 +25,7 @@ class PreferencesManager(private val context: Context) {
         private val NOTIFICATION_PERMISSION_REQUESTED_KEY = booleanPreferencesKey("notification_permission_requested")
         private val BLOCK_REMOTE_CONTENT_KEY = booleanPreferencesKey("block_remote_content")
         private val NOTIFICATION_PRIVACY_KEY = booleanPreferencesKey("notification_privacy")
+        private val CLEAR_CACHE_ON_LOGOUT_KEY = booleanPreferencesKey("clear_cache_on_logout")
         private val SWIPE_RIGHT_ACTION_KEY = stringPreferencesKey("swipe_right_action")
         private val SWIPE_LEFT_ACTION_KEY  = stringPreferencesKey("swipe_left_action")
     }
@@ -183,6 +184,20 @@ class PreferencesManager(private val context: Context) {
     suspend fun setNotificationPrivacy(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[NOTIFICATION_PRIVACY_KEY] = enabled
+        }
+    }
+
+    val clearCacheOnLogout: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[CLEAR_CACHE_ON_LOGOUT_KEY] ?: true
+    }
+
+    suspend fun isClearCacheOnLogoutEnabled(): Boolean {
+        return context.dataStore.data.first()[CLEAR_CACHE_ON_LOGOUT_KEY] ?: true
+    }
+
+    suspend fun setClearCacheOnLogout(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[CLEAR_CACHE_ON_LOGOUT_KEY] = enabled
         }
     }
 

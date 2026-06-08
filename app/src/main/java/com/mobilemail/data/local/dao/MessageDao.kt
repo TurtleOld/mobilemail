@@ -44,4 +44,65 @@ interface MessageDao {
     
     @Query("UPDATE messages SET isStarred = :isStarred WHERE id = :messageId")
     suspend fun updateStarredStatus(messageId: String, isStarred: Boolean)
+
+    @Query(
+        """
+        SELECT messages.* FROM messages
+        JOIN messages_fts ON messages_fts.messageId = messages.id
+        WHERE messages_fts MATCH :matchQuery
+            AND messages.accountId = :accountId
+            AND (:folderId IS NULL OR messages.folderId = :folderId)
+            AND (:senderLike IS NULL OR LOWER(IFNULL(messages.fromName, '')) LIKE :senderLike OR LOWER(messages.fromEmail) LIKE :senderLike)
+            AND (:unreadOnly = 0 OR messages.isUnread = 1)
+            AND (:hasAttachments = 0 OR messages.hasAttachments = 1)
+            AND (:starredOnly = 0 OR messages.isStarred = 1)
+            AND (:importantOnly = 0 OR messages.isImportant = 1)
+            AND (:dateFromMillis IS NULL OR messages.date >= :dateFromMillis)
+        ORDER BY messages.date DESC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    @Suppress("LongParameterList")
+    suspend fun searchMessagesFts(
+        accountId: String,
+        matchQuery: String,
+        folderId: String?,
+        senderLike: String?,
+        unreadOnly: Boolean,
+        hasAttachments: Boolean,
+        starredOnly: Boolean,
+        importantOnly: Boolean,
+        dateFromMillis: Long?,
+        limit: Int,
+        offset: Int
+    ): List<MessageEntity>
+
+    @Query(
+        """
+        SELECT * FROM messages
+        WHERE accountId = :accountId
+            AND (:folderId IS NULL OR folderId = :folderId)
+            AND (:senderLike IS NULL OR LOWER(IFNULL(fromName, '')) LIKE :senderLike OR LOWER(fromEmail) LIKE :senderLike)
+            AND (:unreadOnly = 0 OR isUnread = 1)
+            AND (:hasAttachments = 0 OR hasAttachments = 1)
+            AND (:starredOnly = 0 OR isStarred = 1)
+            AND (:importantOnly = 0 OR isImportant = 1)
+            AND (:dateFromMillis IS NULL OR date >= :dateFromMillis)
+        ORDER BY date DESC
+        LIMIT :limit OFFSET :offset
+        """
+    )
+    @Suppress("LongParameterList")
+    suspend fun searchMessagesFiltered(
+        accountId: String,
+        folderId: String?,
+        senderLike: String?,
+        unreadOnly: Boolean,
+        hasAttachments: Boolean,
+        starredOnly: Boolean,
+        importantOnly: Boolean,
+        dateFromMillis: Long?,
+        limit: Int,
+        offset: Int
+    ): List<MessageEntity>
 }

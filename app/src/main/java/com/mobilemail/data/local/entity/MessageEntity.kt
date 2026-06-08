@@ -11,6 +11,10 @@ import java.util.Date
     tableName = "messages",
     indices = [
         Index(value = ["folderId", "accountId", "date"]),
+        Index(value = ["accountId", "folderId", "date"]),
+        Index(value = ["accountId"]),
+        Index(value = ["folderId"]),
+        Index(value = ["date"]),
         Index(value = ["accountId", "threadId"]),
         Index(value = ["accountId", "fromEmail"]),
         Index(value = ["syncedAt"])

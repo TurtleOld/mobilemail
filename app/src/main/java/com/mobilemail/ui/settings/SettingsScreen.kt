@@ -64,6 +64,7 @@ fun SettingsScreen(
     var signature by remember { mutableStateOf("") }
     var blockRemoteContent by remember { mutableStateOf(true) }
     var notificationPrivacy by remember { mutableStateOf(false) }
+    var clearCacheOnLogout by remember { mutableStateOf(true) }
     var swipeRightAction by remember { mutableStateOf(SwipeAction.ARCHIVE) }
     var swipeLeftAction  by remember { mutableStateOf(SwipeAction.DELETE) }
 
@@ -71,6 +72,7 @@ fun SettingsScreen(
         signature = preferencesManager.getSignature(server, email).orEmpty()
         blockRemoteContent = preferencesManager.isBlockRemoteContentEnabled()
         notificationPrivacy = preferencesManager.isNotificationPrivacyEnabled()
+        clearCacheOnLogout = preferencesManager.isClearCacheOnLogoutEnabled()
         preferencesManager.swipeRightAction.collect { swipeRightAction = it }
     }
     LaunchedEffect(Unit) {
@@ -116,6 +118,11 @@ fun SettingsScreen(
                         onNotificationPrivacyChange = { enabled ->
                             notificationPrivacy = enabled
                             scope.launch { preferencesManager.setNotificationPrivacy(enabled) }
+                        },
+                        clearCacheOnLogout = clearCacheOnLogout,
+                        onClearCacheOnLogoutChange = { enabled ->
+                            clearCacheOnLogout = enabled
+                            scope.launch { preferencesManager.setClearCacheOnLogout(enabled) }
                         }
                     )
                     GesturesSection(
@@ -165,6 +172,11 @@ fun SettingsScreen(
                     onNotificationPrivacyChange = { enabled ->
                         notificationPrivacy = enabled
                         scope.launch { preferencesManager.setNotificationPrivacy(enabled) }
+                    },
+                    clearCacheOnLogout = clearCacheOnLogout,
+                    onClearCacheOnLogoutChange = { enabled ->
+                        clearCacheOnLogout = enabled
+                        scope.launch { preferencesManager.setClearCacheOnLogout(enabled) }
                     }
                 )
                 GesturesSection(
@@ -214,6 +226,8 @@ private fun PrivacySection(
     onBlockRemoteContentChange: (Boolean) -> Unit,
     notificationPrivacy: Boolean,
     onNotificationPrivacyChange: (Boolean) -> Unit,
+    clearCacheOnLogout: Boolean,
+    onClearCacheOnLogoutChange: (Boolean) -> Unit,
 ) {
     Text(
         text = "Конфиденциальность",
@@ -234,6 +248,13 @@ private fun PrivacySection(
                 subtitle = "Показывать только «Новое письмо» без отправителя и темы на экране блокировки",
                 checked = notificationPrivacy,
                 onCheckedChange = onNotificationPrivacyChange
+            )
+            HorizontalDivider(modifier = Modifier.padding(horizontal = 16.dp))
+            PrivacyToggleRow(
+                title = "Очищать кэш при выходе",
+                subtitle = "Удалять локально сохранённые письма и очередь отправки после выхода из аккаунта",
+                checked = clearCacheOnLogout,
+                onCheckedChange = onClearCacheOnLogoutChange
             )
         }
     }
