@@ -79,8 +79,7 @@ android {
         versionName = optionalProp("VERSION_NAME") ?: "1.1.2"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
-        buildConfigField("String", "NTFY_URL", "\"${optionalSecret("NTFY_URL") ?: ""}\"")
-        buildConfigField("String", "NTFY_TOKEN", "\"${optionalSecret("NTFY_TOKEN") ?: ""}\"")
+        buildConfigField("String", "MOBILE_PUSH_PROXY_URL", "\"${optionalSecret("MOBILE_PUSH_PROXY_URL") ?: ""}\"")
         buildConfigField("String", "NTFY_TOPIC_PATTERN", "\"${optionalSecret("NTFY_TOPIC_PATTERN") ?: ""}\"")
         buildConfigField("String", "OAUTH_CLIENT_ID", "\"${secret("OAUTH_CLIENT_ID")}\"")
     }
