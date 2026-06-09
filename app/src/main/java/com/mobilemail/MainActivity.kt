@@ -30,6 +30,7 @@ import com.mobilemail.notifications.NtfyAccountPushTopicsAdapter
 import com.mobilemail.ui.navigation.AppNavigationDependencies
 import com.mobilemail.ui.navigation.AppNavigationHost
 import com.mobilemail.ui.navigation.AppRoutes
+import com.mobilemail.ui.login.OAuthBrowserSession
 import com.mobilemail.ui.theme.MobileMailTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -117,7 +118,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
-        if (!isChangingConfigurations && pinManager.isPinEnabled()) {
+        if (!isChangingConfigurations && pinManager.isPinEnabled() && !OAuthBrowserSession.isActive()) {
             isPinLocked = true
         }
         autoLockHandler.removeCallbacks(autoLockRunnable)

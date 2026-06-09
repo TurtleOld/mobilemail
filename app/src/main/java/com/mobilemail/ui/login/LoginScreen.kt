@@ -1,7 +1,5 @@
 package com.mobilemail.ui.login
 
-import android.content.Intent
-import androidx.core.net.toUri
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -71,8 +69,13 @@ fun LoginScreen(
 
     LaunchedEffect(verificationUri, uiState.oauthUserCode) {
         if (!verificationUri.isNullOrBlank() && uiState.oauthUserCode != null && !hasOpenedAuthPage) {
-            openAuthorizationPage(context, verificationUri)
-            hasOpenedAuthPage = true
+            val result = openAuthorizationPage(context, verificationUri)
+            if (result.opened) {
+                OAuthBrowserSession.markActive()
+                hasOpenedAuthPage = true
+            } else {
+                viewModel.onAuthorizationPageOpenFailed(result.errorMessage)
+            }
         }
         if (uiState.oauthUserCode == null) {
             hasOpenedAuthPage = false
@@ -179,8 +182,13 @@ fun LoginScreen(
                                     if (verificationUri != null) {
                                         Button(
                                             onClick = {
-                                                openAuthorizationPage(context, verificationUri)
-                                                hasOpenedAuthPage = true
+                                                val result = openAuthorizationPage(context, verificationUri)
+                                                if (result.opened) {
+                                                    OAuthBrowserSession.markActive()
+                                                    hasOpenedAuthPage = true
+                                                } else {
+                                                    viewModel.onAuthorizationPageOpenFailed(result.errorMessage)
+                                                }
                                             },
                                             modifier = Modifier.fillMaxWidth()
                                         ) {
@@ -218,13 +226,4 @@ fun LoginScreen(
             }
         }
     }
-}
-
-private fun openAuthorizationPage(context: android.content.Context, uri: String) {
-    val parsed = uri.toUri()
-    if (parsed.scheme != "https" && parsed.scheme != "http") return
-    val intent = Intent(Intent.ACTION_VIEW, parsed).apply {
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-    }
-    context.startActivity(intent)
 }
