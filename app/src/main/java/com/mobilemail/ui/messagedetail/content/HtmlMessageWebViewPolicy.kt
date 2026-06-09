@@ -20,8 +20,9 @@ internal object HtmlMessageWebViewPolicy {
             textZoom = if (isExpandedLayout) 100 else 95
             allowFileAccess = false
             allowContentAccess = false
-            blockNetworkImage = blockRemoteLoads
-            blockNetworkLoads = blockRemoteLoads
+            val remoteContentSettings = HtmlMessageRemoteContentPolicy.settingsFor(blockRemoteLoads)
+            blockNetworkImage = remoteContentSettings.blockNetworkImages
+            blockNetworkLoads = remoteContentSettings.blockNetworkLoads
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             safeBrowsingEnabled = true
         }
@@ -33,8 +34,9 @@ internal object HtmlMessageWebViewPolicy {
 
     fun updateRemoteContentBlocking(webView: WebView, blockRemoteLoads: Boolean, reloadIfUnblocked: Boolean) {
         val wasBlocking = webView.settings.blockNetworkImage
-        webView.settings.blockNetworkImage = blockRemoteLoads
-        webView.settings.blockNetworkLoads = blockRemoteLoads
+        val remoteContentSettings = HtmlMessageRemoteContentPolicy.settingsFor(blockRemoteLoads)
+        webView.settings.blockNetworkImage = remoteContentSettings.blockNetworkImages
+        webView.settings.blockNetworkLoads = remoteContentSettings.blockNetworkLoads
         if (wasBlocking && !blockRemoteLoads && reloadIfUnblocked) {
             webView.reload()
         }
