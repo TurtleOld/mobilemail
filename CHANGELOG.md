@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.1](https://github.com/TurtleOld/mobilemail/compare/v1.5.0...v1.5.1) (2026-06-09)
+
+
+### Bug Fixes
+
+* **oauth:** open browser for device login ([31af414](https://github.com/TurtleOld/mobilemail/commit/31af414c2903046464c6987dbc9b10dc1ef6d9f5))
+* **oauth:** share okhttp client and refresh auth ([5ac4178](https://github.com/TurtleOld/mobilemail/commit/5ac4178f739609cf67ca4e6a9e4c3f005c6934a1))
+* **oauth:** share okhttp client and refresh auth ([#61](https://github.com/TurtleOld/mobilemail/issues/61)) ([d42d3a8](https://github.com/TurtleOld/mobilemail/commit/d42d3a88d198078656e58b836e7a6eab73cbba91))
+* **security:** delay repeated PIN attempts and auto-lock lifecycle ([8e376cc](https://github.com/TurtleOld/mobilemail/commit/8e376cca56de5b6ea84dc84ac5093e8a482f507e))
+* **security:** delay repeated PIN attempts and auto-lock lifecycle ([#60](https://github.com/TurtleOld/mobilemail/issues/60)) ([efcee75](https://github.com/TurtleOld/mobilemail/commit/efcee75c6153235bc361871eeca10ed463d67504))
+* **webview:** clarify remote content policy ([ec6bcfe](https://github.com/TurtleOld/mobilemail/commit/ec6bcfee9a2136a6d699d94a420868d9e51896b2))
+* **webview:** clarify remote content policy ([#58](https://github.com/TurtleOld/mobilemail/issues/58)) ([1e53cda](https://github.com/TurtleOld/mobilemail/commit/1e53cda60a11f1788df6513235db6877d703b966))
+
 ## [1.5.0](https://github.com/TurtleOld/mobilemail/compare/v1.4.3...v1.5.0) (2026-06-08)
 
 
