@@ -6,7 +6,6 @@ import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import java.util.concurrent.TimeUnit
 
 class OAuthTokenRevocation(
     private val revocationEndpoint: String,
@@ -46,11 +45,11 @@ class OAuthTokenRevocation(
     }
 
     companion object {
-        fun createClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(10, TimeUnit.SECONDS)
-            .readTimeout(10, TimeUnit.SECONDS)
-            .writeTimeout(10, TimeUnit.SECONDS)
-            .retryOnConnectionFailure(false)
-            .build()
+        fun createClient(): OkHttpClient = OAuthHttpClientFactory.sharedClient(
+            connectTimeoutSeconds = 10,
+            readTimeoutSeconds = 10,
+            writeTimeoutSeconds = 10,
+            retryOnConnectionFailure = false
+        )
     }
 }
