@@ -90,7 +90,7 @@ internal fun HtmlMessageWebView(
                         blockRemoteLoads = blockRemoteLoads
                     )
                     tag = contentKey
-                    loadDataWithBaseURL(null, htmlDocument, "text/html", "UTF-8", null)
+                    HtmlMessageWebViewLoader.load(this, htmlDocument)
                 }
             },
             update = { webView ->
@@ -103,7 +103,7 @@ internal fun HtmlMessageWebView(
                     webView.tag = contentKey
                     isLoading = true
                     webViewHeight = defaultHeight
-                    webView.loadDataWithBaseURL(null, htmlDocument, "text/html", "UTF-8", null)
+                    HtmlMessageWebViewLoader.load(webView, htmlDocument)
                 }
             },
             modifier = Modifier
