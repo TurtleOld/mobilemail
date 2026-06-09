@@ -5,13 +5,13 @@ import android.net.Uri
 import androidx.core.content.edit
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.oauth.OAuthDiscovery
+import com.mobilemail.data.oauth.OAuthHttpClientFactory
 import com.mobilemail.data.oauth.OAuthTokenRefresh
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,7 +25,7 @@ data class NtfyEnvelope(
 )
 
 class NtfyClient(context: Context) {
-    private val httpClient = OkHttpClient()
+    private val httpClient = OAuthHttpClientFactory.sharedClient
     private val appContext = context.applicationContext
     private val preferences = context.getSharedPreferences("ntfy_cursor", Context.MODE_PRIVATE)
     private val preferencesManager = PreferencesManager(appContext)

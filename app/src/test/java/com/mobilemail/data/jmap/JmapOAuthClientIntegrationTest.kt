@@ -113,7 +113,8 @@ class JmapOAuthClientIntegrationTest {
                 client.getSession()
                 fail("Expected exception when retry request fails")
             } catch (error: Exception) {
-                assertTrue(error.message.orEmpty().contains("после refresh"))
+                assertTrue(error.message.orEmpty().contains("JMAP session failed"))
+                assertTrue(error.message.orEmpty().contains("500"))
             }
         } finally {
             server.shutdown()

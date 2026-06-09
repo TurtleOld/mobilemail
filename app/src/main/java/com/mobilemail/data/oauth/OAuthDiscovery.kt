@@ -7,7 +7,6 @@ import com.mobilemail.util.LogRedactor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 /**
  * Метаданные OAuth сервера, полученные из discovery endpoint.
@@ -254,14 +253,7 @@ class OAuthDiscovery(private val client: OkHttpClient) {
     }
 
     companion object {
-        fun createClient(): OkHttpClient {
-            return OkHttpClient.Builder()
-                .connectTimeout(60, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
-                .writeTimeout(60, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(true)
-                .build()
-        }
+        fun createClient(): OkHttpClient = OAuthHttpClientFactory.sharedClient
     }
 }
 

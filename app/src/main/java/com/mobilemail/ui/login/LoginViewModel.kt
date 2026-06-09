@@ -6,6 +6,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.BuildConfig
+import com.mobilemail.MainActivity
 import com.mobilemail.data.jmap.JmapOAuthClient
 import com.mobilemail.domain.model.Account
 import com.mobilemail.data.oauth.DeviceFlowClient
@@ -195,6 +196,15 @@ class LoginViewModel(
 
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
+    }
+
+    fun onAuthorizationPageOpenFailed(message: String?) {
+        OAuthBrowserSession.clear()
+        _uiState.value = _uiState.value.copy(
+            notification = NotificationState.Snackbar(
+                message = message ?: "Не удалось открыть страницу авторизации"
+            )
+        )
     }
 
     fun startOAuthLogin(onSuccess: (Account) -> Unit) {
@@ -391,6 +401,8 @@ class LoginViewModel(
                         "Сохранение сессии: server=$server, accountEmail=$accountEmail, tempEmail=$tempEmail, accountId=${account.id}"
                     )
                     preferencesManager.saveSession(server, accountEmail, account.id)
+                    deviceFlowClient?.cancel()
+                    OAuthBrowserSession.clear()
                     bringAppToForeground()
                     _uiState.value = _uiState.value.copy(
                         isLoading = false,
@@ -435,17 +447,17 @@ class LoginViewModel(
             oauthVerificationUriComplete = null,
             oauthExpiresAt = null
         )
+        OAuthBrowserSession.clear()
     }
 
     private fun bringAppToForeground() {
         try {
-            val pkg = app.packageName
-            val launchIntent = app.packageManager.getLaunchIntentForPackage(pkg) ?: return
-            launchIntent.addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
+            val launchIntent = Intent(app, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
+            }
             app.startActivity(launchIntent)
         } catch (e: Exception) {
             Log.w("LoginViewModel", "Не удалось вернуть приложение на передний план", e)
@@ -454,6 +466,7 @@ class LoginViewModel(
 
     fun cancelOAuthLogin() {
         deviceFlowClient?.cancel()
+        OAuthBrowserSession.clear()
         _uiState.value = _uiState.value.copy(
             oauthUserCode = null,
             oauthVerificationUri = null,

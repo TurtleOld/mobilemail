@@ -16,7 +16,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.io.IOException
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 data class DeviceCodeResponse(
@@ -355,13 +354,6 @@ class DeviceFlowClient(
     }
 
     companion object {
-        fun createClient(): OkHttpClient {
-            return OkHttpClient.Builder()
-                .connectTimeout(60, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
-                .writeTimeout(60, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(true)
-                .build()
-        }
+        fun createClient(): OkHttpClient = OAuthHttpClientFactory.sharedClient
     }
 }

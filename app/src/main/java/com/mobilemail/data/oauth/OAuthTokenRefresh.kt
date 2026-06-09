@@ -9,7 +9,6 @@ import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.util.concurrent.TimeUnit
 
 class OAuthTokenRefresh(
     private val metadata: OAuthServerMetadata,
@@ -71,13 +70,11 @@ class OAuthTokenRefresh(
     }
     
     companion object {
-        fun createClient(): OkHttpClient {
-            return OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .writeTimeout(30, TimeUnit.SECONDS)
-                .retryOnConnectionFailure(true)
-                .build()
-        }
+        fun createClient(): OkHttpClient = OAuthHttpClientFactory.sharedClient(
+            connectTimeoutSeconds = 30,
+            readTimeoutSeconds = 30,
+            writeTimeoutSeconds = 30,
+            retryOnConnectionFailure = true
+        )
     }
 }
