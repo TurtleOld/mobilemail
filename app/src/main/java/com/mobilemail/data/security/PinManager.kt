@@ -16,6 +16,7 @@ class PinManager(context: Context) {
         private const val KEY_PIN_VERSION = "pin_version"
         private const val KEY_BIOMETRIC_ENABLED = "biometric_enabled"
         private const val KEY_FAILED_ATTEMPTS = "failed_attempts"
+        private const val KEY_LAST_FAILED_ATTEMPT_AT_MILLIS = "last_failed_attempt_at_millis"
         private const val PIN_VERSION_PBKDF2 = 2
         private const val PBKDF2_ITERATIONS = 120_000
         private const val PBKDF2_KEY_LENGTH = 256
@@ -37,6 +38,7 @@ class PinManager(context: Context) {
         secureStore.putString(KEY_PIN_SALT, Base64.encodeToString(salt, Base64.NO_WRAP))
         secureStore.putInt(KEY_PIN_VERSION, PIN_VERSION_PBKDF2)
         secureStore.putInt(KEY_FAILED_ATTEMPTS, 0)
+        secureStore.remove(KEY_LAST_FAILED_ATTEMPT_AT_MILLIS)
     }
 
     fun verifyPin(pin: String): Boolean {
@@ -57,7 +59,8 @@ class PinManager(context: Context) {
             KEY_PIN_SALT,
             KEY_PIN_VERSION,
             KEY_BIOMETRIC_ENABLED,
-            KEY_FAILED_ATTEMPTS
+            KEY_FAILED_ATTEMPTS,
+            KEY_LAST_FAILED_ATTEMPT_AT_MILLIS
         )
     }
 
@@ -73,18 +76,28 @@ class PinManager(context: Context) {
         return secureStore.getInt(KEY_FAILED_ATTEMPTS) ?: 0
     }
 
-    fun incrementFailedAttempts(): Int {
+    fun incrementFailedAttempts(nowMillis: Long = System.currentTimeMillis()): Int {
         val attempts = getFailedAttempts() + 1
         secureStore.putInt(KEY_FAILED_ATTEMPTS, attempts)
+        secureStore.putLong(KEY_LAST_FAILED_ATTEMPT_AT_MILLIS, nowMillis)
         return attempts
     }
 
     fun resetFailedAttempts() {
         secureStore.putInt(KEY_FAILED_ATTEMPTS, 0)
+        secureStore.remove(KEY_LAST_FAILED_ATTEMPT_AT_MILLIS)
     }
 
     fun hasExceededMaxAttempts(): Boolean {
         return getFailedAttempts() >= MAX_FAILED_ATTEMPTS
+    }
+
+    fun getRemainingLockoutMillis(nowMillis: Long = System.currentTimeMillis()): Long {
+        return PinLockoutPolicy.remainingDelayMillis(
+            attempts = getFailedAttempts(),
+            lastFailedAttemptAtMillis = secureStore.getLong(KEY_LAST_FAILED_ATTEMPT_AT_MILLIS),
+            nowMillis = nowMillis,
+        )
     }
 
     private fun verifyPbkdf2(pin: String, storedHash: String): Boolean {

@@ -20,6 +20,8 @@ fun AppNavigationHost(
     dependencies: AppNavigationDependencies,
     startDestination: String,
     intent: Intent?,
+    isPinLocked: Boolean,
+    onPinUnlocked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val navController = rememberNavController()
@@ -34,21 +36,49 @@ fun AppNavigationHost(
         resolvePushNavigationUseCase = dependencies.resolvePushNavigationUseCase,
     )
 
+    PinLockNavigationEffect(
+        navController = navController,
+        isPinLocked = isPinLocked,
+        currentRoute = currentBackStackEntry?.destination?.route,
+    )
+
     AppNavGraph(
         navController = navController,
         startDestination = startDestination,
         dependencies = dependencies,
+        onPinUnlocked = onPinUnlocked,
         modifier = modifier,
     )
 
-    IncomingDeepLinkEffect(navController = navController, intent = intent)
+    IncomingDeepLinkEffect(
+        navController = navController,
+        intent = intent,
+        isPinLocked = isPinLocked,
+    )
+}
+
+@Composable
+private fun PinLockNavigationEffect(
+    navController: NavHostController,
+    isPinLocked: Boolean,
+    currentRoute: String?,
+) {
+    LaunchedEffect(isPinLocked, currentRoute) {
+        if (isPinLocked && currentRoute != AppRoutes.PinLock) {
+            navController.navigate(AppRoutes.PinLock) {
+                launchSingleTop = true
+            }
+        }
+    }
 }
 
 @Composable
 private fun IncomingDeepLinkEffect(
     navController: NavHostController,
     intent: Intent?,
+    isPinLocked: Boolean,
 ) {
+    if (isPinLocked) return
     val data = intent?.data ?: return
     val request = NavDeepLinkRequest.Builder.fromUri(data).build()
     if (!navController.graph.hasDeepLink(request)) {

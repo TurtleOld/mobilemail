@@ -15,6 +15,7 @@ data class PinLockUiState(
     val pin: String = "",
     val error: String? = null,
     val failedAttempts: Int = 0,
+    val remainingLockoutMillis: Long = 0L,
     val isUnlocked: Boolean = false,
     val shouldLogout: Boolean = false,
     val isBiometricEnabled: Boolean = false,
@@ -43,6 +44,7 @@ class PinLockViewModel(
         _uiState.update {
             it.copy(
                 failedAttempts = pinManager.getFailedAttempts(),
+                remainingLockoutMillis = pinManager.getRemainingLockoutMillis(),
                 isBiometricEnabled = canAuthenticate,
                 isBiometricAvailable = canAuthenticate,
                 showBiometricPrompt = canAuthenticate
@@ -55,6 +57,7 @@ class PinLockViewModel(
     }
 
     fun onPinChanged(pin: String) {
+        if (!canAttemptPin()) return
         if (pin.length <= PinManager.PIN_LENGTH && pin.all { it.isDigit() }) {
             _uiState.update {
                 it.copy(pin = pin, error = null)
@@ -67,6 +70,7 @@ class PinLockViewModel(
     }
 
     fun onPinDigitEntered(digit: String) {
+        if (!canAttemptPin()) return
         val currentPin = _uiState.value.pin
         if (currentPin.length < PinManager.PIN_LENGTH) {
             val newPin = currentPin + digit
@@ -90,6 +94,7 @@ class PinLockViewModel(
     }
 
     private fun verifyPin(pin: String) {
+        if (!canAttemptPin()) return
         if (pinManager.verifyPin(pin)) {
             pinManager.resetFailedAttempts()
             _uiState.update {
@@ -98,19 +103,39 @@ class PinLockViewModel(
         } else {
             val attempts = pinManager.incrementFailedAttempts()
             val remainingAttempts = PinManager.MAX_FAILED_ATTEMPTS - attempts
+            val remainingLockoutMillis = pinManager.getRemainingLockoutMillis()
 
             if (pinManager.hasExceededMaxAttempts()) {
                 handleMaxAttemptsExceeded()
             } else {
+                val delayText = formatDelay(remainingLockoutMillis)
                 _uiState.update {
                     it.copy(
                         pin = "",
-                        error = "Неверный PIN-код. Осталось попыток: $remainingAttempts",
-                        failedAttempts = attempts
+                        error = "Неверный PIN-код. Повторите через $delayText. Осталось попыток: $remainingAttempts",
+                        failedAttempts = attempts,
+                        remainingLockoutMillis = remainingLockoutMillis
                     )
                 }
             }
         }
+    }
+
+    private fun canAttemptPin(): Boolean {
+        val remainingLockoutMillis = pinManager.getRemainingLockoutMillis()
+        if (remainingLockoutMillis <= 0L) {
+            _uiState.update { it.copy(remainingLockoutMillis = 0L) }
+            return true
+        }
+
+        _uiState.update {
+            it.copy(
+                pin = "",
+                remainingLockoutMillis = remainingLockoutMillis,
+                error = "Слишком много быстрых попыток. Повторите через ${formatDelay(remainingLockoutMillis)}."
+            )
+        }
+        return false
     }
 
     private fun handleMaxAttemptsExceeded() {
@@ -126,7 +151,11 @@ class PinLockViewModel(
     fun onBiometricSuccess() {
         pinManager.resetFailedAttempts()
         _uiState.update {
-            it.copy(isUnlocked = true, showBiometricPrompt = false)
+            it.copy(
+                isUnlocked = true,
+                showBiometricPrompt = false,
+                remainingLockoutMillis = 0L
+            )
         }
     }
 
@@ -156,6 +185,16 @@ class PinLockViewModel(
     fun clearError() {
         _uiState.update {
             it.copy(error = null)
+        }
+    }
+
+    private fun formatDelay(delayMillis: Long): String {
+        val seconds = ((delayMillis + 999L) / 1_000L).coerceAtLeast(1L)
+        return if (seconds < 60L) {
+            "$seconds сек."
+        } else {
+            val minutes = (seconds + 59L) / 60L
+            "$minutes мин."
         }
     }
 }
