@@ -81,6 +81,7 @@ fun AppNavGraph(
     navController: NavHostController,
     startDestination: String,
     dependencies: AppNavigationDependencies,
+    onPinUnlocked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val application = LocalContext.current.applicationContext as Application
@@ -109,8 +110,11 @@ fun AppNavGraph(
             PinLockScreen(
                 viewModel = viewModel,
                 onUnlocked = {
-                    navController.navigate(AppRoutes.Login) {
-                        popUpTo(AppRoutes.PinLock) { inclusive = true }
+                    onPinUnlocked()
+                    if (!navController.popBackStack()) {
+                        navController.navigate(AppRoutes.Login) {
+                            popUpTo(AppRoutes.PinLock) { inclusive = true }
+                        }
                     }
                 },
                 onLogout = {

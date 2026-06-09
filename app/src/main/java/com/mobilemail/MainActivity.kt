@@ -2,6 +2,10 @@ package com.mobilemail
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
+import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +44,12 @@ class MainActivity : FragmentActivity() {
     private val pinManager by lazy { PinManager(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val publishPushNavigationFromIntentUseCase = PublishPushNavigationFromIntentUseCase()
+    private val autoLockHandler = Handler(Looper.getMainLooper())
+    private val autoLockRunnable = Runnable {
+        if (pinManager.isPinEnabled() && !isPinLocked) {
+            isPinLocked = true
+        }
+    }
 
     private val navigationDependencies by lazy {
         AppNavigationDependencies(
@@ -58,6 +68,8 @@ class MainActivity : FragmentActivity() {
     }
 
     private var navigationIntent by mutableStateOf<Intent?>(null)
+    private var isPinLocked by mutableStateOf(false)
+    private var lastUserInteractionAtMillis = 0L
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
@@ -68,6 +80,10 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        isPinLocked = pinManager.isPinEnabled()
+        lastUserInteractionAtMillis = SystemClock.elapsedRealtime()
+        syncSecureWindowFlag()
+        scheduleAutoLock()
         navigationIntent = intent
         publishPushNavigationFromIntentUseCase(intent)
         setContent {
@@ -76,14 +92,61 @@ class MainActivity : FragmentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val startDestination = if (pinManager.isPinEnabled()) AppRoutes.PinLock else AppRoutes.Login
+                    val startDestination = if (isPinLocked) AppRoutes.PinLock else AppRoutes.Login
                     AppNavigationHost(
                         dependencies = navigationDependencies,
                         startDestination = startDestination,
                         intent = navigationIntent,
+                        isPinLocked = isPinLocked,
+                        onPinUnlocked = {
+                            isPinLocked = false
+                            lastUserInteractionAtMillis = SystemClock.elapsedRealtime()
+                            scheduleAutoLock()
+                        },
                     )
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        syncSecureWindowFlag()
+        scheduleAutoLock()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations && pinManager.isPinEnabled()) {
+            isPinLocked = true
+        }
+        autoLockHandler.removeCallbacks(autoLockRunnable)
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        lastUserInteractionAtMillis = SystemClock.elapsedRealtime()
+        scheduleAutoLock()
+    }
+
+    private fun scheduleAutoLock() {
+        autoLockHandler.removeCallbacks(autoLockRunnable)
+        if (!pinManager.isPinEnabled() || isPinLocked) return
+
+        val elapsedSinceInteraction = SystemClock.elapsedRealtime() - lastUserInteractionAtMillis
+        val remainingDelay = (AUTO_LOCK_TIMEOUT_MILLIS - elapsedSinceInteraction).coerceAtLeast(0L)
+        autoLockHandler.postDelayed(autoLockRunnable, remainingDelay)
+    }
+
+    private fun syncSecureWindowFlag() {
+        if (pinManager.isPinEnabled()) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
+    private companion object {
+        const val AUTO_LOCK_TIMEOUT_MILLIS = 5 * 60 * 1_000L
     }
 }
