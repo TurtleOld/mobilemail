@@ -3,19 +3,12 @@ package com.mobilemail.notifications
 import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import com.mobilemail.data.preferences.NotificationPrivacyMode
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.sync.MailSyncWorker
 import com.mobilemail.util.LogRedactor
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onMessageReceived(message: RemoteMessage) {
         val topic = message.data["topic"]?.trim().orEmpty()
         if (topic.isEmpty()) {
@@ -23,35 +16,16 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
         }
 
         MailSyncWorker.scheduleNow(applicationContext)
-        serviceScope.launch {
-            try {
-                val preferencesManager = PreferencesManager(applicationContext)
-                val privacyMode = preferencesManager.getNotificationPrivacyMode()
-                if (privacyMode == NotificationPrivacyMode.DISABLED) {
-                    return@launch
-                }
-                val client = NtfyClient(applicationContext)
-                MobileMailPushOrchestrator
-                    .resolvePendingPayloads(topic, client.fetchPendingMessages(topic))
-                    .forEach { resolved ->
-                    PushNotificationPublisher.show(
-                        context = applicationContext,
-                        payload = resolved.payload,
-                        fallbackTitle = resolved.fallbackTitle,
-                        fallbackBody = resolved.payload.subject
-                            ?: applicationContext.getString(com.mobilemail.R.string.notification_new_message_body),
-                        privacyMode = privacyMode,
-                    )
-                }
-            } catch (error: Exception) {
-                Log.e("MobileMailFCM", "Failed to fetch ntfy payload", error)
-            }
-        }
+        // The service is destroyed as soon as onMessageReceived returns, which
+        // cancels any coroutine launched in a service-scoped scope. Fetching the
+        // payload and showing the notification must outlive the service, so it
+        // runs in WorkManager.
+        NtfyPushWorker.scheduleNow(applicationContext, topic)
     }
 
     override fun onNewToken(token: String) {
         Log.d("MobileMailFCM", "FCM token refreshed: ${LogRedactor.redact("token=$token")}")
-        serviceScope.launch {
+        runBlocking {
             runCatching {
                 val preferencesManager = PreferencesManager(applicationContext)
                 val accountIds = preferencesManager.getSavedAccounts()
@@ -63,10 +37,5 @@ class MobileMailFirebaseMessagingService : FirebaseMessagingService() {
                 Log.e("MobileMailFCM", "Failed to re-subscribe topics on token refresh", error)
             }
         }
-    }
-
-    override fun onDestroy() {
-        serviceScope.cancel()
-        super.onDestroy()
     }
 }
