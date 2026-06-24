@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.4](https://github.com/TurtleOld/mobilemail/compare/v1.5.3...v1.5.4) (2026-06-24)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#66](https://github.com/TurtleOld/mobilemail/issues/66)) ([cf3bf76](https://github.com/TurtleOld/mobilemail/commit/cf3bf761196d78f79f2b6c4915aef8dacb69fc7c))
+* **deps:** update compose bom ([9d31d5e](https://github.com/TurtleOld/mobilemail/commit/9d31d5efb7066a7f0e8c98a756e00a8dc54ffdae))
+* **deps:** update compose bom ([#67](https://github.com/TurtleOld/mobilemail/issues/67)) ([af89d82](https://github.com/TurtleOld/mobilemail/commit/af89d826bebb45372f075102c0e4cfca6039abf3))
+* **deps:** update firebase bom ([#65](https://github.com/TurtleOld/mobilemail/issues/65)) ([2322c8c](https://github.com/TurtleOld/mobilemail/commit/2322c8c0965814a5a1c05a914b68f0b4479321fe))
+
 ## [1.5.3](https://github.com/TurtleOld/mobilemail/compare/v1.5.2...v1.5.3) (2026-06-24)
 
 
