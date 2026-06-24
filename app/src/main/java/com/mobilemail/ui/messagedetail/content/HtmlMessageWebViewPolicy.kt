@@ -12,7 +12,7 @@ internal object HtmlMessageWebViewPolicy {
         webView.settings.apply {
             javaScriptEnabled = false
             domStorageEnabled = false
-            useWideViewPort = false
+            useWideViewPort = true
             loadWithOverviewMode = true
             builtInZoomControls = true
             displayZoomControls = false
