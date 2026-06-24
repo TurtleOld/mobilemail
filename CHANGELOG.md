@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.5.3](https://github.com/TurtleOld/mobilemail/compare/v1.5.2...v1.5.3) (2026-06-24)
+
+
+### Bug Fixes
+
+* **message-body:** dark mode for email HTML content ([70d9982](https://github.com/TurtleOld/mobilemail/commit/70d9982356604ebcef15de8d727e9ac8a359cdae))
+* **message-body:** dark mode for email HTML content ([#71](https://github.com/TurtleOld/mobilemail/issues/71)) ([404abf9](https://github.com/TurtleOld/mobilemail/commit/404abf9e2c948ac0a98260700f777a1b1d7e5a61))
+* **message-body:** shrink-to-fit HTML rendering instead of clipping/laddering ([5413dcf](https://github.com/TurtleOld/mobilemail/commit/5413dcf74c2f9cccca8efc7d5864381bd201cf6b))
+* **message-body:** shrink-to-fit HTML rendering instead of clipping/laddering ([#69](https://github.com/TurtleOld/mobilemail/issues/69)) ([06e44bd](https://github.com/TurtleOld/mobilemail/commit/06e44bdb5606b693cb132497debec92ce3c037b7))
+
 ## [1.5.2](https://github.com/TurtleOld/mobilemail/compare/v1.5.1...v1.5.2) (2026-06-11)
 
 
