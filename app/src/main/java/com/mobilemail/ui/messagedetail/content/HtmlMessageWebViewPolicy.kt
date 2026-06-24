@@ -12,10 +12,6 @@ internal object HtmlMessageWebViewPolicy {
         webView.settings.apply {
             javaScriptEnabled = false
             domStorageEnabled = false
-            // Shrink-to-fit: lay the message out at its natural width (most
-            // marketing emails are ~600px tables) and let loadWithOverviewMode
-            // zoom the whole document down to fit the screen, instead of clamping
-            // the layout to the screen width and clipping the overflow.
             useWideViewPort = true
             loadWithOverviewMode = true
             builtInZoomControls = true
