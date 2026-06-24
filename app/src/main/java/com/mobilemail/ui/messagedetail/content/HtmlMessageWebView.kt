@@ -38,6 +38,7 @@ internal fun HtmlMessageWebView(
     htmlDocument: String,
     isExpandedLayout: Boolean,
     blockRemoteLoads: Boolean,
+    isDarkTheme: Boolean,
     modifier: Modifier = Modifier,
 ) {
     val (minHeight, defaultHeight) = rememberHtmlWebViewHeightDefaults()
@@ -87,7 +88,8 @@ internal fun HtmlMessageWebView(
                     HtmlMessageWebViewPolicy.applySettings(
                         webView = this,
                         isExpandedLayout = isExpandedLayout,
-                        blockRemoteLoads = blockRemoteLoads
+                        blockRemoteLoads = blockRemoteLoads,
+                        isDarkTheme = isDarkTheme
                     )
                     tag = contentKey
                     HtmlMessageWebViewLoader.load(this, htmlDocument)
@@ -99,6 +101,7 @@ internal fun HtmlMessageWebView(
                     blockRemoteLoads = blockRemoteLoads,
                     reloadIfUnblocked = true
                 )
+                HtmlMessageWebViewPolicy.applyDarkContentSupport(webView, isDarkTheme)
                 if (webView.tag != contentKey) {
                     webView.tag = contentKey
                     isLoading = true

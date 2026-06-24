@@ -1,5 +1,6 @@
 package com.mobilemail.ui.messagedetail.content
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -59,6 +60,7 @@ internal fun MessageBodySection(
                 htmlDocument = adaptedHtml,
                 isExpandedLayout = isExpandedLayout,
                 blockRemoteLoads = blockRemoteLoads,
+                isDarkTheme = isSystemInDarkTheme(),
             )
         } ?: message.body.text?.let { text ->
             ClickableTextWithLinks(
