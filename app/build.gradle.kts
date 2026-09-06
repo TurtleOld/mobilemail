@@ -72,7 +72,7 @@ android {
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.mobilemail"
+        applicationId = "app.turtleold.mobilemail"
         minSdk = 31
         targetSdk = 37
         versionCode = optionalProp("VERSION_CODE")?.toIntOrNull() ?: 1
