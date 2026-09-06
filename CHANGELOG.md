@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.5.5](https://github.com/TurtleOld/mobilemail/compare/v1.5.4...v1.5.5) (2026-09-06)
+
+
+### Bug Fixes
+
+* **app:** change applicationId to app.turtleold.mobilemail ([85c0061](https://github.com/TurtleOld/mobilemail/commit/85c006104b0a37c6452f1c5e459cc4954b7f6035))
+* **deps:** update all non-major dependencies ([b9edcd4](https://github.com/TurtleOld/mobilemail/commit/b9edcd461843e7cd378d7db6569332778330a87f))
+* **deps:** update all non-major dependencies ([#75](https://github.com/TurtleOld/mobilemail/issues/75)) ([da97035](https://github.com/TurtleOld/mobilemail/commit/da97035878339df641c6f0c57a18d79baec481c4))
+* **deps:** update dependency androidx.compose:compose-bom to v2026.08.00 ([17cbb0f](https://github.com/TurtleOld/mobilemail/commit/17cbb0f97593fb5f5fcfcae437cc4a201bfa0d4a))
+* **deps:** update dependency androidx.compose:compose-bom to v2026.08.00 ([#74](https://github.com/TurtleOld/mobilemail/issues/74)) ([74e6ed4](https://github.com/TurtleOld/mobilemail/commit/74e6ed46fa31b2993ac5d7a27d36b512f4020410))
+* **deps:** update dependency com.google.firebase:firebase-bom to v34.18.0 ([7df9cb3](https://github.com/TurtleOld/mobilemail/commit/7df9cb3cb54870480a9c409f800097406af16edc))
+* **deps:** update dependency com.google.firebase:firebase-bom to v34.18.0 ([#76](https://github.com/TurtleOld/mobilemail/issues/76)) ([94ca263](https://github.com/TurtleOld/mobilemail/commit/94ca26344183d2e587cd0cb7e7ed945cc208d60a))
+
 ## [1.5.4](https://github.com/TurtleOld/mobilemail/compare/v1.5.3...v1.5.4) (2026-06-24)
 
 
