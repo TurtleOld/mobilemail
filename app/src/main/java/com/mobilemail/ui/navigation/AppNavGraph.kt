@@ -70,6 +70,8 @@ import com.mobilemail.ui.security.PinSetupScreen
 import com.mobilemail.ui.security.PinSetupViewModel
 import com.mobilemail.ui.security.PinSetupViewModelFactory
 import com.mobilemail.ui.settings.SettingsScreen
+import com.mobilemail.ui.settings.UpdateCheckViewModel
+import com.mobilemail.ui.settings.UpdateCheckViewModelFactory
 import com.mobilemail.data.security.PinManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -497,6 +499,9 @@ fun AppNavGraph(
             val server = routeArgs.server
             val email = routeArgs.email
 
+            val updateCheckViewModel: UpdateCheckViewModel = viewModel(
+                factory = UpdateCheckViewModelFactory(application)
+            )
             SettingsScreen(
                 server = server,
                 email = email,
@@ -504,7 +509,8 @@ fun AppNavGraph(
                 onBack = { navController.popBackStack() },
                 onPinSetupClick = {
                     navController.navigate(AppRoutes.PinSetup)
-                }
+                },
+                updateCheckViewModel = updateCheckViewModel
             )
         }
 

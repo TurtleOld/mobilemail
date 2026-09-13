@@ -55,3 +55,5 @@ Thumbs.db
 app/src/google-services.json
 app/google-services.json
 .kilo*
+
+.scratch

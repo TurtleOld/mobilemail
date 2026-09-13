@@ -82,6 +82,7 @@ android {
         buildConfigField("String", "MOBILE_PUSH_PROXY_URL", "\"${optionalSecret("MOBILE_PUSH_PROXY_URL") ?: ""}\"")
         buildConfigField("String", "NTFY_TOPIC_PATTERN", "\"${optionalSecret("NTFY_TOPIC_PATTERN") ?: ""}\"")
         buildConfigField("String", "OAUTH_CLIENT_ID", "\"${secret("OAUTH_CLIENT_ID")}\"")
+        buildConfigField("String", "UPDATE_CHECK_REPO", "\"turtleold/mobilemail\"")
     }
 
     buildFeatures {
