@@ -20,7 +20,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
 import com.mobilemail.data.preferences.NotificationPrivacyMode
 import com.mobilemail.data.preferences.SwipeAction
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -35,6 +37,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -57,7 +60,8 @@ fun SettingsScreen(
     email: String,
     preferencesManager: PreferencesManager,
     onBack: () -> Unit,
-    onPinSetupClick: () -> Unit = {}
+    onPinSetupClick: () -> Unit = {},
+    updateCheckViewModel: UpdateCheckViewModel? = null
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -156,6 +160,8 @@ fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
+            UpdateSection(updateCheckViewModel)
+            Spacer(modifier = Modifier.height(16.dp))
             AppVersionFooter()
         } else {
             Column(
@@ -204,10 +210,60 @@ fun SettingsScreen(
                     }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
+                UpdateSection(updateCheckViewModel)
+                Spacer(modifier = Modifier.height(16.dp))
                 AppVersionFooter()
             }
         }
     }
+}
+
+@Composable
+private fun UpdateSection(viewModel: UpdateCheckViewModel?) {
+    if (viewModel == null) return
+    val state by viewModel.state.collectAsState()
+
+    Text(
+        text = "Обновления",
+        style = MaterialTheme.typography.titleSmall,
+        fontWeight = FontWeight.Medium
+    )
+    Card(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(text = updateStatusText(state), style = MaterialTheme.typography.bodyMedium)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Button(
+                    onClick = { viewModel.checkForUpdate() },
+                    enabled = state != UpdateCheckUiState.Checking
+                ) {
+                    Text("Проверить обновления")
+                }
+                if (state == UpdateCheckUiState.Checking) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                }
+            }
+        }
+    }
+}
+
+private fun updateStatusText(state: UpdateCheckUiState): String = when (state) {
+    UpdateCheckUiState.Idle -> "Нажмите «Проверить обновления», чтобы узнать о новой версии"
+    UpdateCheckUiState.Checking -> "Проверка обновлений…"
+    is UpdateCheckUiState.UpdateAvailable -> {
+        val sizeMb = state.apkSizeBytes / (1024.0 * 1024.0)
+        "Доступна версия ${state.versionName} (${"%.1f".format(java.util.Locale.US, sizeMb)} МБ)"
+    }
+    UpdateCheckUiState.UpToDate -> "У вас установлена последняя версия"
+    UpdateCheckUiState.ReleaseNotReady -> "Новый выпуск ещё готовится, попробуйте позже"
+    is UpdateCheckUiState.Failed -> state.error.getUserMessage()
 }
 
 @Composable
