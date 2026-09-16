@@ -70,8 +70,10 @@ import com.mobilemail.ui.security.PinSetupScreen
 import com.mobilemail.ui.security.PinSetupViewModel
 import com.mobilemail.ui.security.PinSetupViewModelFactory
 import com.mobilemail.ui.settings.SettingsScreen
+import com.mobilemail.ui.settings.UpdateCheckCoordinatorHolder
 import com.mobilemail.ui.settings.UpdateCheckViewModel
 import com.mobilemail.ui.settings.UpdateCheckViewModelFactory
+import com.mobilemail.BuildConfig
 import com.mobilemail.data.security.PinManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -240,6 +242,14 @@ fun AppNavGraph(
                 accountPushTopicsPort.subscribe(accountId)
             }
 
+            val updateCheckCoordinator = remember { UpdateCheckCoordinatorHolder.get() }
+            val updateCheckState by updateCheckCoordinator.state.collectAsStateWithLifecycle()
+            val isUpdateOfferDismissed by updateCheckCoordinator.isOfferDismissed.collectAsStateWithLifecycle()
+
+            LaunchedEffect(Unit) {
+                updateCheckCoordinator.checkOnStartupOnce(BuildConfig.VERSION_CODE)
+            }
+
             LaunchedEffect(accountId) {
                 when (
                     handleMessagesStartupUseCase(
@@ -389,6 +399,11 @@ fun AppNavGraph(
                 onSettingsClick = {
                     navController.navigate(AppRoutes.settings(server, email))
                 },
+                updateOfferState = if (isUpdateOfferDismissed) null else updateCheckState,
+                onUpdateOfferClick = {
+                    navController.navigate(AppRoutes.settings(server, email))
+                },
+                onUpdateOfferDismiss = { updateCheckCoordinator.dismissOffer() },
                 swipeRightAction = swipeRightAction,
                 swipeLeftAction = swipeLeftAction,
                 onLogout = {
