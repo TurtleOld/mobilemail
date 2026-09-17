@@ -111,6 +111,29 @@ class UpdateDownloadCoordinatorTest {
     }
 
     @Test
+    fun `consenting to a different release while one is downloading stops the old one first`() = runTest {
+        val downloadPort = FakeUpdateDownloadPort()
+        val coordinator = coordinator(downloadPort = downloadPort)
+
+        coordinator.startDownload(backgroundScope, manifest(versionCode = 10505), APK_PATH)
+        runCurrent()
+        downloadPort.setStatus(1L, DownloadStatus.Running(500, 1000))
+        advanceTimeBy(600); runCurrent()
+
+        coordinator.startDownload(backgroundScope, manifest(versionCode = 10600), APK_PATH)
+        runCurrent()
+
+        assertEquals(2, downloadPort.enqueuedManifests.size)
+        assertEquals(listOf(1L), downloadPort.cancelledIds)
+        assertEquals(UpdateDownloadState.Requesting, coordinator.state.value)
+
+        // Поздний сигнал по старой (отменённой) загрузке не воскрешает её.
+        downloadPort.setStatus(1L, DownloadStatus.Successful(APK_PATH))
+        advanceTimeBy(600); runCurrent()
+        assertEquals(UpdateDownloadState.Requesting, coordinator.state.value)
+    }
+
+    @Test
     fun `a download error is surfaced with a retry available`() = runTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)

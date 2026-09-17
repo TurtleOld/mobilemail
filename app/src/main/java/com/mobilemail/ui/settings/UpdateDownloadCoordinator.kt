@@ -78,7 +78,11 @@ class UpdateDownloadCoordinator(
     fun startDownload(scope: CoroutineScope, manifest: UpdateReleaseManifest, apkFilePath: String) {
         scope.launch {
             downloadMutex.withLock {
-                if (isAlreadyDownloading(manifest)) return@withLock
+                when (downloadInProgressFor(active)) {
+                    manifest.versionCode -> return@withLock
+                    null -> Unit
+                    else -> stopActiveDownloadLocked()
+                }
                 _state.value = UpdateDownloadState.Requesting
                 val downloadId = downloadPort.enqueue(manifest)
                 active = ActiveDownload(downloadId, manifest, apkFilePath)
@@ -89,27 +93,37 @@ class UpdateDownloadCoordinator(
         }
     }
 
-    private fun isAlreadyDownloading(manifest: UpdateReleaseManifest): Boolean {
-        val current = active ?: return false
+    /** versionCode активной загрузки, если она ещё идёт; `null`, если активной загрузки нет. */
+    private fun downloadInProgressFor(current: ActiveDownload?): Int? {
         val isInProgressState = _state.value.let {
             it is UpdateDownloadState.Requesting ||
                 it is UpdateDownloadState.Downloading ||
                 it is UpdateDownloadState.WaitingForNetwork ||
                 it is UpdateDownloadState.Verifying
         }
-        return current.manifest.versionCode == manifest.versionCode && isInProgressState
+        return current?.manifest?.versionCode?.takeIf { isInProgressState }
+    }
+
+    /**
+     * Согласие на другой релиз, пока предыдущая загрузка ещё идёт: она не остаётся
+     * осиротевшей — сначала останавливается системная загрузка и очищается состояние,
+     * затем [startDownload] продолжает уже с новым релизом.
+     */
+    private suspend fun stopActiveDownloadLocked() {
+        val current = active ?: return
+        monitorJob?.cancel()
+        monitorJob = null
+        downloadPort.cancel(current.downloadId)
+        active = null
+        store.clear()
     }
 
     /** Отмена по запросу пользователя: останавливает системную загрузку и удаляет файл. */
     fun cancelDownload(scope: CoroutineScope) {
         scope.launch {
             downloadMutex.withLock {
-                val current = active ?: return@withLock
-                monitorJob?.cancel()
-                monitorJob = null
-                downloadPort.cancel(current.downloadId)
-                active = null
-                store.clear()
+                if (active == null) return@withLock
+                stopActiveDownloadLocked()
                 _state.value = UpdateDownloadState.Cancelled
             }
         }
