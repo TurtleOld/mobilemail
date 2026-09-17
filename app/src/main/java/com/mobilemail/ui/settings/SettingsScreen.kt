@@ -23,8 +23,11 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.TextButton
 import com.mobilemail.data.preferences.NotificationPrivacyMode
 import com.mobilemail.data.preferences.SwipeAction
+import com.mobilemail.domain.model.UpdateDownloadState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -61,7 +64,8 @@ fun SettingsScreen(
     preferencesManager: PreferencesManager,
     onBack: () -> Unit,
     onPinSetupClick: () -> Unit = {},
-    updateCheckViewModel: UpdateCheckViewModel? = null
+    updateCheckViewModel: UpdateCheckViewModel? = null,
+    updateDownloadViewModel: UpdateDownloadViewModel? = null
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -160,7 +164,7 @@ fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            UpdateSection(updateCheckViewModel)
+            UpdateSection(updateCheckViewModel, updateDownloadViewModel)
             Spacer(modifier = Modifier.height(16.dp))
             AppVersionFooter()
         } else {
@@ -210,7 +214,7 @@ fun SettingsScreen(
                     }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                UpdateSection(updateCheckViewModel)
+                UpdateSection(updateCheckViewModel, updateDownloadViewModel)
                 Spacer(modifier = Modifier.height(16.dp))
                 AppVersionFooter()
             }
@@ -219,9 +223,13 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun UpdateSection(viewModel: UpdateCheckViewModel?) {
+private fun UpdateSection(
+    viewModel: UpdateCheckViewModel?,
+    downloadViewModel: UpdateDownloadViewModel?
+) {
     if (viewModel == null) return
-    val state by viewModel.state.collectAsState()
+    val checkState by viewModel.state.collectAsState()
+    val downloadState by (downloadViewModel?.state?.collectAsState() ?: remember { mutableStateOf(UpdateDownloadState.Idle) })
 
     Text(
         text = "Обновления",
@@ -235,22 +243,89 @@ private fun UpdateSection(viewModel: UpdateCheckViewModel?) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(text = updateStatusText(state), style = MaterialTheme.typography.bodyMedium)
+            if (downloadViewModel != null && downloadState !is UpdateDownloadState.Idle) {
+                UpdateDownloadSection(downloadState, downloadViewModel)
+            } else {
+                UpdateCheckSection(checkState, viewModel, downloadViewModel)
+            }
+        }
+    }
+}
+
+@Composable
+private fun UpdateCheckSection(
+    state: UpdateCheckUiState,
+    viewModel: UpdateCheckViewModel,
+    downloadViewModel: UpdateDownloadViewModel?
+) {
+    Text(text = updateStatusText(state), style = MaterialTheme.typography.bodyMedium)
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (state is UpdateCheckUiState.UpdateAvailable && downloadViewModel != null) {
+            Button(onClick = { downloadViewModel.startDownload(state.manifest) }) {
+                Text("Обновить")
+            }
+        } else {
+            Button(
+                onClick = { viewModel.checkForUpdate() },
+                enabled = state != UpdateCheckUiState.Checking
+            ) {
+                Text("Проверить обновления")
+            }
+        }
+        if (state == UpdateCheckUiState.Checking) {
+            CircularProgressIndicator(modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun UpdateDownloadSection(
+    state: UpdateDownloadState,
+    viewModel: UpdateDownloadViewModel
+) {
+    Text(text = updateDownloadStatusText(state), style = MaterialTheme.typography.bodyMedium)
+
+    when (state) {
+        is UpdateDownloadState.Downloading -> {
+            DownloadProgressIndicator(state.progress.bytesDownloaded, state.progress.totalBytes)
+            TextButton(onClick = { viewModel.cancelDownload() }) {
+                Text("Отменить")
+            }
+        }
+        UpdateDownloadState.Requesting, UpdateDownloadState.WaitingForNetwork, UpdateDownloadState.Verifying -> {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = { viewModel.checkForUpdate() },
-                    enabled = state != UpdateCheckUiState.Checking
-                ) {
-                    Text("Проверить обновления")
-                }
-                if (state == UpdateCheckUiState.Checking) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                CircularProgressIndicator(modifier = Modifier.size(20.dp))
+                TextButton(onClick = { viewModel.cancelDownload() }) {
+                    Text("Отменить")
                 }
             }
         }
+        is UpdateDownloadState.Failed -> {
+            Button(onClick = { viewModel.retryDownload() }) {
+                Text("Повторить")
+            }
+        }
+        is UpdateDownloadState.Ready -> Unit
+        UpdateDownloadState.Cancelled, UpdateDownloadState.Idle -> Unit
+    }
+}
+
+@Composable
+private fun DownloadProgressIndicator(bytesDownloaded: Long, totalBytes: Long?) {
+    if (totalBytes != null) {
+        val progress = (bytesDownloaded.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier.fillMaxWidth()
+        )
+    } else {
+        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
     }
 }
 
@@ -264,6 +339,28 @@ private fun updateStatusText(state: UpdateCheckUiState): String = when (state) {
     UpdateCheckUiState.UpToDate -> "У вас установлена последняя версия"
     UpdateCheckUiState.ReleaseNotReady -> "Новый выпуск ещё готовится, попробуйте позже"
     is UpdateCheckUiState.Failed -> state.error.getUserMessage()
+}
+
+private fun updateDownloadStatusText(state: UpdateDownloadState): String = when (state) {
+    UpdateDownloadState.Idle -> ""
+    UpdateDownloadState.Requesting -> "Запуск загрузки…"
+    is UpdateDownloadState.Downloading -> downloadProgressText(state.progress.bytesDownloaded, state.progress.totalBytes)
+    UpdateDownloadState.WaitingForNetwork -> "Ожидание сети…"
+    UpdateDownloadState.Verifying -> "Проверка загруженного файла…"
+    is UpdateDownloadState.Ready -> "Обновление ${state.manifest.versionName} готово к установке"
+    UpdateDownloadState.Cancelled -> "Загрузка отменена"
+    is UpdateDownloadState.Failed -> state.error.getUserMessage()
+}
+
+private fun downloadProgressText(bytesDownloaded: Long, totalBytes: Long?): String {
+    val downloadedMb = bytesDownloaded / (1024.0 * 1024.0)
+    return if (totalBytes != null) {
+        val totalMb = totalBytes / (1024.0 * 1024.0)
+        val percent = (bytesDownloaded * 100L / totalBytes).coerceIn(0, 100)
+        "Загрузка… $percent% (${"%.1f".format(java.util.Locale.US, downloadedMb)} из ${"%.1f".format(java.util.Locale.US, totalMb)} МБ)"
+    } else {
+        "Загрузка… ${"%.1f".format(java.util.Locale.US, downloadedMb)} МБ"
+    }
 }
 
 @Composable

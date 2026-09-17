@@ -2,6 +2,7 @@ package com.mobilemail.data.update
 
 import com.mobilemail.data.error.ErrorMapper
 import com.mobilemail.domain.model.UpdateCheckResult
+import com.mobilemail.domain.model.UpdateReleaseManifest
 import com.mobilemail.domain.port.UpdateCheckPort
 import com.mobilemail.ui.common.AppError
 import kotlinx.coroutines.Dispatchers
@@ -63,26 +64,38 @@ class GithubReleaseUpdateRepository(
             is MetadataOutcome.Error -> return UpdateCheckResult.Failed(ErrorMapper.mapException(outcome.throwable))
         }
 
-        if (!isReleaseConsistent(candidate, metadata)) {
-            return UpdateCheckResult.ReleaseNotReady
-        }
+        val apkAsset = consistentApkAsset(candidate, metadata) ?: return UpdateCheckResult.ReleaseNotReady
 
         return if (metadata.versionCode > currentVersionCode) {
-            UpdateCheckResult.UpdateAvailable(metadata.versionName, metadata.apkSizeBytes)
+            UpdateCheckResult.UpdateAvailable(
+                versionName = metadata.versionName,
+                apkSizeBytes = metadata.apkSizeBytes,
+                manifest = UpdateReleaseManifest(
+                    versionName = metadata.versionName,
+                    versionCode = metadata.versionCode,
+                    applicationId = metadata.applicationId,
+                    minSdk = metadata.minSdk,
+                    apkDownloadUrl = apkAsset.downloadUrl,
+                    apkSizeBytes = metadata.apkSizeBytes,
+                    apkSha256 = metadata.apkSha256
+                )
+            )
         } else {
             UpdateCheckResult.UpToDate
         }
     }
 
-    private fun isReleaseConsistent(candidate: GithubRelease, metadata: UpdateMetadata): Boolean {
+    private fun consistentApkAsset(candidate: GithubRelease, metadata: UpdateMetadata): GithubReleaseAsset? {
         val expectedVersionCode = UpdateVersionCode.encodeFromTag(candidate.tagName)
         val apkAsset = candidate.assets.firstOrNull { it.name == metadata.apkAssetName }
 
-        return metadata.applicationId == expectedApplicationId &&
+        val isConsistent = metadata.applicationId == expectedApplicationId &&
             metadata.minSdk <= deviceSdkInt &&
             expectedVersionCode == metadata.versionCode &&
             apkAsset != null &&
             apkAsset.sizeBytes == metadata.apkSizeBytes
+
+        return apkAsset.takeIf { isConsistent }
     }
 
     private fun fetchReleases(): FetchOutcome {

@@ -88,7 +88,13 @@ class GithubReleaseUpdateRepositoryIntegrationTest {
 
             val result = repository(server).checkForUpdate(currentVersionCode = 10504)
 
-            assertEquals(UpdateCheckResult.UpdateAvailable("1.5.5", 12_345_678L), result)
+            assertTrue(result is UpdateCheckResult.UpdateAvailable)
+            val updateAvailable = result as UpdateCheckResult.UpdateAvailable
+            assertEquals("1.5.5", updateAvailable.versionName)
+            assertEquals(12_345_678L, updateAvailable.apkSizeBytes)
+            assertEquals(10505, updateAvailable.manifest.versionCode)
+            assertEquals(APPLICATION_ID, updateAvailable.manifest.applicationId)
+            assertEquals("a".repeat(64), updateAvailable.manifest.apkSha256)
         } finally {
             server.shutdown()
         }
