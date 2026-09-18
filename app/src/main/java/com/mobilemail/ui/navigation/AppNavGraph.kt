@@ -73,6 +73,11 @@ import com.mobilemail.ui.settings.SettingsScreen
 import com.mobilemail.ui.settings.UpdateCheckCoordinatorHolder
 import com.mobilemail.ui.settings.UpdateCheckViewModel
 import com.mobilemail.ui.settings.UpdateCheckViewModelFactory
+import com.mobilemail.ui.settings.UpdateCheckUiState
+import com.mobilemail.ui.settings.UpdateDownloadCoordinatorHolder
+import com.mobilemail.ui.settings.UpdateDownloadViewModel
+import com.mobilemail.ui.settings.UpdateDownloadViewModelFactory
+import com.mobilemail.ui.settings.updateOfferApkFilePath
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.security.PinManager
 import kotlinx.coroutines.CoroutineScope
@@ -245,6 +250,7 @@ fun AppNavGraph(
             val updateCheckCoordinator = remember { UpdateCheckCoordinatorHolder.get() }
             val updateCheckState by updateCheckCoordinator.state.collectAsStateWithLifecycle()
             val isUpdateOfferDismissed by updateCheckCoordinator.isOfferDismissed.collectAsStateWithLifecycle()
+            val updateDownloadCoordinator = remember { UpdateDownloadCoordinatorHolder.get(application) }
 
             LaunchedEffect(Unit) {
                 updateCheckCoordinator.checkOnStartupOnce(BuildConfig.VERSION_CODE)
@@ -401,6 +407,11 @@ fun AppNavGraph(
                 },
                 updateOfferState = if (isUpdateOfferDismissed) null else updateCheckState,
                 onUpdateOfferClick = {
+                    val available = updateCheckState as? UpdateCheckUiState.UpdateAvailable
+                    if (available != null) {
+                        val apkFilePath = updateOfferApkFilePath(application, available.manifest)
+                        updateDownloadCoordinator.startDownload(activityScope, available.manifest, apkFilePath)
+                    }
                     navController.navigate(AppRoutes.settings(server, email))
                 },
                 onUpdateOfferDismiss = { updateCheckCoordinator.dismissOffer() },
@@ -517,6 +528,9 @@ fun AppNavGraph(
             val updateCheckViewModel: UpdateCheckViewModel = viewModel(
                 factory = UpdateCheckViewModelFactory(application)
             )
+            val updateDownloadViewModel: UpdateDownloadViewModel = viewModel(
+                factory = UpdateDownloadViewModelFactory(application)
+            )
             SettingsScreen(
                 server = server,
                 email = email,
@@ -525,7 +539,8 @@ fun AppNavGraph(
                 onPinSetupClick = {
                     navController.navigate(AppRoutes.PinSetup)
                 },
-                updateCheckViewModel = updateCheckViewModel
+                updateCheckViewModel = updateCheckViewModel,
+                updateDownloadViewModel = updateDownloadViewModel
             )
         }
 

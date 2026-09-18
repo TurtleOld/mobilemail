@@ -91,7 +91,10 @@ class UpdateOfferCoordinatorBehaviorTest {
                 coordinator.checkOnStartupOnce(currentVersionCode = 10504)
 
                 assertEquals(UpdateCheckUiState.Checking, awaitItem())
-                assertEquals(UpdateCheckUiState.UpdateAvailable("1.5.5", 12345678L), awaitItem())
+                val updateAvailable = awaitItem()
+                assertTrue(updateAvailable is UpdateCheckUiState.UpdateAvailable)
+                assertEquals("1.5.5", (updateAvailable as UpdateCheckUiState.UpdateAvailable).versionName)
+                assertEquals(12345678L, updateAvailable.apkSizeBytes)
             }
             assertEquals(2, server.requestCount)
         } finally {
