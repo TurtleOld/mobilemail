@@ -6,6 +6,8 @@ import com.mobilemail.domain.model.UpdateReleaseManifest
 import com.mobilemail.domain.port.UpdateCheckPort
 import com.mobilemail.ui.common.AppError
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -26,6 +28,9 @@ private const val HTTP_FORBIDDEN = 403
  * Проверяет только стабильные (не draft, не prerelease) релизы репозитория
  * [repoOwnerAndName], сверяет метаданные с фактическими assets релиза и
  * никогда не скачивает сам APK — только его метаданные.
+ *
+ * Самодостаточно потокобезопасен: параллельные вызовы [checkForUpdate] не
+ * требуют внешней сериализации, ETag-кеш защищён собственным [cacheMutex].
  */
 class GithubReleaseUpdateRepository(
     private val httpClient: OkHttpClient,
@@ -36,10 +41,8 @@ class GithubReleaseUpdateRepository(
     private val maxMetadataBytes: Long = DEFAULT_MAX_METADATA_BYTES
 ) : UpdateCheckPort {
 
-    @Volatile
+    private val cacheMutex = Mutex()
     private var cachedETag: String? = null
-
-    @Volatile
     private var cachedReleases: List<GithubRelease>? = null
 
     override suspend fun checkForUpdate(currentVersionCode: Int): UpdateCheckResult = withContext(Dispatchers.IO) {
@@ -64,7 +67,8 @@ class GithubReleaseUpdateRepository(
             is MetadataOutcome.Error -> return UpdateCheckResult.Failed(ErrorMapper.mapException(outcome.throwable))
         }
 
-        val apkAsset = consistentApkAsset(candidate, metadata) ?: return UpdateCheckResult.ReleaseNotReady
+        val check = checkConsistency(candidate, metadata)
+        val apkAsset = (check as? ConsistencyCheck.Consistent)?.apkAsset ?: return UpdateCheckResult.ReleaseNotReady
 
         return if (metadata.versionCode > currentVersionCode) {
             UpdateCheckResult.UpdateAvailable(
@@ -85,26 +89,51 @@ class GithubReleaseUpdateRepository(
         }
     }
 
-    private fun consistentApkAsset(candidate: GithubRelease, metadata: UpdateMetadata): GithubReleaseAsset? {
+    private fun checkConsistency(candidate: GithubRelease, metadata: UpdateMetadata): ConsistencyCheck {
+        if (metadata.applicationId != expectedApplicationId) return ConsistencyCheck.ApplicationIdMismatch
+        if (metadata.minSdk > deviceSdkInt) return ConsistencyCheck.MinSdkTooHigh
+
         val expectedVersionCode = UpdateVersionCode.encodeFromTag(candidate.tagName)
+            ?: return ConsistencyCheck.UnparseableReleaseTag
+        if (expectedVersionCode != metadata.versionCode) return ConsistencyCheck.VersionCodeTagMismatch
+
         val apkAsset = candidate.assets.firstOrNull { it.name == metadata.apkAssetName }
+            ?: return ConsistencyCheck.ApkAssetMissing
+        if (apkAsset.sizeBytes != metadata.apkSizeBytes) return ConsistencyCheck.ApkSizeMismatch
 
-        val isConsistent = metadata.applicationId == expectedApplicationId &&
-            metadata.minSdk <= deviceSdkInt &&
-            expectedVersionCode == metadata.versionCode &&
-            apkAsset != null &&
-            apkAsset.sizeBytes == metadata.apkSizeBytes
-
-        return apkAsset.takeIf { isConsistent }
+        return ConsistencyCheck.Consistent(apkAsset)
     }
 
-    private fun fetchReleases(): FetchOutcome {
+    /**
+     * Причина, по которой релиз признан непригодным к предложению, — вместо
+     * плоского &&-выражения из 5 условий, где по логу было не видно, какое
+     * именно условие сорвалось в проде (тег, SDK, размер APK или что-то ещё).
+     */
+    private sealed class ConsistencyCheck {
+        data class Consistent(val apkAsset: GithubReleaseAsset) : ConsistencyCheck()
+        data object ApplicationIdMismatch : ConsistencyCheck()
+        data object MinSdkTooHigh : ConsistencyCheck()
+        data object UnparseableReleaseTag : ConsistencyCheck()
+        data object VersionCodeTagMismatch : ConsistencyCheck()
+        data object ApkAssetMissing : ConsistencyCheck()
+        data object ApkSizeMismatch : ConsistencyCheck()
+    }
+
+    /**
+     * Читает и обновляет [cachedETag]/[cachedReleases] под [cacheMutex], а не под
+     * `@Volatile`: между чтением ETag для условного запроса и записью ответа
+     * не должен вклиниться параллельный вызов — иначе гонка перезаписывает кеш
+     * несогласованной парой (ETag от одного ответа, releases от другого).
+     * Раньше эта сериализация держалась на checkMutex вызывающего координатора,
+     * а не была гарантирована самим репозиторием.
+     */
+    private suspend fun fetchReleases(): FetchOutcome = cacheMutex.withLock {
         val requestBuilder = Request.Builder()
             .url("$apiBaseUrl/repos/$repoOwnerAndName/releases")
             .header("Accept", "application/vnd.github+json")
         cachedETag?.let { requestBuilder.header("If-None-Match", it) }
 
-        return try {
+        try {
             httpClient.newCall(requestBuilder.build()).execute().use { response ->
                 when {
                     response.code == HTTP_NOT_MODIFIED -> notModifiedOutcome()

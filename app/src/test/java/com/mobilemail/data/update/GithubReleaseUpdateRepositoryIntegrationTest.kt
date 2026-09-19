@@ -255,6 +255,22 @@ class GithubReleaseUpdateRepositoryIntegrationTest {
     }
 
     @Test
+    fun `treats valid metadata paired with an unparseable release tag as a release that is not ready`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        try {
+            server.enqueue(MockResponse().setResponseCode(200).setBody(releasesBody(server, tag = "not-a-version")))
+            server.enqueue(MockResponse().setResponseCode(200).setBody(metadataBody(versionCode = 10505)))
+
+            val result = repository(server).checkForUpdate(currentVersionCode = 1)
+
+            assertEquals(UpdateCheckResult.ReleaseNotReady, result)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `maps corrupted metadata json to a parse error`() = runTest {
         val server = MockWebServer()
         server.start()
