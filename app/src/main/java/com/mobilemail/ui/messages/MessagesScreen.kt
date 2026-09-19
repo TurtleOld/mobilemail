@@ -71,7 +71,7 @@ import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.OfflineBanner
 import com.mobilemail.ui.common.UpdateOfferBanner
 import com.mobilemail.ui.common.isExpandedWindowWidth
-import com.mobilemail.ui.settings.UpdateCheckUiState
+import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -96,7 +96,7 @@ fun MessagesScreen(
     onLogout: () -> Unit = {},
     swipeRightAction: SwipeAction = SwipeAction.ARCHIVE,
     swipeLeftAction: SwipeAction = SwipeAction.DELETE,
-    updateOfferState: UpdateCheckUiState? = null,
+    updateOfferState: UpdateCheckResult? = null,
     onUpdateOfferClick: () -> Unit = {},
     onUpdateOfferDismiss: () -> Unit = {},
 ) {
@@ -324,7 +324,7 @@ fun MessagesScreen(
                 if (uiState.error is AppError.AuthError) {
                     AuthExpiredBanner(onRelogin = onLogout)
                 }
-                if (updateOfferState is UpdateCheckUiState.UpdateAvailable) {
+                if (updateOfferState is UpdateCheckResult.UpdateAvailable) {
                     UpdateOfferBanner(
                         versionName = updateOfferState.versionName,
                         apkSizeBytes = updateOfferState.apkSizeBytes,

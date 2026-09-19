@@ -2,6 +2,7 @@ package com.mobilemail.ui.settings
 
 import app.cash.turbine.test
 import com.mobilemail.data.update.GithubReleaseUpdateRepository
+import com.mobilemail.domain.model.UpdateCheckResult
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -86,14 +87,14 @@ class UpdateOfferCoordinatorBehaviorTest {
             val coordinator = UpdateCheckCoordinator(repository(server))
 
             coordinator.state.test {
-                assertEquals(UpdateCheckUiState.Idle, awaitItem())
+                assertEquals(UpdateCheckResult.Idle, awaitItem())
 
                 coordinator.checkOnStartupOnce(currentVersionCode = 10504)
 
-                assertEquals(UpdateCheckUiState.Checking, awaitItem())
+                assertEquals(UpdateCheckResult.Checking, awaitItem())
                 val updateAvailable = awaitItem()
-                assertTrue(updateAvailable is UpdateCheckUiState.UpdateAvailable)
-                assertEquals("1.5.5", (updateAvailable as UpdateCheckUiState.UpdateAvailable).versionName)
+                assertTrue(updateAvailable is UpdateCheckResult.UpdateAvailable)
+                assertEquals("1.5.5", (updateAvailable as UpdateCheckResult.UpdateAvailable).versionName)
                 assertEquals(12345678L, updateAvailable.apkSizeBytes)
             }
             assertEquals(2, server.requestCount)
@@ -112,7 +113,7 @@ class UpdateOfferCoordinatorBehaviorTest {
 
             coordinator.checkOnStartupOnce(currentVersionCode = 10504)
 
-            assertTrue(coordinator.state.value is UpdateCheckUiState.UpdateAvailable)
+            assertTrue(coordinator.state.value is UpdateCheckResult.UpdateAvailable)
         } finally {
             server.shutdown()
         }
@@ -126,7 +127,7 @@ class UpdateOfferCoordinatorBehaviorTest {
             enqueueUpdateAvailable(server)
             val coordinator = UpdateCheckCoordinator(repository(server))
             coordinator.checkOnStartupOnce(currentVersionCode = 10504)
-            assertTrue(coordinator.state.value is UpdateCheckUiState.UpdateAvailable)
+            assertTrue(coordinator.state.value is UpdateCheckResult.UpdateAvailable)
 
             coordinator.dismissOffer()
             assertTrue(coordinator.isOfferDismissed.value)
@@ -134,7 +135,7 @@ class UpdateOfferCoordinatorBehaviorTest {
             // Пересоздание Activity / поворот / возврат из фона: тот же экземпляр
             // координатора наблюдается заново, «Позже» остаётся в силе.
             assertTrue(coordinator.isOfferDismissed.value)
-            assertTrue(coordinator.state.value is UpdateCheckUiState.UpdateAvailable)
+            assertTrue(coordinator.state.value is UpdateCheckResult.UpdateAvailable)
         } finally {
             server.shutdown()
         }
@@ -156,7 +157,7 @@ class UpdateOfferCoordinatorBehaviorTest {
             val secondProcessCoordinator = UpdateCheckCoordinator(repository(server))
 
             assertFalse(secondProcessCoordinator.isOfferDismissed.value)
-            assertEquals(UpdateCheckUiState.Idle, secondProcessCoordinator.state.value)
+            assertEquals(UpdateCheckResult.Idle, secondProcessCoordinator.state.value)
         } finally {
             server.shutdown()
         }
@@ -178,7 +179,7 @@ class UpdateOfferCoordinatorBehaviorTest {
             coordinator.checkForUpdate(currentVersionCode = 10504)
 
             assertFalse(coordinator.isOfferDismissed.value)
-            assertTrue(coordinator.state.value is UpdateCheckUiState.UpdateAvailable)
+            assertTrue(coordinator.state.value is UpdateCheckResult.UpdateAvailable)
         } finally {
             server.shutdown()
         }
@@ -214,12 +215,12 @@ class UpdateOfferCoordinatorBehaviorTest {
         val coordinator = UpdateCheckCoordinator(repository(server))
 
         coordinator.state.test {
-            assertEquals(UpdateCheckUiState.Idle, awaitItem())
+            assertEquals(UpdateCheckResult.Idle, awaitItem())
 
             coordinator.checkOnStartupOnce(currentVersionCode = 10504)
 
-            assertEquals(UpdateCheckUiState.Checking, awaitItem())
-            assertEquals(UpdateCheckUiState.Idle, awaitItem())
+            assertEquals(UpdateCheckResult.Checking, awaitItem())
+            assertEquals(UpdateCheckResult.Idle, awaitItem())
         }
     }
 
@@ -231,11 +232,11 @@ class UpdateOfferCoordinatorBehaviorTest {
         val coordinator = UpdateCheckCoordinator(repository(server))
 
         coordinator.checkOnStartupOnce(currentVersionCode = 10504)
-        assertEquals(UpdateCheckUiState.Idle, coordinator.state.value)
+        assertEquals(UpdateCheckResult.Idle, coordinator.state.value)
 
         coordinator.checkForUpdate(currentVersionCode = 10504)
 
-        assertTrue(coordinator.state.value is UpdateCheckUiState.Failed)
+        assertTrue(coordinator.state.value is UpdateCheckResult.Failed)
     }
 
     @Test

@@ -71,7 +71,7 @@ import com.mobilemail.ui.security.PinSetupViewModel
 import com.mobilemail.ui.security.PinSetupViewModelFactory
 import com.mobilemail.ui.settings.SettingsScreen
 import com.mobilemail.ui.settings.UpdateCheckCoordinatorHolder
-import com.mobilemail.ui.settings.UpdateCheckUiState
+import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.ui.settings.UpdateDownloadCoordinatorHolder
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.security.PinManager
@@ -402,7 +402,7 @@ fun AppNavGraph(
                 },
                 updateOfferState = if (isUpdateOfferDismissed) null else updateCheckState,
                 onUpdateOfferClick = {
-                    val available = updateCheckState as? UpdateCheckUiState.UpdateAvailable
+                    val available = updateCheckState as? UpdateCheckResult.UpdateAvailable
                     if (available != null) {
                         updateDownloadCoordinator.startDownload(activityScope, available.manifest)
                     }
