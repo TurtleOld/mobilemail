@@ -40,14 +40,14 @@ class UpdateDownloadCoordinatorTest {
         downloadPort: FakeUpdateDownloadPort = FakeUpdateDownloadPort(),
         verifier: FakeApkVerifierPort = FakeApkVerifierPort(),
         store: FakeUpdateDownloadPersistencePort = FakeUpdateDownloadPersistencePort()
-    ) = UpdateDownloadCoordinator(downloadPort, verifier, store)
+    ) = UpdateDownloadCoordinator(downloadPort, verifier, store, apkFilePathFor = { APK_PATH })
 
     @Test
     fun `consent starts a request that transitions through downloading to ready`() = runTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
 
         assertEquals(1, downloadPort.enqueuedManifests.size)
@@ -74,7 +74,7 @@ class UpdateDownloadCoordinatorTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Running(bytesDownloaded = 50, totalBytes = null))
         advanceTimeBy(600); runCurrent()
@@ -88,7 +88,7 @@ class UpdateDownloadCoordinatorTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Paused)
         advanceTimeBy(600); runCurrent()
@@ -102,9 +102,9 @@ class UpdateDownloadCoordinatorTest {
         val coordinator = coordinator(downloadPort = downloadPort)
         val theManifest = manifest()
 
-        coordinator.startDownload(backgroundScope, theManifest, APK_PATH)
+        coordinator.startDownload(backgroundScope, theManifest)
         runCurrent()
-        coordinator.startDownload(backgroundScope, theManifest, APK_PATH)
+        coordinator.startDownload(backgroundScope, theManifest)
         runCurrent()
 
         assertEquals(1, downloadPort.enqueuedManifests.size)
@@ -115,12 +115,12 @@ class UpdateDownloadCoordinatorTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)
 
-        coordinator.startDownload(backgroundScope, manifest(versionCode = 10505), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest(versionCode = 10505))
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Running(500, 1000))
         advanceTimeBy(600); runCurrent()
 
-        coordinator.startDownload(backgroundScope, manifest(versionCode = 10600), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest(versionCode = 10600))
         runCurrent()
 
         assertEquals(2, downloadPort.enqueuedManifests.size)
@@ -138,7 +138,7 @@ class UpdateDownloadCoordinatorTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Failed("Недостаточно места на устройстве"))
         advanceTimeBy(600); runCurrent()
@@ -153,7 +153,7 @@ class UpdateDownloadCoordinatorTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Failed("Ошибка сети при загрузке"))
         advanceTimeBy(600); runCurrent()
@@ -171,7 +171,7 @@ class UpdateDownloadCoordinatorTest {
         val store = FakeUpdateDownloadPersistencePort()
         val coordinator = coordinator(downloadPort = downloadPort, store = store)
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Running(500, 1000))
         advanceTimeBy(600); runCurrent()
@@ -189,7 +189,7 @@ class UpdateDownloadCoordinatorTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Running(500, 1000))
         advanceTimeBy(600); runCurrent()
@@ -211,14 +211,14 @@ class UpdateDownloadCoordinatorTest {
         val downloadPort = FakeUpdateDownloadPort()
         val coordinator = coordinator(downloadPort = downloadPort)
 
-        coordinator.startDownload(backgroundScope, manifest(versionCode = 10505), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest(versionCode = 10505))
         runCurrent()
         coordinator.cancelDownload(backgroundScope)
         advanceTimeBy(600); runCurrent()
 
         assertEquals(UpdateDownloadState.Cancelled, coordinator.state.value)
 
-        coordinator.startDownload(backgroundScope, manifest(versionCode = 10600), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest(versionCode = 10600))
         runCurrent()
 
         assertEquals(2, downloadPort.enqueuedManifests.size)
@@ -231,7 +231,7 @@ class UpdateDownloadCoordinatorTest {
         val verifier = FakeApkVerifierPort(ApkVerificationResult.Invalid("Контрольная сумма не совпадает"))
         val coordinator = coordinator(downloadPort = downloadPort, verifier = verifier)
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Successful(APK_PATH))
         advanceTimeBy(600); runCurrent()
@@ -263,9 +263,15 @@ class UpdateDownloadCoordinatorTest {
         val downloadPort = FakeUpdateDownloadPort()
         val store = FakeUpdateDownloadPersistencePort()
         var clock = 1_000L
-        val coordinator = UpdateDownloadCoordinator(downloadPort, FakeApkVerifierPort(), store) { clock }
+        val coordinator = UpdateDownloadCoordinator(
+            downloadPort,
+            FakeApkVerifierPort(),
+            store,
+            apkFilePathFor = { APK_PATH },
+            now = { clock }
+        )
 
-        coordinator.startDownload(backgroundScope, manifest(), APK_PATH)
+        coordinator.startDownload(backgroundScope, manifest())
         runCurrent()
         downloadPort.setStatus(1L, DownloadStatus.Successful(APK_PATH))
         advanceTimeBy(600); runCurrent()

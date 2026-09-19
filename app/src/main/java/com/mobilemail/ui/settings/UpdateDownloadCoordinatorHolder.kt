@@ -1,12 +1,15 @@
 package com.mobilemail.ui.settings
 
 import android.content.Context
+import android.os.Environment
 import com.mobilemail.data.update.AndroidUpdateDownloadPort
 import com.mobilemail.data.update.ApkContractVerifier
 import com.mobilemail.data.update.UpdateDownloadStore
+import com.mobilemail.data.update.updateApkFileName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import java.io.File
 
 /**
  * Держит единственный [UpdateDownloadCoordinator] на процесс приложения,
@@ -32,7 +35,11 @@ object UpdateDownloadCoordinatorHolder {
             val coordinator = UpdateDownloadCoordinator(
                 downloadPort = AndroidUpdateDownloadPort(applicationContext),
                 verifier = ApkContractVerifier(applicationContext),
-                store = UpdateDownloadStore(applicationContext)
+                store = UpdateDownloadStore(applicationContext),
+                apkFilePathFor = { manifest ->
+                    val dir = applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                    File(dir, updateApkFileName(manifest)).absolutePath
+                }
             )
             coordinator.restorePendingDownload(restoreScope)
             instance = coordinator

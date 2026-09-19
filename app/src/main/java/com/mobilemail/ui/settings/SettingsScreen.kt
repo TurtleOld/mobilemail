@@ -54,6 +54,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.preferences.PreferencesManager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -64,8 +65,8 @@ fun SettingsScreen(
     preferencesManager: PreferencesManager,
     onBack: () -> Unit,
     onPinSetupClick: () -> Unit = {},
-    updateCheckViewModel: UpdateCheckViewModel? = null,
-    updateDownloadViewModel: UpdateDownloadViewModel? = null
+    updateCheckCoordinator: UpdateCheckCoordinator? = null,
+    updateDownloadCoordinator: UpdateDownloadCoordinator? = null
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -164,7 +165,7 @@ fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            UpdateSection(updateCheckViewModel, updateDownloadViewModel)
+            UpdateSection(updateCheckCoordinator, updateDownloadCoordinator)
             Spacer(modifier = Modifier.height(16.dp))
             AppVersionFooter()
         } else {
@@ -214,7 +215,7 @@ fun SettingsScreen(
                     }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                UpdateSection(updateCheckViewModel, updateDownloadViewModel)
+                UpdateSection(updateCheckCoordinator, updateDownloadCoordinator)
                 Spacer(modifier = Modifier.height(16.dp))
                 AppVersionFooter()
             }
@@ -224,12 +225,13 @@ fun SettingsScreen(
 
 @Composable
 private fun UpdateSection(
-    viewModel: UpdateCheckViewModel?,
-    downloadViewModel: UpdateDownloadViewModel?
+    checkCoordinator: UpdateCheckCoordinator?,
+    downloadCoordinator: UpdateDownloadCoordinator?
 ) {
-    if (viewModel == null) return
-    val checkState by viewModel.state.collectAsState()
-    val downloadState by (downloadViewModel?.state?.collectAsState() ?: remember { mutableStateOf(UpdateDownloadState.Idle) })
+    if (checkCoordinator == null) return
+    val scope = rememberCoroutineScope()
+    val checkState by checkCoordinator.state.collectAsState()
+    val downloadState by (downloadCoordinator?.state?.collectAsState() ?: remember { mutableStateOf(UpdateDownloadState.Idle) })
 
     Text(
         text = "Обновления",
@@ -243,10 +245,10 @@ private fun UpdateSection(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (downloadViewModel != null && downloadState !is UpdateDownloadState.Idle) {
-                UpdateDownloadSection(downloadState, downloadViewModel)
+            if (downloadCoordinator != null && downloadState !is UpdateDownloadState.Idle) {
+                UpdateDownloadSection(downloadState, downloadCoordinator, scope)
             } else {
-                UpdateCheckSection(checkState, viewModel, downloadViewModel)
+                UpdateCheckSection(checkState, checkCoordinator, downloadCoordinator, scope)
             }
         }
     }
@@ -255,21 +257,22 @@ private fun UpdateSection(
 @Composable
 private fun UpdateCheckSection(
     state: UpdateCheckUiState,
-    viewModel: UpdateCheckViewModel,
-    downloadViewModel: UpdateDownloadViewModel?
+    checkCoordinator: UpdateCheckCoordinator,
+    downloadCoordinator: UpdateDownloadCoordinator?,
+    scope: CoroutineScope
 ) {
     Text(text = updateStatusText(state), style = MaterialTheme.typography.bodyMedium)
     Row(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (state is UpdateCheckUiState.UpdateAvailable && downloadViewModel != null) {
-            Button(onClick = { downloadViewModel.startDownload(state.manifest) }) {
+        if (state is UpdateCheckUiState.UpdateAvailable && downloadCoordinator != null) {
+            Button(onClick = { downloadCoordinator.startDownload(scope, state.manifest) }) {
                 Text("Обновить")
             }
         } else {
             Button(
-                onClick = { viewModel.checkForUpdate() },
+                onClick = { scope.launch { checkCoordinator.checkForUpdate(BuildConfig.VERSION_CODE) } },
                 enabled = state != UpdateCheckUiState.Checking
             ) {
                 Text("Проверить обновления")
@@ -284,14 +287,15 @@ private fun UpdateCheckSection(
 @Composable
 private fun UpdateDownloadSection(
     state: UpdateDownloadState,
-    viewModel: UpdateDownloadViewModel
+    downloadCoordinator: UpdateDownloadCoordinator,
+    scope: CoroutineScope
 ) {
     Text(text = updateDownloadStatusText(state), style = MaterialTheme.typography.bodyMedium)
 
     when (state) {
         is UpdateDownloadState.Downloading -> {
             DownloadProgressIndicator(state.progress.bytesDownloaded, state.progress.totalBytes)
-            TextButton(onClick = { viewModel.cancelDownload() }) {
+            TextButton(onClick = { downloadCoordinator.cancelDownload(scope) }) {
                 Text("Отменить")
             }
         }
@@ -301,13 +305,13 @@ private fun UpdateDownloadSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 CircularProgressIndicator(modifier = Modifier.size(20.dp))
-                TextButton(onClick = { viewModel.cancelDownload() }) {
+                TextButton(onClick = { downloadCoordinator.cancelDownload(scope) }) {
                     Text("Отменить")
                 }
             }
         }
         is UpdateDownloadState.Failed -> {
-            Button(onClick = { viewModel.retryDownload() }) {
+            Button(onClick = { downloadCoordinator.retryDownload(scope) }) {
                 Text("Повторить")
             }
         }
