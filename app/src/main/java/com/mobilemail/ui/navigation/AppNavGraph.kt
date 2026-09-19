@@ -16,7 +16,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -72,7 +75,9 @@ import com.mobilemail.ui.security.PinSetupViewModelFactory
 import com.mobilemail.ui.settings.SettingsScreen
 import com.mobilemail.ui.settings.UpdateCheckCoordinatorHolder
 import com.mobilemail.domain.model.UpdateCheckResult
+import com.mobilemail.domain.model.UpdateDownloadState
 import com.mobilemail.ui.settings.UpdateDownloadCoordinatorHolder
+import com.mobilemail.ui.settings.UpdateInstallCoordinatorHolder
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.security.PinManager
 import kotlinx.coroutines.CoroutineScope
@@ -85,6 +90,7 @@ fun AppNavGraph(
     navController: NavHostController,
     startDestination: String,
     dependencies: AppNavigationDependencies,
+    isPinLocked: Boolean,
     onPinUnlocked: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -101,6 +107,25 @@ fun AppNavGraph(
     val handleMessagesStartupUseCase = dependencies.handleMessagesStartupUseCase
     val resolveMessagesViewModelContextUseCase = dependencies.resolveMessagesViewModelContextUseCase
     val accountPushTopicsPort = dependencies.accountPushTopicsPort
+
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentIsPinLocked by rememberUpdatedState(isPinLocked)
+    val updateDownloadCoordinator = remember { UpdateDownloadCoordinatorHolder.get(application) }
+    val updateInstallCoordinator = remember { UpdateInstallCoordinatorHolder.get(application) }
+
+    LaunchedEffect(updateDownloadCoordinator, updateInstallCoordinator) {
+        updateDownloadCoordinator.state.collect { downloadState ->
+            if (downloadState is UpdateDownloadState.Ready) {
+                val isResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                updateInstallCoordinator.onDownloadCompleted(
+                    scope = activityScope,
+                    manifest = downloadState.manifest,
+                    apkFilePath = downloadState.apkFilePath,
+                    autoContinue = isResumed && !currentIsPinLocked
+                )
+            }
+        }
+    }
 
     NavHost(
         navController = navController,
@@ -245,7 +270,6 @@ fun AppNavGraph(
             val updateCheckCoordinator = remember { UpdateCheckCoordinatorHolder.get() }
             val updateCheckState by updateCheckCoordinator.state.collectAsStateWithLifecycle()
             val isUpdateOfferDismissed by updateCheckCoordinator.isOfferDismissed.collectAsStateWithLifecycle()
-            val updateDownloadCoordinator = remember { UpdateDownloadCoordinatorHolder.get(application) }
 
             LaunchedEffect(Unit) {
                 updateCheckCoordinator.checkOnStartupOnce(BuildConfig.VERSION_CODE)
@@ -520,7 +544,6 @@ fun AppNavGraph(
             val email = routeArgs.email
 
             val updateCheckCoordinator = remember { UpdateCheckCoordinatorHolder.get() }
-            val updateDownloadCoordinator = remember { UpdateDownloadCoordinatorHolder.get(application) }
             SettingsScreen(
                 server = server,
                 email = email,
@@ -530,7 +553,8 @@ fun AppNavGraph(
                     navController.navigate(AppRoutes.PinSetup)
                 },
                 updateCheckCoordinator = updateCheckCoordinator,
-                updateDownloadCoordinator = updateDownloadCoordinator
+                updateDownloadCoordinator = updateDownloadCoordinator,
+                updateInstallCoordinator = updateInstallCoordinator
             )
         }
 

@@ -46,6 +46,7 @@ fun AppNavigationHost(
         navController = navController,
         startDestination = startDestination,
         dependencies = dependencies,
+        isPinLocked = isPinLocked,
         onPinUnlocked = onPinUnlocked,
         modifier = modifier,
     )

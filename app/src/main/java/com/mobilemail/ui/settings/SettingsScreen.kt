@@ -29,6 +29,8 @@ import com.mobilemail.data.preferences.NotificationPrivacyMode
 import com.mobilemail.data.preferences.SwipeAction
 import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.domain.model.UpdateDownloadState
+import com.mobilemail.domain.model.UpdateInstallState
+import com.mobilemail.domain.model.UpdateReleaseManifest
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,7 +69,8 @@ fun SettingsScreen(
     onBack: () -> Unit,
     onPinSetupClick: () -> Unit = {},
     updateCheckCoordinator: UpdateCheckCoordinator? = null,
-    updateDownloadCoordinator: UpdateDownloadCoordinator? = null
+    updateDownloadCoordinator: UpdateDownloadCoordinator? = null,
+    updateInstallCoordinator: UpdateInstallCoordinator? = null
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
@@ -166,7 +169,7 @@ fun SettingsScreen(
                 }
             }
             Spacer(modifier = Modifier.height(16.dp))
-            UpdateSection(updateCheckCoordinator, updateDownloadCoordinator)
+            UpdateSection(updateCheckCoordinator, updateDownloadCoordinator, updateInstallCoordinator)
             Spacer(modifier = Modifier.height(16.dp))
             AppVersionFooter()
         } else {
@@ -216,7 +219,7 @@ fun SettingsScreen(
                     }
                 )
                 Spacer(modifier = Modifier.height(16.dp))
-                UpdateSection(updateCheckCoordinator, updateDownloadCoordinator)
+                UpdateSection(updateCheckCoordinator, updateDownloadCoordinator, updateInstallCoordinator)
                 Spacer(modifier = Modifier.height(16.dp))
                 AppVersionFooter()
             }
@@ -227,12 +230,18 @@ fun SettingsScreen(
 @Composable
 private fun UpdateSection(
     checkCoordinator: UpdateCheckCoordinator?,
-    downloadCoordinator: UpdateDownloadCoordinator?
+    downloadCoordinator: UpdateDownloadCoordinator?,
+    installCoordinator: UpdateInstallCoordinator?
 ) {
     if (checkCoordinator == null) return
     val scope = rememberCoroutineScope()
     val checkState by checkCoordinator.state.collectAsState()
     val downloadState by (downloadCoordinator?.state?.collectAsState() ?: remember { mutableStateOf(UpdateDownloadState.Idle) })
+    val installState by (
+        installCoordinator?.state?.collectAsState()
+            ?: remember { mutableStateOf<UpdateInstallState>(UpdateInstallState.Idle) }
+        )
+    val isOfferDismissed by (installCoordinator?.isOfferDismissed?.collectAsState() ?: remember { mutableStateOf(false) })
 
     Text(
         text = "Обновления",
@@ -246,12 +255,82 @@ private fun UpdateSection(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            if (downloadCoordinator != null && downloadState !is UpdateDownloadState.Idle) {
-                UpdateDownloadSection(downloadState, downloadCoordinator, scope)
-            } else {
-                UpdateCheckSection(checkState, checkCoordinator, downloadCoordinator, scope)
+            when (val install = installState) {
+                is UpdateInstallState.Installed -> {
+                    Text(
+                        text = "Обновление ${install.manifest.versionName} установлено",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                is UpdateInstallState.AwaitingPermission -> {
+                    InstallWaiting("Разрешите установку обновлений для MobileMail в настройках")
+                }
+                is UpdateInstallState.AwaitingConfirmation -> {
+                    InstallWaiting("Ожидание подтверждения установки…")
+                }
+                is UpdateInstallState.Ready -> {
+                    InstallOffer(
+                        manifest = install.manifest,
+                        dismissed = isOfferDismissed,
+                        onInstall = { installCoordinator?.install(scope) },
+                        onLater = { installCoordinator?.dismissOffer() }
+                    )
+                }
+                is UpdateInstallState.Cancelled -> {
+                    InstallResult("Установка отменена", "Установить") { installCoordinator?.install(scope) }
+                }
+                is UpdateInstallState.Failed -> {
+                    InstallResult(install.error.getUserMessage(), "Повторить") { installCoordinator?.install(scope) }
+                }
+                UpdateInstallState.Idle -> {
+                    if (installCoordinator == null || downloadCoordinator == null || downloadState is UpdateDownloadState.Idle) {
+                        UpdateCheckSection(checkState, checkCoordinator, downloadCoordinator, scope)
+                    } else {
+                        UpdateDownloadSection(downloadState, downloadCoordinator, scope)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun InstallOffer(
+    manifest: UpdateReleaseManifest,
+    dismissed: Boolean,
+    onInstall: () -> Unit,
+    onLater: () -> Unit
+) {
+    Text(
+        text = "Обновление ${manifest.versionName} готово к установке",
+        style = MaterialTheme.typography.bodyMedium
+    )
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Button(onClick = onInstall) {
+            Text("Установить")
+        }
+        if (!dismissed) {
+            TextButton(onClick = onLater) {
+                Text("Позже")
+            }
+        }
+    }
+}
+
+@Composable
+private fun InstallWaiting(message: String) {
+    Text(text = message, style = MaterialTheme.typography.bodyMedium)
+    CircularProgressIndicator(modifier = Modifier.size(20.dp))
+}
+
+@Composable
+private fun InstallResult(message: String, action: String, onClick: () -> Unit) {
+    Text(text = message, style = MaterialTheme.typography.bodyMedium)
+    Button(onClick = onClick) {
+        Text(action)
     }
 }
 

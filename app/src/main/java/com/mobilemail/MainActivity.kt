@@ -30,6 +30,7 @@ import com.mobilemail.notifications.NtfyAccountPushTopicsAdapter
 import com.mobilemail.ui.navigation.AppNavigationDependencies
 import com.mobilemail.ui.navigation.AppNavigationHost
 import com.mobilemail.ui.navigation.AppRoutes
+import com.mobilemail.ui.settings.UpdateInstallCoordinatorHolder
 import com.mobilemail.ui.login.OAuthBrowserSession
 import com.mobilemail.ui.theme.MobileMailTheme
 import kotlinx.coroutines.CoroutineScope
@@ -43,6 +44,7 @@ class MainActivity : FragmentActivity() {
     private val preferencesManager by lazy { PreferencesManager(applicationContext) }
     private val tokenStore by lazy { TokenStore(applicationContext) }
     private val pinManager by lazy { PinManager(applicationContext) }
+    private val installCoordinator by lazy { UpdateInstallCoordinatorHolder.get(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val publishPushNavigationFromIntentUseCase = PublishPushNavigationFromIntentUseCase()
     private val autoLockHandler = Handler(Looper.getMainLooper())
@@ -101,6 +103,7 @@ class MainActivity : FragmentActivity() {
                         isPinLocked = isPinLocked,
                         onPinUnlocked = {
                             isPinLocked = false
+                            installCoordinator.onAppForegrounded(activityScope, unlocked = true)
                             lastUserInteractionAtMillis = SystemClock.elapsedRealtime()
                             scheduleAutoLock()
                         },
@@ -114,10 +117,12 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         syncSecureWindowFlag()
         scheduleAutoLock()
+        installCoordinator.onAppForegrounded(activityScope, unlocked = !isPinLocked)
     }
 
     override fun onStop() {
         super.onStop()
+        installCoordinator.onAppBackgrounded()
         if (!isChangingConfigurations && pinManager.isPinEnabled() && !OAuthBrowserSession.isActive()) {
             isPinLocked = true
         }
