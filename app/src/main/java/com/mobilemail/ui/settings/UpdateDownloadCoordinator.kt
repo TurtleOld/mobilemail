@@ -36,8 +36,8 @@ private data class ActiveDownload(
  * не хранит Activity или callbacks — только [UpdateDownloadPort]/[ApkVerifierPort]
  * и [UpdateDownloadPersistencePort]. Согласие пользователя, назначение файла,
  * намерение загрузки и download ID переживают восстановление процесса через
- * [UpdateDownloadPersistencePort]; [restorePendingDownload] должен вызываться
- * один раз при создании держателя координатора.
+ * [UpdateDownloadPersistencePort]; создавайте координатор через [createAndRestore],
+ * чтобы это восстановление гарантированно произошло.
  */
 class UpdateDownloadCoordinator(
     private val downloadPort: UpdateDownloadPort,
@@ -130,6 +130,28 @@ class UpdateDownloadCoordinator(
     fun retryDownload(scope: CoroutineScope) {
         val failed = _state.value as? UpdateDownloadState.Failed ?: return
         startDownload(scope, failed.manifest)
+    }
+
+    companion object {
+        /**
+         * Создаёт координатор и сразу восстанавливает загрузку, начатую до перезапуска
+         * процесса. Единственный способ создать координатор, готовый к использованию
+         * держателем (см. [UpdateDownloadCoordinatorHolder]) — обычный конструктор
+         * оставляет восстановление на совести вызывающего и годится только для тестов,
+         * которым нужен точный контроль над моментом восстановления.
+         */
+        fun createAndRestore(
+            scope: CoroutineScope,
+            downloadPort: UpdateDownloadPort,
+            verifier: ApkVerifierPort,
+            store: UpdateDownloadPersistencePort,
+            apkFilePathFor: (UpdateReleaseManifest) -> String,
+            now: () -> Long = System::currentTimeMillis
+        ): UpdateDownloadCoordinator {
+            val coordinator = UpdateDownloadCoordinator(downloadPort, verifier, store, apkFilePathFor, now)
+            coordinator.restorePendingDownload(scope)
+            return coordinator
+        }
     }
 
     private suspend fun monitorDownload(downloadId: Long, manifest: UpdateReleaseManifest) {

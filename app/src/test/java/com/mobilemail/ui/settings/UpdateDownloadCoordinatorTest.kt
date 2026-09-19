@@ -259,6 +259,28 @@ class UpdateDownloadCoordinatorTest {
     }
 
     @Test
+    fun `createAndRestore resumes a pending download without a separate restore call`() = runTest {
+        val downloadPort = FakeUpdateDownloadPort()
+        downloadPort.setStatus(1L, DownloadStatus.Running(300, 1000))
+        val store = FakeUpdateDownloadPersistencePort(
+            pending = PendingDownload(manifest(), APK_PATH, downloadId = 1L)
+        )
+
+        val coordinator = UpdateDownloadCoordinator.createAndRestore(
+            scope = backgroundScope,
+            downloadPort = downloadPort,
+            verifier = FakeApkVerifierPort(),
+            store = store,
+            apkFilePathFor = { APK_PATH }
+        )
+        advanceTimeBy(600); runCurrent()
+
+        val downloading = coordinator.state.value
+        assertTrue(downloading is UpdateDownloadState.Downloading)
+        assertEquals(300L, (downloading as UpdateDownloadState.Downloading).progress.bytesDownloaded)
+    }
+
+    @Test
     fun `completion time is recorded once and does not move on repeated observation`() = runTest {
         val downloadPort = FakeUpdateDownloadPort()
         val store = FakeUpdateDownloadPersistencePort()
