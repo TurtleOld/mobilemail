@@ -27,6 +27,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.TextButton
 import com.mobilemail.data.preferences.NotificationPrivacyMode
 import com.mobilemail.data.preferences.SwipeAction
+import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.domain.model.UpdateDownloadState
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -256,7 +257,7 @@ private fun UpdateSection(
 
 @Composable
 private fun UpdateCheckSection(
-    state: UpdateCheckUiState,
+    state: UpdateCheckResult,
     checkCoordinator: UpdateCheckCoordinator,
     downloadCoordinator: UpdateDownloadCoordinator?,
     scope: CoroutineScope
@@ -266,19 +267,19 @@ private fun UpdateCheckSection(
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (state is UpdateCheckUiState.UpdateAvailable && downloadCoordinator != null) {
+        if (state is UpdateCheckResult.UpdateAvailable && downloadCoordinator != null) {
             Button(onClick = { downloadCoordinator.startDownload(scope, state.manifest) }) {
                 Text("Обновить")
             }
         } else {
             Button(
                 onClick = { scope.launch { checkCoordinator.checkForUpdate(BuildConfig.VERSION_CODE) } },
-                enabled = state != UpdateCheckUiState.Checking
+                enabled = state != UpdateCheckResult.Checking
             ) {
                 Text("Проверить обновления")
             }
         }
-        if (state == UpdateCheckUiState.Checking) {
+        if (state == UpdateCheckResult.Checking) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp))
         }
     }
@@ -333,16 +334,16 @@ private fun DownloadProgressIndicator(bytesDownloaded: Long, totalBytes: Long?) 
     }
 }
 
-private fun updateStatusText(state: UpdateCheckUiState): String = when (state) {
-    UpdateCheckUiState.Idle -> "Нажмите «Проверить обновления», чтобы узнать о новой версии"
-    UpdateCheckUiState.Checking -> "Проверка обновлений…"
-    is UpdateCheckUiState.UpdateAvailable -> {
+private fun updateStatusText(state: UpdateCheckResult): String = when (state) {
+    UpdateCheckResult.Idle -> "Нажмите «Проверить обновления», чтобы узнать о новой версии"
+    UpdateCheckResult.Checking -> "Проверка обновлений…"
+    is UpdateCheckResult.UpdateAvailable -> {
         val sizeMb = state.apkSizeBytes / (1024.0 * 1024.0)
         "Доступна версия ${state.versionName} (${"%.1f".format(java.util.Locale.US, sizeMb)} МБ)"
     }
-    UpdateCheckUiState.UpToDate -> "У вас установлена последняя версия"
-    UpdateCheckUiState.ReleaseNotReady -> "Новый выпуск ещё готовится, попробуйте позже"
-    is UpdateCheckUiState.Failed -> state.error.getUserMessage()
+    UpdateCheckResult.UpToDate -> "У вас установлена последняя версия"
+    UpdateCheckResult.ReleaseNotReady -> "Новый выпуск ещё готовится, попробуйте позже"
+    is UpdateCheckResult.Failed -> state.error.getUserMessage()
 }
 
 private fun updateDownloadStatusText(state: UpdateDownloadState): String = when (state) {

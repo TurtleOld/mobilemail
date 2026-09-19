@@ -1,6 +1,7 @@
 package com.mobilemail.ui.settings
 
 import com.mobilemail.data.error.ErrorMapper
+import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.domain.port.UpdateCheckPort
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.sync.Mutex
@@ -22,8 +23,8 @@ import kotlinx.coroutines.flow.asStateFlow
 class UpdateCheckCoordinator(
     private val port: UpdateCheckPort
 ) {
-    private val _state = MutableStateFlow<UpdateCheckUiState>(UpdateCheckUiState.Idle)
-    val state: StateFlow<UpdateCheckUiState> = _state.asStateFlow()
+    private val _state = MutableStateFlow<UpdateCheckResult>(UpdateCheckResult.Idle)
+    val state: StateFlow<UpdateCheckResult> = _state.asStateFlow()
 
     private val _isOfferDismissed = MutableStateFlow(false)
     val isOfferDismissed: StateFlow<Boolean> = _isOfferDismissed.asStateFlow()
@@ -35,8 +36,8 @@ class UpdateCheckCoordinator(
      * Автопроверка при пользовательском открытии приложения.
      *
      * Выполняется не более одного раза за процесс и не сообщает об ошибке
-     * пользователю: сетевой сбой автопроверки тихо оставляет [state] в [UpdateCheckUiState.Idle]
-     * или предыдущем значении, а не показывает [UpdateCheckUiState.Failed] поверх почты.
+     * пользователю: сетевой сбой автопроверки тихо оставляет [state] в [UpdateCheckResult.Idle]
+     * или предыдущем значении, а не показывает [UpdateCheckResult.Failed] поверх почты.
      */
     suspend fun checkOnStartupOnce(currentVersionCode: Int) {
         if (!hasStartupCheckRun.compareAndSet(false, true)) return
@@ -65,14 +66,14 @@ class UpdateCheckCoordinator(
     private suspend fun runCheck(currentVersionCode: Int, silent: Boolean): Boolean {
         if (!checkMutex.tryLock()) return false
         try {
-            _state.value = UpdateCheckUiState.Checking
+            _state.value = UpdateCheckResult.Checking
             val result = runCatching { port.checkForUpdate(currentVersionCode) }
                 .fold(
-                    onSuccess = { it.toUiState() },
-                    onFailure = { UpdateCheckUiState.Failed(ErrorMapper.mapException(it)) }
+                    onSuccess = { it },
+                    onFailure = { UpdateCheckResult.Failed(ErrorMapper.mapException(it)) }
                 )
-            if (silent && result is UpdateCheckUiState.Failed) {
-                _state.value = UpdateCheckUiState.Idle
+            if (silent && result is UpdateCheckResult.Failed) {
+                _state.value = UpdateCheckResult.Idle
             } else {
                 _state.value = result
             }

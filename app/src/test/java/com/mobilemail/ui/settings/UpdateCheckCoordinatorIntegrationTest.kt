@@ -2,6 +2,7 @@ package com.mobilemail.ui.settings
 
 import app.cash.turbine.test
 import com.mobilemail.data.update.GithubReleaseUpdateRepository
+import com.mobilemail.domain.model.UpdateCheckResult
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
@@ -68,14 +69,14 @@ class UpdateCheckCoordinatorIntegrationTest {
             val coordinator = UpdateCheckCoordinator(repository(server))
 
             coordinator.state.test {
-                assertEquals(UpdateCheckUiState.Idle, awaitItem())
+                assertEquals(UpdateCheckResult.Idle, awaitItem())
 
                 coordinator.checkForUpdate(currentVersionCode = 10504)
 
-                assertEquals(UpdateCheckUiState.Checking, awaitItem())
+                assertEquals(UpdateCheckResult.Checking, awaitItem())
                 val updateAvailable = awaitItem()
-                assertTrue(updateAvailable is UpdateCheckUiState.UpdateAvailable)
-                assertEquals("1.5.5", (updateAvailable as UpdateCheckUiState.UpdateAvailable).versionName)
+                assertTrue(updateAvailable is UpdateCheckResult.UpdateAvailable)
+                assertEquals("1.5.5", (updateAvailable as UpdateCheckResult.UpdateAvailable).versionName)
                 assertEquals(12345678L, updateAvailable.apkSizeBytes)
             }
         } finally {
@@ -103,7 +104,7 @@ class UpdateCheckCoordinatorIntegrationTest {
             job2.join()
 
             assertEquals(2, server.requestCount)
-            assertTrue(coordinator.state.value is UpdateCheckUiState.UpdateAvailable)
+            assertTrue(coordinator.state.value is UpdateCheckResult.UpdateAvailable)
         } finally {
             server.shutdown()
         }
@@ -125,7 +126,7 @@ class UpdateCheckCoordinatorIntegrationTest {
             coordinator.checkForUpdate(currentVersionCode = 1)
 
             assertEquals(4, server.requestCount)
-            assertTrue(coordinator.state.value is UpdateCheckUiState.UpdateAvailable)
+            assertTrue(coordinator.state.value is UpdateCheckResult.UpdateAvailable)
         } finally {
             server.shutdown()
         }

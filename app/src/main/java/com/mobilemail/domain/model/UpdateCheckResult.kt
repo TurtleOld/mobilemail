@@ -3,6 +3,8 @@ package com.mobilemail.domain.model
 import com.mobilemail.ui.common.AppError
 
 sealed class UpdateCheckResult {
+    data object Idle : UpdateCheckResult()
+    data object Checking : UpdateCheckResult()
     data class UpdateAvailable(
         val versionName: String,
         val apkSizeBytes: Long,
