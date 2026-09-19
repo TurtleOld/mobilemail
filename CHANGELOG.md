@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.6.0](https://github.com/TurtleOld/mobilemail/compare/v1.5.5...v1.6.0) (2026-09-19)
+
+
+### Features
+
+* **update:** add manual GitHub Releases update check in Settings ([40e5897](https://github.com/TurtleOld/mobilemail/commit/40e5897e3511ca1cc2d60e1a033e1636e13b6bc2))
+* **update:** add manual GitHub Releases update check in Settings ([#85](https://github.com/TurtleOld/mobilemail/issues/85)) ([33e6209](https://github.com/TurtleOld/mobilemail/commit/33e6209b845b4dc9ff21c37b3a0d2f9fdf1ba8cc))
+* **update:** download APK with progress, cancel and integrity checks ([#94](https://github.com/TurtleOld/mobilemail/issues/94)) ([dff7915](https://github.com/TurtleOld/mobilemail/commit/dff791550113bced08558359b9650a0a476a602a))
+* **update:** проверка и предложение обновления через GitHub Releases ([#93](https://github.com/TurtleOld/mobilemail/issues/93)) ([7c595ed](https://github.com/TurtleOld/mobilemail/commit/7c595ed00db4e986ee2fabb344e60dd5bfac1cfe))
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#88](https://github.com/TurtleOld/mobilemail/issues/88)) ([634b4ab](https://github.com/TurtleOld/mobilemail/commit/634b4ab74c13d3bad96ba586259d4045d5dd5a34))
+* **deps:** update dependency androidx.compose:compose-bom to v2026.09.00 ([#89](https://github.com/TurtleOld/mobilemail/issues/89)) ([8e59f0f](https://github.com/TurtleOld/mobilemail/commit/8e59f0f0e09507d8989a0cc261e5330cf058460b))
+* **deps:** update dependency androidx.room:room-testing to v2.8.5 ([#87](https://github.com/TurtleOld/mobilemail/issues/87)) ([e62bc81](https://github.com/TurtleOld/mobilemail/commit/e62bc81bf8f27de7205bb61f4381d90af9718cd3))
+* **deps:** update dependency com.google.firebase:firebase-bom to v34.19.0 ([#90](https://github.com/TurtleOld/mobilemail/issues/90)) ([caaf340](https://github.com/TurtleOld/mobilemail/commit/caaf3408b34641ba8f01c788944f3f851d20762a))
+* **deps:** update dependency com.squareup.okhttp3:mockwebserver to v5 ([#92](https://github.com/TurtleOld/mobilemail/issues/92)) ([56c5cac](https://github.com/TurtleOld/mobilemail/commit/56c5caca10c79eb441c6ad862c84fe7e51e1f362))
+
+
+### Refactoring
+
+* **update:** access update coordinators directly instead of via ViewModel wrappers ([#95](https://github.com/TurtleOld/mobilemail/issues/95)) ([384ae3d](https://github.com/TurtleOld/mobilemail/commit/384ae3db337c09efc834cdee975974f0e5e55793))
+* **update:** drop UpdateCheckUiState, use UpdateCheckResult directly ([#97](https://github.com/TurtleOld/mobilemail/issues/97)) ([b8d3822](https://github.com/TurtleOld/mobilemail/commit/b8d3822fb371db71830c821fb3367f4f1c8f6c17))
+* **update:** expose consistency failure reasons and self-synchronize the ETag cache ([#98](https://github.com/TurtleOld/mobilemail/issues/98)) ([7e2fe98](https://github.com/TurtleOld/mobilemail/commit/7e2fe9803abfccdabd2f996124a17273a327a271))
+
 ## [1.5.5](https://github.com/TurtleOld/mobilemail/compare/v1.5.4...v1.5.5) (2026-09-06)
 
 
