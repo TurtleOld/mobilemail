@@ -32,7 +32,8 @@ object UpdateDownloadCoordinatorHolder {
             if (alreadyCreated != null) return alreadyCreated
 
             val applicationContext = context.applicationContext
-            val coordinator = UpdateDownloadCoordinator(
+            val coordinator = UpdateDownloadCoordinator.createAndRestore(
+                scope = restoreScope,
                 downloadPort = AndroidUpdateDownloadPort(applicationContext),
                 verifier = ApkContractVerifier(applicationContext),
                 store = UpdateDownloadStore(applicationContext),
@@ -41,7 +42,6 @@ object UpdateDownloadCoordinatorHolder {
                     File(dir, updateApkFileName(manifest)).absolutePath
                 }
             )
-            coordinator.restorePendingDownload(restoreScope)
             instance = coordinator
             return coordinator
         }
