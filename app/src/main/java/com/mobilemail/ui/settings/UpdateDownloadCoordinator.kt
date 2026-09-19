@@ -43,6 +43,7 @@ class UpdateDownloadCoordinator(
     private val downloadPort: UpdateDownloadPort,
     private val verifier: ApkVerifierPort,
     private val store: UpdateDownloadPersistencePort,
+    private val apkFilePathFor: (UpdateReleaseManifest) -> String,
     private val now: () -> Long = System::currentTimeMillis
 ) {
     private val _state = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
@@ -51,9 +52,6 @@ class UpdateDownloadCoordinator(
     private val downloadMutex = Mutex()
     private var active: ActiveDownload? = null
     private var monitorJob: Job? = null
-
-    /** Назначение файла последней попытки — переживает [failDownload], чтобы «Повторить» знало, куда качать снова. */
-    private var lastApkFilePath: String? = null
 
     /**
      * Восстанавливает наблюдение за загрузкой, которая была начата до перезапуска
@@ -65,7 +63,6 @@ class UpdateDownloadCoordinator(
             val pending = store.loadPendingDownload() ?: return@launch
             downloadMutex.withLock {
                 active = ActiveDownload(pending.downloadId, pending.manifest, pending.apkFilePath)
-                lastApkFilePath = pending.apkFilePath
                 monitorJob = scope.launch { monitorDownload(pending.downloadId, pending.manifest) }
             }
         }
@@ -75,7 +72,7 @@ class UpdateDownloadCoordinator(
      * Пользователь согласился скачать [manifest]. Повторный вызов с тем же
      * versionCode, пока загрузка уже идёт, не создаёт вторую загрузку.
      */
-    fun startDownload(scope: CoroutineScope, manifest: UpdateReleaseManifest, apkFilePath: String) {
+    fun startDownload(scope: CoroutineScope, manifest: UpdateReleaseManifest) {
         scope.launch {
             downloadMutex.withLock {
                 when (downloadInProgressFor(active)) {
@@ -83,10 +80,10 @@ class UpdateDownloadCoordinator(
                     null -> Unit
                     else -> stopActiveDownloadLocked()
                 }
+                val apkFilePath = apkFilePathFor(manifest)
                 _state.value = UpdateDownloadState.Requesting
                 val downloadId = downloadPort.enqueue(manifest)
                 active = ActiveDownload(downloadId, manifest, apkFilePath)
-                lastApkFilePath = apkFilePath
                 store.savePendingDownload(PendingDownload(manifest, apkFilePath, downloadId))
                 monitorJob = scope.launch { monitorDownload(downloadId, manifest) }
             }
@@ -132,8 +129,7 @@ class UpdateDownloadCoordinator(
     /** Повтор после ошибки: новая загрузка того же релиза и того же назначения файла. */
     fun retryDownload(scope: CoroutineScope) {
         val failed = _state.value as? UpdateDownloadState.Failed ?: return
-        val apkFilePath = lastApkFilePath ?: return
-        startDownload(scope, failed.manifest, apkFilePath)
+        startDownload(scope, failed.manifest)
     }
 
     private suspend fun monitorDownload(downloadId: Long, manifest: UpdateReleaseManifest) {

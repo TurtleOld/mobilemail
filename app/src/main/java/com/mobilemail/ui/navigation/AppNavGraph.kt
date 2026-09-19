@@ -71,13 +71,8 @@ import com.mobilemail.ui.security.PinSetupViewModel
 import com.mobilemail.ui.security.PinSetupViewModelFactory
 import com.mobilemail.ui.settings.SettingsScreen
 import com.mobilemail.ui.settings.UpdateCheckCoordinatorHolder
-import com.mobilemail.ui.settings.UpdateCheckViewModel
-import com.mobilemail.ui.settings.UpdateCheckViewModelFactory
 import com.mobilemail.ui.settings.UpdateCheckUiState
 import com.mobilemail.ui.settings.UpdateDownloadCoordinatorHolder
-import com.mobilemail.ui.settings.UpdateDownloadViewModel
-import com.mobilemail.ui.settings.UpdateDownloadViewModelFactory
-import com.mobilemail.ui.settings.updateOfferApkFilePath
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.security.PinManager
 import kotlinx.coroutines.CoroutineScope
@@ -409,8 +404,7 @@ fun AppNavGraph(
                 onUpdateOfferClick = {
                     val available = updateCheckState as? UpdateCheckUiState.UpdateAvailable
                     if (available != null) {
-                        val apkFilePath = updateOfferApkFilePath(application, available.manifest)
-                        updateDownloadCoordinator.startDownload(activityScope, available.manifest, apkFilePath)
+                        updateDownloadCoordinator.startDownload(activityScope, available.manifest)
                     }
                     navController.navigate(AppRoutes.settings(server, email))
                 },
@@ -525,12 +519,8 @@ fun AppNavGraph(
             val server = routeArgs.server
             val email = routeArgs.email
 
-            val updateCheckViewModel: UpdateCheckViewModel = viewModel(
-                factory = UpdateCheckViewModelFactory(application)
-            )
-            val updateDownloadViewModel: UpdateDownloadViewModel = viewModel(
-                factory = UpdateDownloadViewModelFactory(application)
-            )
+            val updateCheckCoordinator = remember { UpdateCheckCoordinatorHolder.get() }
+            val updateDownloadCoordinator = remember { UpdateDownloadCoordinatorHolder.get(application) }
             SettingsScreen(
                 server = server,
                 email = email,
@@ -539,8 +529,8 @@ fun AppNavGraph(
                 onPinSetupClick = {
                     navController.navigate(AppRoutes.PinSetup)
                 },
-                updateCheckViewModel = updateCheckViewModel,
-                updateDownloadViewModel = updateDownloadViewModel
+                updateCheckCoordinator = updateCheckCoordinator,
+                updateDownloadCoordinator = updateDownloadCoordinator
             )
         }
 
