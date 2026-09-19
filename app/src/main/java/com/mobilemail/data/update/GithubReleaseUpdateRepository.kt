@@ -90,18 +90,18 @@ class GithubReleaseUpdateRepository(
     }
 
     private fun checkConsistency(candidate: GithubRelease, metadata: UpdateMetadata): ConsistencyCheck {
-        if (metadata.applicationId != expectedApplicationId) return ConsistencyCheck.ApplicationIdMismatch
-        if (metadata.minSdk > deviceSdkInt) return ConsistencyCheck.MinSdkTooHigh
-
         val expectedVersionCode = UpdateVersionCode.encodeFromTag(candidate.tagName)
-            ?: return ConsistencyCheck.UnparseableReleaseTag
-        if (expectedVersionCode != metadata.versionCode) return ConsistencyCheck.VersionCodeTagMismatch
-
         val apkAsset = candidate.assets.firstOrNull { it.name == metadata.apkAssetName }
-            ?: return ConsistencyCheck.ApkAssetMissing
-        if (apkAsset.sizeBytes != metadata.apkSizeBytes) return ConsistencyCheck.ApkSizeMismatch
 
-        return ConsistencyCheck.Consistent(apkAsset)
+        return when {
+            metadata.applicationId != expectedApplicationId -> ConsistencyCheck.ApplicationIdMismatch
+            metadata.minSdk > deviceSdkInt -> ConsistencyCheck.MinSdkTooHigh
+            expectedVersionCode == null -> ConsistencyCheck.UnparseableReleaseTag
+            expectedVersionCode != metadata.versionCode -> ConsistencyCheck.VersionCodeTagMismatch
+            apkAsset == null -> ConsistencyCheck.ApkAssetMissing
+            apkAsset.sizeBytes != metadata.apkSizeBytes -> ConsistencyCheck.ApkSizeMismatch
+            else -> ConsistencyCheck.Consistent(apkAsset)
+        }
     }
 
     /**
