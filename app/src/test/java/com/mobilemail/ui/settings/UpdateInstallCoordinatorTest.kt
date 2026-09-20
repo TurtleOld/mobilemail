@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -42,11 +41,13 @@ class UpdateInstallCoordinatorTest {
         port: FakeUpdateInstallPort = FakeUpdateInstallPort(),
         store: FakeUpdateInstallPersistencePort = FakeUpdateInstallPersistencePort(),
         installedVersionCode: Int = 10500,
-        apkExists: (String) -> Boolean = { true }
+        apkExists: (String) -> Boolean = { true },
+        cleaner: FakeUpdateApkCleanupPort = FakeUpdateApkCleanupPort()
     ) = UpdateInstallCoordinator.create(
         scope = this,
         installPort = port,
         store = store,
+        cleaner = cleaner,
         installedVersionCode = { installedVersionCode },
         apkExists = apkExists,
         nextAttemptId = { ATTEMPT_ID }
@@ -380,13 +381,14 @@ class UpdateInstallCoordinatorTest {
     fun `success without callback is reconciled to installed on next launch`() = runTest {
         val port = FakeUpdateInstallPort()
         val store = FakeUpdateInstallPersistencePort(PendingInstall(manifest(), APK_PATH))
-        val coordinator = backgroundScope.coordinator(port, store, installedVersionCode = 10600)
+        val cleaner = FakeUpdateApkCleanupPort()
+        val coordinator = backgroundScope.coordinator(port, store, installedVersionCode = 10600, cleaner = cleaner)
 
         runCurrent()
 
         assertTrue(coordinator.state.value is UpdateInstallState.Installed)
         assertTrue(port.startedInstalls.isEmpty())
-        assertNull(store.loadPendingInstall())
+        assertEquals(listOf(APK_PATH), cleaner.cleanedPaths)
     }
 
     @Test
@@ -429,5 +431,86 @@ class UpdateInstallCoordinatorTest {
 
         assertTrue(coordinator.state.value is UpdateInstallState.Installed)
         assertTrue(port.startedInstalls.isEmpty())
+    }
+
+    @Test
+    fun `an expired apk is not handed to the installer and is cleaned`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val cleaner = FakeUpdateApkCleanupPort(expired = true)
+        val coordinator = backgroundScope.coordinator(port, cleaner = cleaner)
+
+        coordinator.onDownloadCompleted(backgroundScope, manifest(), APK_PATH, autoContinue = false)
+        runCurrent()
+        coordinator.install(backgroundScope)
+        runCurrent()
+
+        assertTrue(port.startedInstalls.isEmpty())
+        assertEquals(0, port.settingsOpenedCount)
+        assertEquals(listOf(APK_PATH), cleaner.cleanedPaths)
+        assertTrue(coordinator.state.value is UpdateInstallState.Expired)
+    }
+
+    @Test
+    fun `an already installed version cleans the leftover apk instead of offering it`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val cleaner = FakeUpdateApkCleanupPort()
+        val coordinator = backgroundScope.coordinator(port, installedVersionCode = 10600, cleaner = cleaner)
+
+        coordinator.onDownloadCompleted(backgroundScope, manifest(), APK_PATH, autoContinue = false)
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateInstallState.Installed)
+        assertTrue(port.startedInstalls.isEmpty())
+        assertEquals(listOf(APK_PATH), cleaner.cleanedPaths)
+    }
+
+    @Test
+    fun `a successful install cleans up the leftover apk`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val cleaner = FakeUpdateApkCleanupPort()
+        val coordinator = backgroundScope.coordinator(port, cleaner = cleaner)
+
+        coordinator.onDownloadCompleted(backgroundScope, manifest(), APK_PATH, autoContinue = false)
+        runCurrent()
+        coordinator.install(backgroundScope)
+        runCurrent()
+        port.emit(InstallCallback(ATTEMPT_ID, InstallOutcome.Success))
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateInstallState.Installed)
+        assertEquals(listOf(APK_PATH), cleaner.cleanedPaths)
+    }
+
+    @Test
+    fun `an expired download removes the install offer`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val coordinator = backgroundScope.coordinator(port)
+
+        coordinator.onDownloadCompleted(backgroundScope, manifest(), APK_PATH, autoContinue = false)
+        runCurrent()
+        assertTrue(coordinator.state.value is UpdateInstallState.Ready)
+
+        coordinator.onApkExpired(backgroundScope, manifest())
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateInstallState.Expired)
+        coordinator.install(backgroundScope)
+        runCurrent()
+        assertTrue(port.startedInstalls.isEmpty())
+    }
+
+    @Test
+    fun `an expired saved attempt is cleaned and not offered on next launch`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val store = FakeUpdateInstallPersistencePort(PendingInstall(manifest(), APK_PATH))
+        val cleaner = FakeUpdateApkCleanupPort(expired = true)
+        val coordinator =
+            backgroundScope.coordinator(port, store, installedVersionCode = 10500, cleaner = cleaner)
+
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateInstallState.Expired)
+        assertTrue(port.startedInstalls.isEmpty())
+        assertEquals(listOf(APK_PATH), cleaner.cleanedPaths)
     }
 }

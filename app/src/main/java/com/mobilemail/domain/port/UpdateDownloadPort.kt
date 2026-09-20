@@ -9,7 +9,13 @@ sealed class DownloadStatus {
     data object Pending : DownloadStatus()
     data class Running(val bytesDownloaded: Long, val totalBytes: Long?) : DownloadStatus()
     data object Paused : DownloadStatus()
-    data class Successful(val filePath: String) : DownloadStatus()
+
+    /**
+     * Загрузка завершена. [completedAtMillis] — фактическое время записи файла
+     * системой, если его удалось прочитать; оно, а не момент проверки, задаёт
+     * срок годности APK.
+     */
+    data class Successful(val filePath: String, val completedAtMillis: Long? = null) : DownloadStatus()
     data class Failed(val reason: String) : DownloadStatus()
     /** Download ID неизвестен системе — например, после ручного удаления пользователем из системного менеджера. */
     data object NotFound : DownloadStatus()

@@ -28,6 +28,12 @@ sealed interface UpdateInstallState {
 
     data class Installed(val manifest: UpdateReleaseManifest) : UpdateInstallState
 
+    /**
+     * Срок хранения скачанного APK истёк до передачи установщику: файл удалён,
+     * установка невозможна без повторного скачивания.
+     */
+    data class Expired(val manifest: UpdateReleaseManifest) : UpdateInstallState
+
     data class Cancelled(
         val manifest: UpdateReleaseManifest,
         val apkFilePath: String

@@ -3,6 +3,7 @@ package com.mobilemail.ui.settings
 import android.content.Context
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.update.AndroidUpdateInstallPort
+import com.mobilemail.data.update.UpdateApkCleanerHolder
 import com.mobilemail.data.update.UpdateInstallStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ object UpdateInstallCoordinatorHolder {
                 scope = callbackScope,
                 installPort = AndroidUpdateInstallPort(applicationContext),
                 store = UpdateInstallStore(applicationContext),
+                cleaner = UpdateApkCleanerHolder.get(applicationContext),
                 installedVersionCode = { BuildConfig.VERSION_CODE }
             )
             instance = coordinator

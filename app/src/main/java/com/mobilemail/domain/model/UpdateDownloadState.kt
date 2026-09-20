@@ -33,5 +33,12 @@ sealed class UpdateDownloadState {
     ) : UpdateDownloadState()
 
     data object Cancelled : UpdateDownloadState()
+
+    /**
+     * Срок хранения скачанного APK истёк: файл удалён, обновление больше не
+     * Готово и не передаётся установщику. Повторное скачивание возможно только
+     * после нового согласия пользователя.
+     */
+    data class Expired(val manifest: UpdateReleaseManifest) : UpdateDownloadState()
     data class Failed(val error: AppError, val manifest: UpdateReleaseManifest) : UpdateDownloadState()
 }

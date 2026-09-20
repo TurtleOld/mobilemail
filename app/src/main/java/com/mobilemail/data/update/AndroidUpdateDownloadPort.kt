@@ -94,11 +94,12 @@ class AndroidUpdateDownloadPort(private val context: Context) : UpdateDownloadPo
         val uriColumn = getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI)
         val localUri = getString(uriColumn) ?: return DownloadStatus.Failed("Скачанный файл не найден")
         val filePath = Uri.parse(localUri).path ?: return DownloadStatus.Failed("Скачанный файл не найден")
-        return if (File(filePath).exists()) {
-            DownloadStatus.Successful(filePath)
-        } else {
-            DownloadStatus.Failed("Скачанный файл не найден")
+        if (!File(filePath).exists()) {
+            return DownloadStatus.Failed("Скачанный файл не найден")
         }
+        val modifiedColumn = getColumnIndexOrThrow(DownloadManager.COLUMN_LAST_MODIFIED_TIMESTAMP)
+        val completedAtMillis = getLongOrNull(modifiedColumn)?.takeIf { it > 0 }
+        return DownloadStatus.Successful(filePath, completedAtMillis)
     }
 
     private fun Cursor.failedStatus(): DownloadStatus {
