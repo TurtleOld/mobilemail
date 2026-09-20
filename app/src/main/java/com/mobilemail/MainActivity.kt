@@ -30,6 +30,7 @@ import com.mobilemail.notifications.NtfyAccountPushTopicsAdapter
 import com.mobilemail.ui.navigation.AppNavigationDependencies
 import com.mobilemail.ui.navigation.AppNavigationHost
 import com.mobilemail.ui.navigation.AppRoutes
+import com.mobilemail.ui.settings.UpdateDownloadCoordinatorHolder
 import com.mobilemail.ui.settings.UpdateInstallCoordinatorHolder
 import com.mobilemail.ui.login.OAuthBrowserSession
 import com.mobilemail.ui.theme.MobileMailTheme
@@ -45,6 +46,7 @@ class MainActivity : FragmentActivity() {
     private val tokenStore by lazy { TokenStore(applicationContext) }
     private val pinManager by lazy { PinManager(applicationContext) }
     private val installCoordinator by lazy { UpdateInstallCoordinatorHolder.get(applicationContext) }
+    private val downloadCoordinator by lazy { UpdateDownloadCoordinatorHolder.get(applicationContext) }
     private val activityScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val publishPushNavigationFromIntentUseCase = PublishPushNavigationFromIntentUseCase()
     private val autoLockHandler = Handler(Looper.getMainLooper())
@@ -117,11 +119,15 @@ class MainActivity : FragmentActivity() {
         super.onResume()
         syncSecureWindowFlag()
         scheduleAutoLock()
+        downloadCoordinator.reconcile(activityScope)
         installCoordinator.onAppForegrounded(activityScope, unlocked = !isPinLocked)
     }
 
     override fun onStop() {
         super.onStop()
+        if (!isChangingConfigurations) {
+            downloadCoordinator.onAppBackgrounded()
+        }
         installCoordinator.onAppBackgrounded()
         if (!isChangingConfigurations && pinManager.isPinEnabled() && !OAuthBrowserSession.isActive()) {
             isPinLocked = true

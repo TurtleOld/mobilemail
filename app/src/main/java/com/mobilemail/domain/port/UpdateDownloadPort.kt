@@ -27,6 +27,12 @@ interface UpdateDownloadPort {
 
     fun pollStatus(downloadId: Long): DownloadStatus
 
+    /**
+     * Ищет собственную системную загрузку по сохранённому назначению файла.
+     * Возвращает `null`, если такой загрузки в системе нет.
+     */
+    fun findDownloadIdByDestination(apkFilePath: String): Long?
+
     /** Останавливает системную загрузку и убирает частично скачанный файл. */
     fun cancel(downloadId: Long)
 }

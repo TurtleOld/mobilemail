@@ -4,9 +4,9 @@ import com.mobilemail.domain.port.PendingDownload
 import com.mobilemail.domain.port.UpdateDownloadPersistencePort
 
 class FakeUpdateDownloadPersistencePort(
-    private var pending: PendingDownload? = null
-) : UpdateDownloadPersistencePort {
+    private var pending: PendingDownload? = null,
     private var completedAtMillis: Long? = null
+) : UpdateDownloadPersistencePort {
     val clearCallCount get() = clearCalls
 
     private var clearCalls = 0
@@ -16,6 +16,10 @@ class FakeUpdateDownloadPersistencePort(
     }
 
     override suspend fun loadPendingDownload(): PendingDownload? = pending
+
+    override suspend fun saveDownloadId(downloadId: Long) {
+        pending = pending?.copy(downloadId = downloadId)
+    }
 
     override suspend fun markCompletedNow(completedAtMillis: Long) {
         if (this.completedAtMillis == null) {

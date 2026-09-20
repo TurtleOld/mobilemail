@@ -121,7 +121,7 @@ fun AppNavGraph(
                     scope = activityScope,
                     manifest = downloadState.manifest,
                     apkFilePath = downloadState.apkFilePath,
-                    autoContinue = isResumed && !currentIsPinLocked
+                    autoContinue = downloadState.autoContinue && isResumed && !currentIsPinLocked
                 )
             }
         }

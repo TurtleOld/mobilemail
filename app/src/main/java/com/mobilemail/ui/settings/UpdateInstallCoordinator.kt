@@ -5,6 +5,8 @@ import com.mobilemail.domain.model.UpdateReleaseManifest
 import com.mobilemail.domain.port.InstallCallback
 import com.mobilemail.domain.port.InstallOutcome
 import com.mobilemail.domain.port.InstallStartResult
+import com.mobilemail.domain.port.PendingInstall
+import com.mobilemail.domain.port.UpdateInstallPersistencePort
 import com.mobilemail.domain.port.UpdateInstallPort
 import com.mobilemail.ui.common.AppError
 import kotlinx.coroutines.CoroutineScope
@@ -34,9 +36,17 @@ private data class InstallTarget(
  * активной попытки: повторный или посторонний callback игнорируется. Системное
  * подтверждение запускается только из foreground и только после разблокировки —
  * из receiver оно лишь откладывается.
+ *
+ * Активная попытка сохраняется через [UpdateInstallPersistencePort]. При
+ * следующем запуске она согласуется с фактически установленной версией: если
+ * самообновление состоялось без callback, показывается [UpdateInstallState.Installed];
+ * невосстанавливаемая попытка не открывает системные экраны повторно, а новая
+ * создаётся только по явной команде [install].
  */
 class UpdateInstallCoordinator(
     private val installPort: UpdateInstallPort,
+    private val store: UpdateInstallPersistencePort,
+    private val installedVersionCode: () -> Int,
     private val apkExists: (String) -> Boolean = { File(it).exists() },
     private val nextAttemptId: () -> Long = defaultAttemptIdGenerator()
 ) {
@@ -70,6 +80,10 @@ class UpdateInstallCoordinator(
     ) {
         scope.launch {
             mutex.withLock {
+                if (installedVersionCode() >= manifest.versionCode) {
+                    _state.value = UpdateInstallState.Installed(manifest)
+                    return@withLock
+                }
                 val target = InstallTarget(manifest, apkFilePath)
                 if (currentInstall?.key == target.key) return@withLock
                 currentInstall = target
@@ -126,6 +140,7 @@ class UpdateInstallCoordinator(
         val target = currentInstall ?: return
         if (!apkExists(target.apkFilePath)) {
             activeAttemptId = null
+            store.clear()
             _state.value = UpdateInstallState.Failed(
                 AppError.UnknownError("Скачанный файл обновления не найден"),
                 target.manifest,
@@ -146,6 +161,7 @@ class UpdateInstallCoordinator(
             return
         }
         val attemptId = nextAttemptId()
+        store.savePendingInstall(PendingInstall(target.manifest, target.apkFilePath))
         activeAttemptId = attemptId
         when (val result = installPort.startInstall(target.apkFilePath, attemptId)) {
             InstallStartResult.Started -> {
@@ -153,6 +169,7 @@ class UpdateInstallCoordinator(
             }
             is InstallStartResult.Failed -> {
                 activeAttemptId = null
+                store.clear()
                 _state.value = UpdateInstallState.Failed(
                     AppError.UnknownError(result.reason),
                     target.manifest,
@@ -187,11 +204,13 @@ class UpdateInstallCoordinator(
                 InstallOutcome.Success -> {
                     activeAttemptId = null
                     isUserActionDeferred = false
+                    store.clear()
                     _state.value = UpdateInstallState.Installed(target.manifest)
                 }
                 InstallOutcome.Cancelled -> {
                     activeAttemptId = null
                     isUserActionDeferred = false
+                    store.clear()
                     _state.value = UpdateInstallState.Cancelled(target.manifest, target.apkFilePath)
                 }
                 InstallOutcome.AwaitingUserAction -> {
@@ -202,6 +221,7 @@ class UpdateInstallCoordinator(
                 is InstallOutcome.Failed -> {
                     activeAttemptId = null
                     isUserActionDeferred = false
+                    store.clear()
                     _state.value = UpdateInstallState.Failed(
                         AppError.UnknownError(outcome.reason),
                         target.manifest,
@@ -212,19 +232,55 @@ class UpdateInstallCoordinator(
         }
     }
 
+    /**
+     * Согласует сохранённую установочную попытку с фактическим результатом.
+     * Уже установленная версия отмечается как [UpdateInstallState.Installed];
+     * иначе попытка не возобновляется сама, а лишь предлагает «Установить».
+     */
+    private fun restore(scope: CoroutineScope) {
+        scope.launch {
+            mutex.withLock {
+                val pending = store.loadPendingInstall() ?: return@withLock
+                activeAttemptId = null
+                if (installedVersionCode() >= pending.manifest.versionCode) {
+                    store.clear()
+                    _state.value = UpdateInstallState.Installed(pending.manifest)
+                    return@withLock
+                }
+                val apkStillExists = apkExists(pending.apkFilePath)
+                store.clear()
+                currentInstall = InstallTarget(pending.manifest, pending.apkFilePath)
+                _state.value = if (apkStillExists) {
+                    UpdateInstallState.Ready(pending.manifest, pending.apkFilePath)
+                } else {
+                    UpdateInstallState.Failed(
+                        AppError.UnknownError("Скачанный файл обновления не найден"),
+                        pending.manifest,
+                        pending.apkFilePath
+                    )
+                }
+            }
+        }
+    }
+
     companion object {
         /**
-         * Создаёт координатор и начинает слушать результаты системного
-         * установщика. Обычный конструктор годится только для тестов.
+         * Создаёт координатор, начинает слушать результаты системного установщика
+         * и согласует сохранённую попытку с установленной версией. Обычный
+         * конструктор годится только для тестов.
          */
         fun create(
             scope: CoroutineScope,
             installPort: UpdateInstallPort,
+            store: UpdateInstallPersistencePort,
+            installedVersionCode: () -> Int,
             apkExists: (String) -> Boolean = { File(it).exists() },
             nextAttemptId: () -> Long = defaultAttemptIdGenerator()
         ): UpdateInstallCoordinator {
-            val coordinator = UpdateInstallCoordinator(installPort, apkExists, nextAttemptId)
+            val coordinator =
+                UpdateInstallCoordinator(installPort, store, installedVersionCode, apkExists, nextAttemptId)
             scope.launch { installPort.callbacks.collect { coordinator.onInstallCallback(it) } }
+            coordinator.restore(scope)
             return coordinator
         }
     }

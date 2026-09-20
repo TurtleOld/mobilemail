@@ -36,8 +36,12 @@ private data class ActiveDownload(
  * не хранит Activity или callbacks — только [UpdateDownloadPort]/[ApkVerifierPort]
  * и [UpdateDownloadPersistencePort]. Согласие пользователя, назначение файла,
  * намерение загрузки и download ID переживают восстановление процесса через
- * [UpdateDownloadPersistencePort]; создавайте координатор через [createAndRestore],
- * чтобы это восстановление гарантированно произошло.
+ * [UpdateDownloadPersistencePort].
+ *
+ * Восстановление ([reconcile]) сверяет сохранённую операцию с фактическим
+ * состоянием DownloadManager, а не с одним сигналом о завершении: активная
+ * загрузка, ожидание сети, ошибка и готовое обновление восстанавливаются из
+ * реального статуса, исчезнувший файл не остаётся готовым к установке.
  */
 class UpdateDownloadCoordinator(
     private val downloadPort: UpdateDownloadPort,
@@ -52,18 +56,34 @@ class UpdateDownloadCoordinator(
     private val downloadMutex = Mutex()
     private var active: ActiveDownload? = null
     private var monitorJob: Job? = null
+    private var autoContinueEligible = false
 
     /**
-     * Восстанавливает наблюдение за загрузкой, которая была начата до перезапуска
-     * процесса. Вызывается один раз на процесс, до первого обращения пользователя
-     * к экрану загрузки.
+     * Уход пользователя в фон во время загрузки снимает автоматический переход
+     * к установке для текущей попытки: после возвращения готовое обновление
+     * предлагается кнопками «Установить» / «Позже».
      */
-    fun restorePendingDownload(scope: CoroutineScope) {
+    fun onAppBackgrounded() {
+        autoContinueEligible = false
+    }
+
+    /**
+     * Сверяет сохранённую операцию с фактическим состоянием DownloadManager.
+     * Идемпотентна и вызывается при запуске процесса и возвращении в приложение.
+     * Если передан [signaledDownloadId], операция сверяется только тогда, когда
+     * он относится к сохранённой загрузке. Восстановленное готовое обновление
+     * никогда не продолжается к установке автоматически.
+     */
+    fun reconcile(scope: CoroutineScope, signaledDownloadId: Long? = null) {
         scope.launch {
-            val pending = store.loadPendingDownload() ?: return@launch
             downloadMutex.withLock {
-                active = ActiveDownload(pending.downloadId, pending.manifest, pending.apkFilePath)
-                monitorJob = scope.launch { monitorDownload(pending.downloadId, pending.manifest) }
+                if (monitorJob?.isActive == true) return@withLock
+                val pending = store.loadPendingDownload() ?: return@withLock
+                if (signaledDownloadId != null && pending.downloadId != null && pending.downloadId != signaledDownloadId) {
+                    return@withLock
+                }
+                if (isAlreadyRestored(pending)) return@withLock
+                restoreLocked(scope, pending)
             }
         }
     }
@@ -81,13 +101,30 @@ class UpdateDownloadCoordinator(
                     else -> stopActiveDownloadLocked()
                 }
                 val apkFilePath = apkFilePathFor(manifest)
-                _state.value = UpdateDownloadState.Requesting
-                val downloadId = downloadPort.enqueue(manifest)
-                active = ActiveDownload(downloadId, manifest, apkFilePath)
-                store.savePendingDownload(PendingDownload(manifest, apkFilePath, downloadId))
-                monitorJob = scope.launch { monitorDownload(downloadId, manifest) }
+                autoContinueEligible = true
+                if (store.getCompletedAtMillis() == null) {
+                    store.loadPendingDownload()?.downloadId?.let { downloadPort.cancel(it) }
+                }
+                store.savePendingDownload(PendingDownload(manifest, apkFilePath, downloadId = null))
+                enqueueAndTrackLocked(scope, manifest, apkFilePath)
             }
         }
+    }
+
+    /**
+     * Ставит согласованную загрузку в системную очередь, сохраняет её ID и
+     * начинает наблюдение за фактическим статусом.
+     */
+    private suspend fun enqueueAndTrackLocked(
+        scope: CoroutineScope,
+        manifest: UpdateReleaseManifest,
+        apkFilePath: String
+    ) {
+        _state.value = UpdateDownloadState.Requesting
+        val downloadId = downloadPort.enqueue(manifest)
+        store.saveDownloadId(downloadId)
+        active = ActiveDownload(downloadId, manifest, apkFilePath)
+        monitorJob = scope.launch { monitorDownload(downloadId, manifest) }
     }
 
     /** versionCode активной загрузки, если она ещё идёт; `null`, если активной загрузки нет. */
@@ -103,24 +140,29 @@ class UpdateDownloadCoordinator(
 
     /**
      * Согласие на другой релиз, пока предыдущая загрузка ещё идёт: она не остаётся
-     * осиротевшей — сначала останавливается системная загрузка и очищается состояние,
-     * затем [startDownload] продолжает уже с новым релизом.
+     * осиротевшей — сначала очищается сохранённое состояние, затем останавливается
+     * системная загрузка, после чего [startDownload] продолжает с новым релизом.
      */
     private suspend fun stopActiveDownloadLocked() {
-        val current = active ?: return
+        val current = active
+        autoContinueEligible = false
+        store.clear()
+        active = null
         monitorJob?.cancel()
         monitorJob = null
-        downloadPort.cancel(current.downloadId)
-        active = null
-        store.clear()
+        if (current != null) downloadPort.cancel(current.downloadId)
     }
 
     /** Отмена по запросу пользователя: останавливает системную загрузку и удаляет файл. */
     fun cancelDownload(scope: CoroutineScope) {
         scope.launch {
             downloadMutex.withLock {
-                if (active == null) return@withLock
+                val pending = store.loadPendingDownload()
+                if (active == null && pending == null) return@withLock
+                val hadActive = active != null
                 stopActiveDownloadLocked()
+                val leftoverId = pending?.downloadId
+                if (!hadActive && leftoverId != null) downloadPort.cancel(leftoverId)
                 _state.value = UpdateDownloadState.Cancelled
             }
         }
@@ -134,11 +176,11 @@ class UpdateDownloadCoordinator(
 
     companion object {
         /**
-         * Создаёт координатор и сразу восстанавливает загрузку, начатую до перезапуска
-         * процесса. Единственный способ создать координатор, готовый к использованию
-         * держателем (см. [UpdateDownloadCoordinatorHolder]) — обычный конструктор
-         * оставляет восстановление на совести вызывающего и годится только для тестов,
-         * которым нужен точный контроль над моментом восстановления.
+         * Создаёт координатор и сразу сверяет сохранённую операцию с фактическим
+         * состоянием DownloadManager. Единственный способ создать координатор,
+         * готовый к использованию держателем (см. [UpdateDownloadCoordinatorHolder]);
+         * обычный конструктор годится только для тестов, которым нужен точный
+         * контроль над моментом восстановления.
          */
         fun createAndRestore(
             scope: CoroutineScope,
@@ -149,8 +191,58 @@ class UpdateDownloadCoordinator(
             now: () -> Long = System::currentTimeMillis
         ): UpdateDownloadCoordinator {
             val coordinator = UpdateDownloadCoordinator(downloadPort, verifier, store, apkFilePathFor, now)
-            coordinator.restorePendingDownload(scope)
+            coordinator.reconcile(scope)
             return coordinator
+        }
+    }
+
+    private fun isAlreadyRestored(pending: PendingDownload): Boolean {
+        val current = _state.value
+        return current is UpdateDownloadState.Ready && current.apkFilePath == pending.apkFilePath
+    }
+
+    /**
+     * Восстанавливает сохранённую операцию по реальному состоянию системы.
+     * Завершённая загрузка перепроверяется по файлу, незавершённая — либо
+     * подхватывается по download ID, либо находится по сохранённому назначению,
+     * а если постановки ещё не было — ставится один раз без нового согласия.
+     */
+    private suspend fun restoreLocked(scope: CoroutineScope, pending: PendingDownload) {
+        if (store.getCompletedAtMillis() != null) {
+            restoreCompletedLocked(pending)
+            return
+        }
+        val downloadId = pending.downloadId ?: downloadPort.findDownloadIdByDestination(pending.apkFilePath)
+        if (downloadId == null) {
+            resumeUnqueuedDownloadLocked(scope, pending)
+            return
+        }
+        store.saveDownloadId(downloadId)
+        active = ActiveDownload(downloadId, pending.manifest, pending.apkFilePath)
+        autoContinueEligible = false
+        monitorJob = scope.launch { monitorDownload(downloadId, pending.manifest) }
+    }
+
+    private suspend fun resumeUnqueuedDownloadLocked(scope: CoroutineScope, pending: PendingDownload) {
+        autoContinueEligible = false
+        enqueueAndTrackLocked(scope, pending.manifest, pending.apkFilePath)
+    }
+
+    private suspend fun restoreCompletedLocked(pending: PendingDownload) {
+        when (val result = verifier.verify(pending.apkFilePath, pending.manifest)) {
+            ApkVerificationResult.Valid -> {
+                active = null
+                autoContinueEligible = false
+                _state.value = UpdateDownloadState.Ready(pending.manifest, pending.apkFilePath, autoContinue = false)
+            }
+            is ApkVerificationResult.Invalid -> {
+                active = null
+                store.clear()
+                _state.value = UpdateDownloadState.Failed(
+                    error = AppError.UnknownError(errorMessage = result.reason),
+                    manifest = pending.manifest
+                )
+            }
         }
     }
 
@@ -169,11 +261,13 @@ class UpdateDownloadCoordinator(
                     return
                 }
                 is DownloadStatus.Failed -> {
-                    onDownloadFinished(downloadId) { failDownload(manifest, status.reason) }
+                    onDownloadFinished(downloadId) { failDownload(manifest, status.reason, clearRecord = false) }
                     return
                 }
                 DownloadStatus.NotFound -> {
-                    onDownloadFinished(downloadId) { failDownload(manifest, "Загрузка была удалена вне приложения") }
+                    onDownloadFinished(downloadId) {
+                        failDownload(manifest, "Загрузка была удалена вне приложения", clearRecord = true)
+                    }
                     return
                 }
             }
@@ -199,10 +293,13 @@ class UpdateDownloadCoordinator(
             ApkVerificationResult.Valid -> {
                 store.markCompletedNow(now())
                 active = null
-                _state.value = UpdateDownloadState.Ready(manifest, filePath)
+                val autoContinue = autoContinueEligible
+                autoContinueEligible = false
+                _state.value = UpdateDownloadState.Ready(manifest, filePath, autoContinue = autoContinue)
             }
             is ApkVerificationResult.Invalid -> {
                 active = null
+                autoContinueEligible = false
                 store.clear()
                 _state.value = UpdateDownloadState.Failed(
                     error = AppError.UnknownError(errorMessage = result.reason),
@@ -212,9 +309,12 @@ class UpdateDownloadCoordinator(
         }
     }
 
-    private suspend fun failDownload(manifest: UpdateReleaseManifest, reason: String) {
+    private suspend fun failDownload(manifest: UpdateReleaseManifest, reason: String, clearRecord: Boolean) {
         active = null
-        store.clear()
+        autoContinueEligible = false
+        if (clearRecord) {
+            store.clear()
+        }
         _state.value = UpdateDownloadState.Failed(
             error = AppError.UnknownError(errorMessage = reason),
             manifest = manifest
