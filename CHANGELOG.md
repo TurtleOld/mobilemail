@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.6.1](https://github.com/TurtleOld/mobilemail/compare/v1.6.0...v1.6.1) (2026-09-20)
+
+
+### Bug Fixes
+
+* **auth:** различать временный сбой сети и терминальный отказ токена при обновлении ([#104](https://github.com/TurtleOld/mobilemail/issues/104)) ([344570c](https://github.com/TurtleOld/mobilemail/commit/344570c71fce97c55eb486cc22e43d976ea2a739))
+
 ## [1.6.0](https://github.com/TurtleOld/mobilemail/compare/v1.5.5...v1.6.0) (2026-09-20)
 
 
