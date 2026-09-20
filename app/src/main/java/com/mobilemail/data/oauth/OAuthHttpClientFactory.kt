@@ -29,7 +29,7 @@ object OAuthHttpClientFactory {
             .build()
     }
 
-    fun sharedClient(
+    private fun sharedClient(
         connectTimeoutSeconds: Long,
         readTimeoutSeconds: Long,
         writeTimeoutSeconds: Long,
@@ -40,6 +40,36 @@ object OAuthHttpClientFactory {
         .writeTimeout(writeTimeoutSeconds, TimeUnit.SECONDS)
         .retryOnConnectionFailure(retryOnConnectionFailure)
         .build()
+
+    /**
+     * Проверка обновлений с GitHub Releases: до двух последовательных запросов
+     * (список релизов, затем manifest-ассет). Таймаут держит только один
+     * round-trip — общий бюджет всей операции держит вызывающий код
+     * ([com.mobilemail.data.update.GithubReleaseUpdateRepository]) через
+     * `withTimeout`, а не этот клиент.
+     */
+    fun forUpdateCheck(): OkHttpClient = sharedClient(
+        connectTimeoutSeconds = 15,
+        readTimeoutSeconds = 15,
+        writeTimeoutSeconds = 15,
+        retryOnConnectionFailure = true
+    )
+
+    /** Обновление access token: сервер авторизации может отвечать медленнее GitHub API. */
+    fun forTokenRefresh(): OkHttpClient = sharedClient(
+        connectTimeoutSeconds = 30,
+        readTimeoutSeconds = 30,
+        writeTimeoutSeconds = 30,
+        retryOnConnectionFailure = true
+    )
+
+    /** Отзыв токена при выходе — best-effort, не должен надолго блокировать logout. */
+    fun forRevocation(): OkHttpClient = sharedClient(
+        connectTimeoutSeconds = 10,
+        readTimeoutSeconds = 10,
+        writeTimeoutSeconds = 10,
+        retryOnConnectionFailure = false
+    )
 
     fun authorizedClient(tokenProvider: OAuthAccessTokenProvider): OkHttpClient =
         sharedClient.newBuilder()
