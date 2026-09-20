@@ -146,10 +146,33 @@ jobs:
           if-no-files-found: error
 
       - name: Upload APK to GitHub release
+        id: upload-apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
         run: |
+          bash .github/scripts/verify-release-asset-unchanged.sh \
+            "$RELEASE_TAG" app-release.apk app/build/outputs/apk/release/app-release.apk
           gh release upload "$RELEASE_TAG" \
             app/build/outputs/apk/release/app-release.apk \
+            --clobber
+
+      - name: Generate update metadata
+        id: generate-metadata
+        if: steps.upload-apk.outcome == 'success'
+        run: |
+          bash .github/scripts/generate-update-metadata.sh \
+            app/build/outputs/apk/release/app-release.apk \
+            update-metadata.json
+
+      - name: Upload update metadata to GitHub release
+        if: steps.generate-metadata.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          bash .github/scripts/verify-release-asset-unchanged.sh \
+            "$RELEASE_TAG" update-metadata.json update-metadata.json
+          gh release upload "$RELEASE_TAG" \
+            update-metadata.json \
             --clobber
