@@ -354,6 +354,43 @@ class GithubReleaseUpdateRepositoryIntegrationTest {
     }
 
     @Test
+    fun `maps an overall timeout across both stages to a timeout error`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        try {
+            // Каждый отдельный ответ приходит быстро, но обе стадии вместе
+            // превышают короткий общий бюджет — проверяем, что бюджет
+            // считается для checkForUpdate целиком, а не для одного запроса.
+            val delay = 60L
+            val delayUnit = java.util.concurrent.TimeUnit.MILLISECONDS
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBodyDelay(delay, delayUnit).setBody(releasesBody(server))
+            )
+            server.enqueue(
+                MockResponse().setResponseCode(200).setBodyDelay(delay, delayUnit).setBody(metadataBody())
+            )
+
+            val repo = GithubReleaseUpdateRepository(
+                httpClient = OkHttpClient(),
+                repoOwnerAndName = "turtleold/mobilemail",
+                expectedApplicationId = APPLICATION_ID,
+                deviceSdkInt = DEVICE_SDK,
+                apiBaseUrl = server.url("/").toString().trimEnd('/'),
+                overallTimeoutMillis = 50L
+            )
+
+            val result = repo.checkForUpdate(currentVersionCode = 1)
+
+            assertTrue(result is UpdateCheckResult.Failed)
+            val error = (result as UpdateCheckResult.Failed).error
+            assertTrue(error is AppError.NetworkError)
+            assertTrue((error as AppError.NetworkError).isTimeout)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `rejects a metadata response larger than the configured limit`() = runTest {
         val server = MockWebServer()
         server.start()

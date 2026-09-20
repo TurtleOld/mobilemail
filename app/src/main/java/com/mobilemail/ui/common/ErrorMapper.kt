@@ -1,5 +1,6 @@
 package com.mobilemail.ui.common
 import android.util.Log
+import com.mobilemail.data.jmap.OAuthTokenExpiredException
 import com.mobilemail.util.LogRedactor
 import java.io.IOException
 import java.net.ConnectException
@@ -12,6 +13,17 @@ import javax.net.ssl.SSLPeerUnverifiedException
 object ErrorMapper {
 
     fun mapException(exception: Throwable): AppError {
+        // OAuthTokenExpiredException уже прошёл классификацию в
+        // OAuthRefreshFailureClassifier (transient vs. terminal) в момент
+        // обновления токена — здесь не нужно заново угадывать причину по
+        // тексту сообщения через rootCause/regex.
+        if (exception is OAuthTokenExpiredException) {
+            return AppError.AuthError(
+                errorMessage = exception.message ?: "Сессия истекла. Требуется повторный вход.",
+                errorCause = exception
+            )
+        }
+
         val root = rootCause(exception)
         val rootMessage = (root.message ?: root.javaClass.simpleName).orEmpty()
         val fullMessage = (exception.message ?: exception.javaClass.simpleName).orEmpty()

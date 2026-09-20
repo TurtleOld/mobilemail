@@ -196,6 +196,82 @@ class JmapOAuthClientIntegrationTest {
     }
 
     @Test
+    fun `refresh failure from a transient server error keeps the refresh token`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(sessionResponse(server)))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"unauthorized"}"""))
+        server.enqueue(MockResponse().setResponseCode(500).setBody("""{"error":"server_error"}"""))
+        try {
+            val tokenAccess = FakeTokenStoreAccess(
+                StoredToken(
+                    accessToken = "old_access",
+                    tokenType = "Bearer",
+                    expiresAt = System.currentTimeMillis() + 60_000,
+                    refreshToken = "old_refresh"
+                )
+            )
+            val client = JmapOAuthClient(
+                baseUrl = server.url("/").toString(),
+                email = "user@example.com",
+                accountId = "acc1",
+                tokenStoreAccess = tokenAccess,
+                metadata = metadata(server),
+                clientId = "mobilemail-test"
+            )
+
+            try {
+                client.getMailboxes("acc1")
+                fail("Expected exception when refresh fails")
+            } catch (error: Exception) {
+                // ожидаемо: транзиентный сбой не даёт восстановить сессию сразу
+            }
+
+            assertEquals("old_refresh", tokenAccess.currentToken?.refreshToken)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `refresh failure from invalid_grant clears the refresh token`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(sessionResponse(server)))
+        server.enqueue(MockResponse().setResponseCode(401).setBody("""{"error":"unauthorized"}"""))
+        server.enqueue(MockResponse().setResponseCode(400).setBody("""{"error":"invalid_grant"}"""))
+        try {
+            val tokenAccess = FakeTokenStoreAccess(
+                StoredToken(
+                    accessToken = "old_access",
+                    tokenType = "Bearer",
+                    expiresAt = System.currentTimeMillis() + 60_000,
+                    refreshToken = "old_refresh"
+                )
+            )
+            val client = JmapOAuthClient(
+                baseUrl = server.url("/").toString(),
+                email = "user@example.com",
+                accountId = "acc1",
+                tokenStoreAccess = tokenAccess,
+                metadata = metadata(server),
+                clientId = "mobilemail-test"
+            )
+
+            try {
+                client.getMailboxes("acc1")
+                fail("Expected exception when refresh token is rejected")
+            } catch (error: Exception) {
+                // ожидаемо: терминальный отказ сервера авторизации
+            }
+
+            assertEquals(null, tokenAccess.currentToken)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
     fun `getMailboxes throws on JMAP error envelope`() = runTest {
         val server = MockWebServer()
         server.start()
