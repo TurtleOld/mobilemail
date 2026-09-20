@@ -95,7 +95,7 @@ fun resolveUpdateBanner(
     is UpdateInstallState.AwaitingConfirmation -> UpdateBannerModel.AwaitingConfirmation
     is UpdateInstallState.Cancelled -> UpdateBannerModel.InstallFailed("Установка отменена")
     is UpdateInstallState.Failed -> UpdateBannerModel.InstallFailed(install.error.getUserMessage())
-    is UpdateInstallState.Installed,
+    is UpdateInstallState.Installed -> null
     is UpdateInstallState.Expired,
     UpdateInstallState.Idle -> resolveDownloadOrOffer(check, download, isOfferDismissed, isInstallOfferDismissed)
 }
