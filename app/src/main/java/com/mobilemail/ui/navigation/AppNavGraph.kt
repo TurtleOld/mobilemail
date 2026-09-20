@@ -76,6 +76,8 @@ import com.mobilemail.ui.settings.SettingsScreen
 import com.mobilemail.ui.settings.UpdateCheckCoordinatorHolder
 import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.domain.model.UpdateDownloadState
+import com.mobilemail.ui.common.UpdateBannerAction
+import com.mobilemail.ui.common.resolveUpdateBanner
 import com.mobilemail.ui.settings.UpdateDownloadCoordinatorHolder
 import com.mobilemail.ui.settings.UpdateInstallCoordinatorHolder
 import com.mobilemail.BuildConfig
@@ -276,6 +278,16 @@ fun AppNavGraph(
             val updateCheckCoordinator = remember { UpdateCheckCoordinatorHolder.get() }
             val updateCheckState by updateCheckCoordinator.state.collectAsStateWithLifecycle()
             val isUpdateOfferDismissed by updateCheckCoordinator.isOfferDismissed.collectAsStateWithLifecycle()
+            val updateDownloadState by updateDownloadCoordinator.state.collectAsStateWithLifecycle()
+            val updateInstallState by updateInstallCoordinator.state.collectAsStateWithLifecycle()
+            val isInstallOfferDismissed by updateInstallCoordinator.isOfferDismissed.collectAsStateWithLifecycle()
+            val updateBanner = resolveUpdateBanner(
+                check = updateCheckState,
+                download = updateDownloadState,
+                install = updateInstallState,
+                isOfferDismissed = isUpdateOfferDismissed,
+                isInstallOfferDismissed = isInstallOfferDismissed
+            )
 
             LaunchedEffect(Unit) {
                 updateCheckCoordinator.checkOnStartupOnce(BuildConfig.VERSION_CODE)
@@ -430,15 +442,23 @@ fun AppNavGraph(
                 onSettingsClick = {
                     navController.navigate(AppRoutes.settings(server, email))
                 },
-                updateOfferState = if (isUpdateOfferDismissed) null else updateCheckState,
-                onUpdateOfferClick = {
-                    val available = updateCheckState as? UpdateCheckResult.UpdateAvailable
-                    if (available != null) {
-                        updateDownloadCoordinator.startDownload(activityScope, available.manifest)
+                updateBanner = updateBanner,
+                onUpdateBannerAction = { action ->
+                    when (action) {
+                        UpdateBannerAction.UPDATE -> {
+                            val available = updateCheckState as? UpdateCheckResult.UpdateAvailable
+                            if (available != null) {
+                                updateDownloadCoordinator.startDownload(activityScope, available.manifest)
+                            }
+                        }
+                        UpdateBannerAction.OFFER_LATER -> updateCheckCoordinator.dismissOffer()
+                        UpdateBannerAction.INSTALL_LATER -> updateInstallCoordinator.dismissOffer()
+                        UpdateBannerAction.CANCEL -> updateDownloadCoordinator.cancelDownload(activityScope)
+                        UpdateBannerAction.RETRY_DOWNLOAD -> updateDownloadCoordinator.retryDownload(activityScope)
+                        UpdateBannerAction.INSTALL,
+                        UpdateBannerAction.RETRY_INSTALL -> updateInstallCoordinator.install(activityScope)
                     }
-                    navController.navigate(AppRoutes.settings(server, email))
                 },
-                onUpdateOfferDismiss = { updateCheckCoordinator.dismissOffer() },
                 swipeRightAction = swipeRightAction,
                 swipeLeftAction = swipeLeftAction,
                 onLogout = {

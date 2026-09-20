@@ -69,9 +69,10 @@ import com.mobilemail.ui.common.AuthExpiredBanner
 import com.mobilemail.ui.common.EmailListSkeleton
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.OfflineBanner
-import com.mobilemail.ui.common.UpdateOfferBanner
+import com.mobilemail.ui.common.UpdateBanner
+import com.mobilemail.ui.common.UpdateBannerAction
+import com.mobilemail.ui.common.UpdateBannerModel
 import com.mobilemail.ui.common.isExpandedWindowWidth
-import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -96,9 +97,8 @@ fun MessagesScreen(
     onLogout: () -> Unit = {},
     swipeRightAction: SwipeAction = SwipeAction.ARCHIVE,
     swipeLeftAction: SwipeAction = SwipeAction.DELETE,
-    updateOfferState: UpdateCheckResult? = null,
-    onUpdateOfferClick: () -> Unit = {},
-    onUpdateOfferDismiss: () -> Unit = {},
+    updateBanner: UpdateBannerModel? = null,
+    onUpdateBannerAction: (UpdateBannerAction) -> Unit = {},
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val pagingItems = viewModel.pagedMessages.collectAsLazyPagingItems()
@@ -324,12 +324,10 @@ fun MessagesScreen(
                 if (uiState.error is AppError.AuthError) {
                     AuthExpiredBanner(onRelogin = onLogout)
                 }
-                if (updateOfferState is UpdateCheckResult.UpdateAvailable) {
-                    UpdateOfferBanner(
-                        versionName = updateOfferState.versionName,
-                        apkSizeBytes = updateOfferState.apkSizeBytes,
-                        onUpdateClick = onUpdateOfferClick,
-                        onLaterClick = onUpdateOfferDismiss
+                if (updateBanner != null) {
+                    UpdateBanner(
+                        model = updateBanner,
+                        onAction = onUpdateBannerAction
                     )
                 }
                 MessagesList(
