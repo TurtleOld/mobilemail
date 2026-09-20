@@ -16,6 +16,7 @@ class FakeUpdateDownloadPort : UpdateDownloadPort {
 
     val enqueuedManifests = mutableListOf<UpdateReleaseManifest>()
     val cancelledIds = mutableListOf<Long>()
+    val downloadIdsByDestination = mutableMapOf<String, Long>()
 
     override fun enqueue(manifest: UpdateReleaseManifest): Long {
         val id = nextId.getAndIncrement()
@@ -26,6 +27,9 @@ class FakeUpdateDownloadPort : UpdateDownloadPort {
 
     override fun pollStatus(downloadId: Long): DownloadStatus =
         statuses[downloadId] ?: DownloadStatus.NotFound
+
+    override fun findDownloadIdByDestination(apkFilePath: String): Long? =
+        downloadIdsByDestination[apkFilePath]
 
     override fun cancel(downloadId: Long) {
         cancelledIds.add(downloadId)

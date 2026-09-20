@@ -44,6 +44,28 @@ class AndroidUpdateDownloadPort(private val context: Context) : UpdateDownloadPo
         }
     }
 
+    override fun findDownloadIdByDestination(apkFilePath: String): Long? {
+        val expectedName = File(apkFilePath).name
+        val query = DownloadManager.Query()
+        downloadManager.query(query).use { cursor ->
+            if (!cursor.moveToFirst()) return null
+            val idColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_ID)
+            val uriColumn = cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI)
+            do {
+                val localUri = cursor.getString(uriColumn) ?: continue
+                if (matchesDestination(localUri, apkFilePath, expectedName)) {
+                    return cursor.getLong(idColumn)
+                }
+            } while (cursor.moveToNext())
+        }
+        return null
+    }
+
+    private fun matchesDestination(localUri: String, apkFilePath: String, expectedName: String): Boolean {
+        val localPath = Uri.parse(localUri).path ?: return false
+        return localPath == apkFilePath || File(localPath).name == expectedName
+    }
+
     override fun cancel(downloadId: Long) {
         downloadManager.remove(downloadId)
     }

@@ -5,11 +5,16 @@ import com.mobilemail.domain.model.UpdateReleaseManifest
 /**
  * Согласие пользователя на релиз, назначение файла, намерение загрузки и
  * download ID — то, что должно пережить восстановление процесса.
+ *
+ * [downloadId] равен `null`, пока системная загрузка не поставлена в очередь:
+ * согласие и назначение сохраняются до `enqueue`, поэтому завершение процесса
+ * между постановкой и записью ID не теряет операцию — её находят по
+ * сохранённому [apkFilePath].
  */
 data class PendingDownload(
     val manifest: UpdateReleaseManifest,
     val apkFilePath: String,
-    val downloadId: Long
+    val downloadId: Long?
 )
 
 /**
@@ -20,6 +25,9 @@ data class PendingDownload(
 interface UpdateDownloadPersistencePort {
     suspend fun savePendingDownload(pending: PendingDownload)
     suspend fun loadPendingDownload(): PendingDownload?
+
+    /** Записывает download ID поверх сохранённого намерения после `enqueue`. */
+    suspend fun saveDownloadId(downloadId: Long)
 
     /** Время фактического завершения загрузки. Повторный вызов не сдвигает уже записанное время. */
     suspend fun markCompletedNow(completedAtMillis: Long)

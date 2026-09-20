@@ -7,7 +7,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.mobilemail.domain.model.UpdateReleaseManifest
 import com.mobilemail.domain.port.PendingDownload
 import com.mobilemail.domain.port.UpdateDownloadPersistencePort
 import kotlinx.coroutines.flow.first
@@ -26,7 +25,11 @@ class UpdateDownloadStore(private val context: Context) : UpdateDownloadPersiste
         context.updateDownloadDataStore.edit { prefs ->
             prefs[MANIFEST_JSON] = pending.manifest.toJson()
             prefs[APK_FILE_PATH] = pending.apkFilePath
-            prefs[DOWNLOAD_ID] = pending.downloadId
+            if (pending.downloadId != null) {
+                prefs[DOWNLOAD_ID] = pending.downloadId
+            } else {
+                prefs.remove(DOWNLOAD_ID)
+            }
             prefs.remove(COMPLETED_AT_MILLIS)
         }
     }
@@ -35,11 +38,18 @@ class UpdateDownloadStore(private val context: Context) : UpdateDownloadPersiste
         val prefs = context.updateDownloadDataStore.data.first()
         val manifestJson = prefs[MANIFEST_JSON]
         val apkFilePath = prefs[APK_FILE_PATH]
-        val downloadId = prefs[DOWNLOAD_ID]
-        if (manifestJson == null || apkFilePath == null || downloadId == null) return null
+        if (manifestJson == null || apkFilePath == null) return null
 
-        val manifest = runCatching { UpdateReleaseManifest.fromJson(manifestJson) }.getOrNull() ?: return null
-        return PendingDownload(manifest, apkFilePath, downloadId)
+        val manifest = updateManifestFromJson(manifestJson) ?: return null
+        return PendingDownload(manifest, apkFilePath, prefs[DOWNLOAD_ID])
+    }
+
+    override suspend fun saveDownloadId(downloadId: Long) {
+        context.updateDownloadDataStore.edit { prefs ->
+            if (prefs.contains(MANIFEST_JSON) && prefs.contains(APK_FILE_PATH)) {
+                prefs[DOWNLOAD_ID] = downloadId
+            }
+        }
     }
 
     override suspend fun markCompletedNow(completedAtMillis: Long) {
@@ -57,29 +67,4 @@ class UpdateDownloadStore(private val context: Context) : UpdateDownloadPersiste
     override suspend fun clear() {
         context.updateDownloadDataStore.edit { prefs -> prefs.clear() }
     }
-}
-
-private fun UpdateReleaseManifest.toJson(): String {
-    return org.json.JSONObject().apply {
-        put("versionName", versionName)
-        put("versionCode", versionCode)
-        put("applicationId", applicationId)
-        put("minSdk", minSdk)
-        put("apkDownloadUrl", apkDownloadUrl)
-        put("apkSizeBytes", apkSizeBytes)
-        put("apkSha256", apkSha256)
-    }.toString()
-}
-
-private fun UpdateReleaseManifest.Companion.fromJson(json: String): UpdateReleaseManifest {
-    val obj = org.json.JSONObject(json)
-    return UpdateReleaseManifest(
-        versionName = obj.getString("versionName"),
-        versionCode = obj.getInt("versionCode"),
-        applicationId = obj.getString("applicationId"),
-        minSdk = obj.getInt("minSdk"),
-        apkDownloadUrl = obj.getString("apkDownloadUrl"),
-        apkSizeBytes = obj.getLong("apkSizeBytes"),
-        apkSha256 = obj.getString("apkSha256")
-    )
 }

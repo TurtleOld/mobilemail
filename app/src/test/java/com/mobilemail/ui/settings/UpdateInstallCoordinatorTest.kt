@@ -7,10 +7,12 @@ import com.mobilemail.domain.model.UpdateReleaseManifest
 import com.mobilemail.domain.port.InstallCallback
 import com.mobilemail.domain.port.InstallOutcome
 import com.mobilemail.domain.port.InstallStartResult
+import com.mobilemail.domain.port.PendingInstall
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -32,16 +34,20 @@ private fun manifest(versionCode: Int = 10600) = UpdateReleaseManifest(
  * [UpdateInstallCoordinator.onDownloadCompleted], [UpdateInstallCoordinator.install],
  * [UpdateInstallCoordinator.onAppForegrounded] и наблюдаемое
  * [UpdateInstallCoordinator.state]. Системный установщик подменяется
- * [FakeUpdateInstallPort].
+ * [FakeUpdateInstallPort], сохранённая попытка — [FakeUpdateInstallPersistencePort].
  */
 class UpdateInstallCoordinatorTest {
 
     private fun CoroutineScope.coordinator(
         port: FakeUpdateInstallPort = FakeUpdateInstallPort(),
+        store: FakeUpdateInstallPersistencePort = FakeUpdateInstallPersistencePort(),
+        installedVersionCode: Int = 10500,
         apkExists: (String) -> Boolean = { true }
     ) = UpdateInstallCoordinator.create(
         scope = this,
         installPort = port,
+        store = store,
+        installedVersionCode = { installedVersionCode },
         apkExists = apkExists,
         nextAttemptId = { ATTEMPT_ID }
     )
@@ -352,5 +358,76 @@ class UpdateInstallCoordinatorTest {
 
         assertTrue(port.startedInstalls.isEmpty())
         assertTrue(coordinator.state.value is UpdateInstallState.Failed)
+    }
+
+    @Test
+    fun `starting an install persists the attempt`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val store = FakeUpdateInstallPersistencePort()
+        val coordinator = backgroundScope.coordinator(port, store)
+
+        coordinator.onDownloadCompleted(backgroundScope, manifest(), APK_PATH, autoContinue = false)
+        runCurrent()
+        coordinator.install(backgroundScope)
+        runCurrent()
+
+        val pending = store.loadPendingInstall()
+        assertEquals(APK_PATH, pending?.apkFilePath)
+        assertEquals(10600, pending?.manifest?.versionCode)
+    }
+
+    @Test
+    fun `success without callback is reconciled to installed on next launch`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val store = FakeUpdateInstallPersistencePort(PendingInstall(manifest(), APK_PATH))
+        val coordinator = backgroundScope.coordinator(port, store, installedVersionCode = 10600)
+
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateInstallState.Installed)
+        assertTrue(port.startedInstalls.isEmpty())
+        assertNull(store.loadPendingInstall())
+    }
+
+    @Test
+    fun `unrecoverable attempt offers install without opening the installer`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val store = FakeUpdateInstallPersistencePort(PendingInstall(manifest(), APK_PATH))
+        val coordinator = backgroundScope.coordinator(port, store, installedVersionCode = 10500)
+
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateInstallState.Ready)
+        assertTrue(port.startedInstalls.isEmpty())
+        assertEquals(0, port.settingsOpenedCount)
+    }
+
+    @Test
+    fun `unrecoverable attempt with a missing apk fails`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val store = FakeUpdateInstallPersistencePort(PendingInstall(manifest(), APK_PATH))
+        val coordinator = backgroundScope.coordinator(
+            port,
+            store,
+            installedVersionCode = 10500,
+            apkExists = { false }
+        )
+
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateInstallState.Failed)
+        assertEquals(0, port.settingsOpenedCount)
+    }
+
+    @Test
+    fun `a download for an already installed version is reported installed`() = runTest {
+        val port = FakeUpdateInstallPort()
+        val coordinator = backgroundScope.coordinator(port, installedVersionCode = 10600)
+
+        coordinator.onDownloadCompleted(backgroundScope, manifest(), APK_PATH, autoContinue = true)
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateInstallState.Installed)
+        assertTrue(port.startedInstalls.isEmpty())
     }
 }

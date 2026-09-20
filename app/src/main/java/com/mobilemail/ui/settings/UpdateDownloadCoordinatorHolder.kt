@@ -4,11 +4,13 @@ import android.content.Context
 import android.os.Environment
 import com.mobilemail.data.update.AndroidUpdateDownloadPort
 import com.mobilemail.data.update.ApkContractVerifier
+import com.mobilemail.data.update.UpdateDownloadSignalBus
 import com.mobilemail.data.update.UpdateDownloadStore
 import com.mobilemail.data.update.updateApkFileName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import java.io.File
 
 /**
@@ -42,6 +44,11 @@ object UpdateDownloadCoordinatorHolder {
                     File(dir, updateApkFileName(manifest)).absolutePath
                 }
             )
+            restoreScope.launch {
+                UpdateDownloadSignalBus.signals.collect { downloadId ->
+                    coordinator.reconcile(restoreScope, signaledDownloadId = downloadId)
+                }
+            }
             instance = coordinator
             return coordinator
         }

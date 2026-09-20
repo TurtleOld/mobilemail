@@ -19,7 +19,19 @@ sealed class UpdateDownloadState {
     data class Downloading(val progress: UpdateDownloadProgress) : UpdateDownloadState()
     data object WaitingForNetwork : UpdateDownloadState()
     data object Verifying : UpdateDownloadState()
-    data class Ready(val manifest: UpdateReleaseManifest, val apkFilePath: String) : UpdateDownloadState()
+
+    /**
+     * Готовое обновление. [autoContinue] равно `true`, только когда пользователь
+     * дождался завершения загрузки в текущей попытке, не уходя в фон: в этом
+     * случае разрешён один автоматический переход к установке. Восстановленное
+     * после перезапуска процесса готовое обновление всегда [autoContinue] = `false`.
+     */
+    data class Ready(
+        val manifest: UpdateReleaseManifest,
+        val apkFilePath: String,
+        val autoContinue: Boolean = false
+    ) : UpdateDownloadState()
+
     data object Cancelled : UpdateDownloadState()
     data class Failed(val error: AppError, val manifest: UpdateReleaseManifest) : UpdateDownloadState()
 }
