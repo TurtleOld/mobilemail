@@ -4,8 +4,10 @@ import android.content.Context
 import android.os.Environment
 import com.mobilemail.data.update.AndroidUpdateDownloadPort
 import com.mobilemail.data.update.ApkContractVerifier
+import com.mobilemail.data.update.UpdateApkCleanerHolder
 import com.mobilemail.data.update.UpdateDownloadSignalBus
 import com.mobilemail.data.update.UpdateDownloadStore
+import com.mobilemail.data.update.WorkManagerUpdateCleanupScheduler
 import com.mobilemail.data.update.updateApkFileName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +36,7 @@ object UpdateDownloadCoordinatorHolder {
             if (alreadyCreated != null) return alreadyCreated
 
             val applicationContext = context.applicationContext
+            val cleaner = UpdateApkCleanerHolder.get(applicationContext)
             val coordinator = UpdateDownloadCoordinator.createAndRestore(
                 scope = restoreScope,
                 downloadPort = AndroidUpdateDownloadPort(applicationContext),
@@ -42,7 +45,9 @@ object UpdateDownloadCoordinatorHolder {
                 apkFilePathFor = { manifest ->
                     val dir = applicationContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
                     File(dir, updateApkFileName(manifest)).absolutePath
-                }
+                },
+                cleaner = cleaner,
+                cleanupScheduler = WorkManagerUpdateCleanupScheduler(applicationContext)
             )
             restoreScope.launch {
                 UpdateDownloadSignalBus.signals.collect { downloadId ->

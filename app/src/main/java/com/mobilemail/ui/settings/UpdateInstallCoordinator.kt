@@ -6,6 +6,7 @@ import com.mobilemail.domain.port.InstallCallback
 import com.mobilemail.domain.port.InstallOutcome
 import com.mobilemail.domain.port.InstallStartResult
 import com.mobilemail.domain.port.PendingInstall
+import com.mobilemail.domain.port.UpdateApkCleanupPort
 import com.mobilemail.domain.port.UpdateInstallPersistencePort
 import com.mobilemail.domain.port.UpdateInstallPort
 import com.mobilemail.ui.common.AppError
@@ -46,6 +47,7 @@ private data class InstallTarget(
 class UpdateInstallCoordinator(
     private val installPort: UpdateInstallPort,
     private val store: UpdateInstallPersistencePort,
+    private val cleaner: UpdateApkCleanupPort,
     private val installedVersionCode: () -> Int,
     private val apkExists: (String) -> Boolean = { File(it).exists() },
     private val nextAttemptId: () -> Long = defaultAttemptIdGenerator()
@@ -81,6 +83,7 @@ class UpdateInstallCoordinator(
         scope.launch {
             mutex.withLock {
                 if (installedVersionCode() >= manifest.versionCode) {
+                    cleaner.clean(apkFilePath)
                     _state.value = UpdateInstallState.Installed(manifest)
                     return@withLock
                 }
@@ -107,6 +110,22 @@ class UpdateInstallCoordinator(
     /** «Позже»: предложение скрывается, но готовый APK остаётся для установки. */
     fun dismissOffer() {
         _isOfferDismissed.value = true
+    }
+
+    /**
+     * Скачанное обновление стало непригодным (например, истёк срок): активное
+     * предложение снимается, установка не предлагается.
+     */
+    fun onApkExpired(scope: CoroutineScope, manifest: UpdateReleaseManifest) {
+        scope.launch {
+            mutex.withLock {
+                if (currentInstall?.manifest?.versionCode != manifest.versionCode) return@withLock
+                currentInstall = null
+                activeAttemptId = null
+                isUserActionDeferred = false
+                _state.value = UpdateInstallState.Expired(manifest)
+            }
+        }
     }
 
     /**
@@ -148,6 +167,12 @@ class UpdateInstallCoordinator(
             )
             return
         }
+        if (cleaner.isExpired()) {
+            activeAttemptId = null
+            cleaner.clean(target.apkFilePath)
+            _state.value = UpdateInstallState.Expired(target.manifest)
+            return
+        }
         if (!installPort.isInstallPermissionGranted()) {
             if (installPort.openInstallPermissionSettings()) {
                 _state.value = UpdateInstallState.AwaitingPermission(target.manifest, target.apkFilePath)
@@ -163,7 +188,10 @@ class UpdateInstallCoordinator(
         val attemptId = nextAttemptId()
         store.savePendingInstall(PendingInstall(target.manifest, target.apkFilePath))
         activeAttemptId = attemptId
-        when (val result = installPort.startInstall(target.apkFilePath, attemptId)) {
+        val result = cleaner.duringInstallTransfer {
+            installPort.startInstall(target.apkFilePath, attemptId)
+        }
+        when (result) {
             InstallStartResult.Started -> {
                 _state.value = UpdateInstallState.AwaitingConfirmation(target.manifest, target.apkFilePath)
             }
@@ -204,7 +232,7 @@ class UpdateInstallCoordinator(
                 InstallOutcome.Success -> {
                     activeAttemptId = null
                     isUserActionDeferred = false
-                    store.clear()
+                    cleaner.clean(target.apkFilePath)
                     _state.value = UpdateInstallState.Installed(target.manifest)
                 }
                 InstallOutcome.Cancelled -> {
@@ -234,8 +262,9 @@ class UpdateInstallCoordinator(
 
     /**
      * Согласует сохранённую установочную попытку с фактическим результатом.
-     * Уже установленная версия отмечается как [UpdateInstallState.Installed];
-     * иначе попытка не возобновляется сама, а лишь предлагает «Установить».
+     * Уже установленная версия отмечается как [UpdateInstallState.Installed],
+     * просроченный APK очищается как [UpdateInstallState.Expired]; иначе попытка
+     * не возобновляется сама, а лишь предлагает «Установить».
      */
     private fun restore(scope: CoroutineScope) {
         scope.launch {
@@ -243,8 +272,13 @@ class UpdateInstallCoordinator(
                 val pending = store.loadPendingInstall() ?: return@withLock
                 activeAttemptId = null
                 if (installedVersionCode() >= pending.manifest.versionCode) {
-                    store.clear()
+                    cleaner.clean(pending.apkFilePath)
                     _state.value = UpdateInstallState.Installed(pending.manifest)
+                    return@withLock
+                }
+                if (cleaner.isExpired()) {
+                    cleaner.clean(pending.apkFilePath)
+                    _state.value = UpdateInstallState.Expired(pending.manifest)
                     return@withLock
                 }
                 val apkStillExists = apkExists(pending.apkFilePath)
@@ -273,12 +307,13 @@ class UpdateInstallCoordinator(
             scope: CoroutineScope,
             installPort: UpdateInstallPort,
             store: UpdateInstallPersistencePort,
+            cleaner: UpdateApkCleanupPort,
             installedVersionCode: () -> Int,
             apkExists: (String) -> Boolean = { File(it).exists() },
             nextAttemptId: () -> Long = defaultAttemptIdGenerator()
         ): UpdateInstallCoordinator {
             val coordinator =
-                UpdateInstallCoordinator(installPort, store, installedVersionCode, apkExists, nextAttemptId)
+                UpdateInstallCoordinator(installPort, store, cleaner, installedVersionCode, apkExists, nextAttemptId)
             scope.launch { installPort.callbacks.collect { coordinator.onInstallCallback(it) } }
             coordinator.restore(scope)
             return coordinator

@@ -13,6 +13,7 @@ class FakeUpdateDownloadPersistencePort(
 
     override suspend fun savePendingDownload(pending: PendingDownload) {
         this.pending = pending
+        completedAtMillis = null
     }
 
     override suspend fun loadPendingDownload(): PendingDownload? = pending
@@ -31,6 +32,7 @@ class FakeUpdateDownloadPersistencePort(
 
     override suspend fun clear() {
         pending = null
+        completedAtMillis = null
         clearCalls++
     }
 }

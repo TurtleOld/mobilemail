@@ -39,8 +39,17 @@ class UpdateDownloadCoordinatorTest {
     private fun coordinator(
         downloadPort: FakeUpdateDownloadPort = FakeUpdateDownloadPort(),
         verifier: FakeApkVerifierPort = FakeApkVerifierPort(),
-        store: FakeUpdateDownloadPersistencePort = FakeUpdateDownloadPersistencePort()
-    ) = UpdateDownloadCoordinator(downloadPort, verifier, store, apkFilePathFor = { APK_PATH })
+        store: FakeUpdateDownloadPersistencePort = FakeUpdateDownloadPersistencePort(),
+        cleaner: FakeUpdateApkCleanupPort = FakeUpdateApkCleanupPort(),
+        cleanupScheduler: FakeUpdateCleanupScheduler = FakeUpdateCleanupScheduler()
+    ) = UpdateDownloadCoordinator(
+        downloadPort,
+        verifier,
+        store,
+        apkFilePathFor = { APK_PATH },
+        cleaner = cleaner,
+        cleanupScheduler = cleanupScheduler
+    )
 
     @Test
     fun `consent starts a request that transitions through downloading to ready`() = runTest {
@@ -271,7 +280,9 @@ class UpdateDownloadCoordinatorTest {
             downloadPort = downloadPort,
             verifier = FakeApkVerifierPort(),
             store = store,
-            apkFilePathFor = { APK_PATH }
+            apkFilePathFor = { APK_PATH },
+            cleaner = FakeUpdateApkCleanupPort(),
+            cleanupScheduler = FakeUpdateCleanupScheduler()
         )
         advanceTimeBy(600); runCurrent()
 
@@ -290,6 +301,8 @@ class UpdateDownloadCoordinatorTest {
             FakeApkVerifierPort(),
             store,
             apkFilePathFor = { APK_PATH },
+            cleaner = FakeUpdateApkCleanupPort(),
+            cleanupScheduler = FakeUpdateCleanupScheduler(),
             now = { clock }
         )
 
@@ -460,6 +473,8 @@ class UpdateDownloadCoordinatorTest {
             FakeApkVerifierPort(),
             store,
             apkFilePathFor = { APK_PATH },
+            cleaner = FakeUpdateApkCleanupPort(),
+            cleanupScheduler = FakeUpdateCleanupScheduler(),
             now = { clock }
         )
 
@@ -471,5 +486,90 @@ class UpdateDownloadCoordinatorTest {
         coordinator.reconcile(backgroundScope)
         runCurrent()
         assertEquals(1_000L, store.getCompletedAtMillis())
+    }
+
+    @Test
+    fun `an expired completed download is cleaned and reported expired on restore`() = runTest {
+        val downloadPort = FakeUpdateDownloadPort()
+        val store = FakeUpdateDownloadPersistencePort(
+            pending = PendingDownload(manifest(), APK_PATH, 1L),
+            completedAtMillis = 1_000L
+        )
+        val cleaner = FakeUpdateApkCleanupPort(expired = true)
+        val coordinator = coordinator(downloadPort = downloadPort, store = store, cleaner = cleaner)
+
+        coordinator.reconcile(backgroundScope)
+        runCurrent()
+
+        assertEquals(listOf(APK_PATH), cleaner.cleanedPaths)
+        assertTrue(downloadPort.enqueuedManifests.isEmpty())
+        val expired = coordinator.state.value
+        assertTrue(expired is UpdateDownloadState.Expired)
+        assertEquals(manifest().versionCode, (expired as UpdateDownloadState.Expired).manifest.versionCode)
+    }
+
+    @Test
+    fun `completing a download schedules cleanup at the recorded time`() = runTest {
+        val downloadPort = FakeUpdateDownloadPort()
+        val scheduler = FakeUpdateCleanupScheduler()
+        var clock = 1_000L
+        val coordinator = UpdateDownloadCoordinator(
+            downloadPort,
+            FakeApkVerifierPort(),
+            FakeUpdateDownloadPersistencePort(),
+            apkFilePathFor = { APK_PATH },
+            cleaner = FakeUpdateApkCleanupPort(),
+            cleanupScheduler = scheduler,
+            now = { clock }
+        )
+
+        coordinator.startDownload(backgroundScope, manifest())
+        runCurrent()
+        clock = 5_000L
+        downloadPort.setStatus(1L, DownloadStatus.Successful(APK_PATH))
+        advanceTimeBy(600); runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateDownloadState.Ready)
+        assertEquals(listOf(5_000L), scheduler.scheduledCompletedAt)
+    }
+
+    @Test
+    fun `restoring a completed download reschedules cleanup for the original time`() = runTest {
+        val downloadPort = FakeUpdateDownloadPort()
+        val store = FakeUpdateDownloadPersistencePort(
+            pending = PendingDownload(manifest(), APK_PATH, 1L),
+            completedAtMillis = 1_000L
+        )
+        val scheduler = FakeUpdateCleanupScheduler()
+        val coordinator = coordinator(downloadPort = downloadPort, store = store, cleanupScheduler = scheduler)
+
+        coordinator.reconcile(backgroundScope)
+        runCurrent()
+
+        assertTrue(coordinator.state.value is UpdateDownloadState.Ready)
+        assertEquals(listOf(1_000L), scheduler.scheduledCompletedAt)
+    }
+
+    @Test
+    fun `the system-reported completion time anchors the cleanup deadline`() = runTest {
+        val downloadPort = FakeUpdateDownloadPort()
+        val scheduler = FakeUpdateCleanupScheduler()
+        var clock = 9_999L
+        val coordinator = UpdateDownloadCoordinator(
+            downloadPort,
+            FakeApkVerifierPort(),
+            FakeUpdateDownloadPersistencePort(),
+            apkFilePathFor = { APK_PATH },
+            cleaner = FakeUpdateApkCleanupPort(),
+            cleanupScheduler = scheduler,
+            now = { clock }
+        )
+
+        coordinator.startDownload(backgroundScope, manifest())
+        runCurrent()
+        downloadPort.setStatus(1L, DownloadStatus.Successful(APK_PATH, completedAtMillis = 2_000L))
+        advanceTimeBy(600); runCurrent()
+
+        assertEquals(listOf(2_000L), scheduler.scheduledCompletedAt)
     }
 }

@@ -7,6 +7,8 @@ import com.mobilemail.domain.port.ApkVerificationResult
 import com.mobilemail.domain.port.ApkVerifierPort
 import com.mobilemail.domain.port.DownloadStatus
 import com.mobilemail.domain.port.PendingDownload
+import com.mobilemail.domain.port.UpdateApkCleanupPort
+import com.mobilemail.domain.port.UpdateCleanupSchedulerPort
 import com.mobilemail.domain.port.UpdateDownloadPersistencePort
 import com.mobilemail.domain.port.UpdateDownloadPort
 import com.mobilemail.ui.common.AppError
@@ -48,6 +50,8 @@ class UpdateDownloadCoordinator(
     private val verifier: ApkVerifierPort,
     private val store: UpdateDownloadPersistencePort,
     private val apkFilePathFor: (UpdateReleaseManifest) -> String,
+    private val cleaner: UpdateApkCleanupPort,
+    private val cleanupScheduler: UpdateCleanupSchedulerPort,
     private val now: () -> Long = System::currentTimeMillis
 ) {
     private val _state = MutableStateFlow<UpdateDownloadState>(UpdateDownloadState.Idle)
@@ -82,6 +86,10 @@ class UpdateDownloadCoordinator(
                 if (signaledDownloadId != null && pending.downloadId != null && pending.downloadId != signaledDownloadId) {
                     return@withLock
                 }
+                if (cleaner.isExpired()) {
+                    cleanUpExpiredLocked(pending)
+                    return@withLock
+                }
                 if (isAlreadyRestored(pending)) return@withLock
                 restoreLocked(scope, pending)
             }
@@ -105,6 +113,7 @@ class UpdateDownloadCoordinator(
                 if (store.getCompletedAtMillis() == null) {
                     store.loadPendingDownload()?.downloadId?.let { downloadPort.cancel(it) }
                 }
+                cleanupScheduler.cancel()
                 store.savePendingDownload(PendingDownload(manifest, apkFilePath, downloadId = null))
                 enqueueAndTrackLocked(scope, manifest, apkFilePath)
             }
@@ -188,9 +197,11 @@ class UpdateDownloadCoordinator(
             verifier: ApkVerifierPort,
             store: UpdateDownloadPersistencePort,
             apkFilePathFor: (UpdateReleaseManifest) -> String,
-            now: () -> Long = System::currentTimeMillis
+            cleaner: UpdateApkCleanupPort,
+            cleanupScheduler: UpdateCleanupSchedulerPort
         ): UpdateDownloadCoordinator {
-            val coordinator = UpdateDownloadCoordinator(downloadPort, verifier, store, apkFilePathFor, now)
+            val coordinator =
+                UpdateDownloadCoordinator(downloadPort, verifier, store, apkFilePathFor, cleaner, cleanupScheduler)
             coordinator.reconcile(scope)
             return coordinator
         }
@@ -228,7 +239,21 @@ class UpdateDownloadCoordinator(
         enqueueAndTrackLocked(scope, pending.manifest, pending.apkFilePath)
     }
 
+    /**
+     * Просроченный APK перестаёт быть Готовым обновлением: файл и связанная
+     * запись загрузки удаляются, повторное скачивание возможно только после
+     * нового согласия пользователя.
+     */
+    private suspend fun cleanUpExpiredLocked(pending: PendingDownload) {
+        active = null
+        monitorJob = null
+        autoContinueEligible = false
+        cleaner.clean(pending.apkFilePath)
+        _state.value = UpdateDownloadState.Expired(pending.manifest)
+    }
+
     private suspend fun restoreCompletedLocked(pending: PendingDownload) {
+        store.getCompletedAtMillis()?.let { cleanupScheduler.schedule(it) }
         when (val result = verifier.verify(pending.apkFilePath, pending.manifest)) {
             ApkVerificationResult.Valid -> {
                 active = null
@@ -257,7 +282,9 @@ class UpdateDownloadCoordinator(
                 }
                 DownloadStatus.Paused -> _state.value = UpdateDownloadState.WaitingForNetwork
                 is DownloadStatus.Successful -> {
-                    onDownloadFinished(downloadId) { verifyAndComplete(manifest, status.filePath) }
+                    onDownloadFinished(downloadId) {
+                        verifyAndComplete(manifest, status.filePath, status.completedAtMillis)
+                    }
                     return
                 }
                 is DownloadStatus.Failed -> {
@@ -287,11 +314,16 @@ class UpdateDownloadCoordinator(
         }
     }
 
-    private suspend fun verifyAndComplete(manifest: UpdateReleaseManifest, filePath: String) {
+    private suspend fun verifyAndComplete(
+        manifest: UpdateReleaseManifest,
+        filePath: String,
+        completedAtMillis: Long?
+    ) {
         _state.value = UpdateDownloadState.Verifying
         when (val result = verifier.verify(filePath, manifest)) {
             ApkVerificationResult.Valid -> {
-                store.markCompletedNow(now())
+                store.markCompletedNow(completedAtMillis ?: now())
+                store.getCompletedAtMillis()?.let { cleanupScheduler.schedule(it) }
                 active = null
                 val autoContinue = autoContinueEligible
                 autoContinueEligible = false

@@ -282,11 +282,16 @@ private fun UpdateSection(
                 is UpdateInstallState.Failed -> {
                     InstallResult(install.error.getUserMessage(), "Повторить") { installCoordinator?.install(scope) }
                 }
+                is UpdateInstallState.Expired -> {
+                    InstallResult("Срок хранения обновления истёк", "Проверить обновления") {
+                        scope.launch { checkCoordinator.checkForUpdate(BuildConfig.VERSION_CODE) }
+                    }
+                }
                 UpdateInstallState.Idle -> {
                     if (installCoordinator == null || downloadCoordinator == null || downloadState is UpdateDownloadState.Idle) {
                         UpdateCheckSection(checkState, checkCoordinator, downloadCoordinator, scope)
                     } else {
-                        UpdateDownloadSection(downloadState, downloadCoordinator, scope)
+                        UpdateDownloadSection(downloadState, downloadCoordinator, checkCoordinator, scope)
                     }
                 }
             }
@@ -368,6 +373,7 @@ private fun UpdateCheckSection(
 private fun UpdateDownloadSection(
     state: UpdateDownloadState,
     downloadCoordinator: UpdateDownloadCoordinator,
+    checkCoordinator: UpdateCheckCoordinator,
     scope: CoroutineScope
 ) {
     Text(text = updateDownloadStatusText(state), style = MaterialTheme.typography.bodyMedium)
@@ -393,6 +399,11 @@ private fun UpdateDownloadSection(
         is UpdateDownloadState.Failed -> {
             Button(onClick = { downloadCoordinator.retryDownload(scope) }) {
                 Text("Повторить")
+            }
+        }
+        is UpdateDownloadState.Expired -> {
+            Button(onClick = { scope.launch { checkCoordinator.checkForUpdate(BuildConfig.VERSION_CODE) } }) {
+                Text("Проверить обновления")
             }
         }
         is UpdateDownloadState.Ready -> Unit
@@ -433,6 +444,7 @@ private fun updateDownloadStatusText(state: UpdateDownloadState): String = when 
     UpdateDownloadState.Verifying -> "Проверка загруженного файла…"
     is UpdateDownloadState.Ready -> "Обновление ${state.manifest.versionName} готово к установке"
     UpdateDownloadState.Cancelled -> "Загрузка отменена"
+    is UpdateDownloadState.Expired -> "Срок хранения загруженного обновления истёк"
     is UpdateDownloadState.Failed -> state.error.getUserMessage()
 }
 

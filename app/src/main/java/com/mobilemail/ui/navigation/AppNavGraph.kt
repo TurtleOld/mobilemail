@@ -115,14 +115,20 @@ fun AppNavGraph(
 
     LaunchedEffect(updateDownloadCoordinator, updateInstallCoordinator) {
         updateDownloadCoordinator.state.collect { downloadState ->
-            if (downloadState is UpdateDownloadState.Ready) {
-                val isResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-                updateInstallCoordinator.onDownloadCompleted(
-                    scope = activityScope,
-                    manifest = downloadState.manifest,
-                    apkFilePath = downloadState.apkFilePath,
-                    autoContinue = downloadState.autoContinue && isResumed && !currentIsPinLocked
-                )
+            when (downloadState) {
+                is UpdateDownloadState.Ready -> {
+                    val isResumed = lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                    updateInstallCoordinator.onDownloadCompleted(
+                        scope = activityScope,
+                        manifest = downloadState.manifest,
+                        apkFilePath = downloadState.apkFilePath,
+                        autoContinue = downloadState.autoContinue && isResumed && !currentIsPinLocked
+                    )
+                }
+                is UpdateDownloadState.Expired -> {
+                    updateInstallCoordinator.onApkExpired(activityScope, downloadState.manifest)
+                }
+                else -> Unit
             }
         }
     }
