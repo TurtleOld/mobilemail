@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/sha256.sh"
+
 usage() {
   echo "Usage: $0 <apk-path> <output-json-path>" >&2
   exit 2
@@ -26,7 +29,6 @@ if ! [[ "$APP_VERSION_CODE" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_FILE="$REPO_ROOT/app/build.gradle.kts"
 
@@ -49,15 +51,7 @@ if [ -z "$MIN_SDK" ]; then
 fi
 
 APK_SIZE_BYTES="$(wc -c < "$APK_PATH" | tr -d '[:space:]')"
-
-if command -v sha256sum >/dev/null 2>&1; then
-  APK_SHA256="$(sha256sum "$APK_PATH" | cut -d' ' -f1)"
-elif command -v shasum >/dev/null 2>&1; then
-  APK_SHA256="$(shasum -a 256 "$APK_PATH" | cut -d' ' -f1)"
-else
-  echo "No sha256 utility found (need sha256sum or shasum)" >&2
-  exit 1
-fi
+APK_SHA256="$(sha256_of "$APK_PATH")"
 
 if ! [[ "$APK_SHA256" =~ ^[0-9a-f]{64}$ ]]; then
   echo "Unexpected sha256 for $APK_PATH: $APK_SHA256" >&2

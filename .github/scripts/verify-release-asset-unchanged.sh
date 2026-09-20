@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/sha256.sh"
+
 usage() {
   echo "Usage: $0 <release-tag> <asset-name> <local-file>" >&2
   exit 2
@@ -20,17 +23,6 @@ if [ ! -f "$LOCAL_FILE" ]; then
 fi
 
 REPOSITORY="${GITHUB_REPOSITORY:?GITHUB_REPOSITORY environment variable is required}"
-
-sha256_of() {
-  if command -v sha256sum >/dev/null 2>&1; then
-    sha256sum "$1" | cut -d' ' -f1
-  elif command -v shasum >/dev/null 2>&1; then
-    shasum -a 256 "$1" | cut -d' ' -f1
-  else
-    echo "No sha256 utility found (need sha256sum or shasum)" >&2
-    exit 1
-  fi
-}
 
 fail_immutable() {
   echo "Release '$RELEASE_TAG' already contains '$ASSET_NAME' with different bytes." >&2
@@ -65,7 +57,14 @@ gh release download "$RELEASE_TAG" \
   --dir "$TMP_DIR" \
   --clobber
 
-DOWNLOADED_SHA256="$(sha256_of "$TMP_DIR/$ASSET_NAME")"
+DOWNLOADED_FILE="$TMP_DIR/$ASSET_NAME"
+
+if [ ! -f "$DOWNLOADED_FILE" ]; then
+  echo "Could not download existing asset '$ASSET_NAME' from release '$RELEASE_TAG'." >&2
+  exit 1
+fi
+
+DOWNLOADED_SHA256="$(sha256_of "$DOWNLOADED_FILE")"
 
 if [ "$DOWNLOADED_SHA256" = "$LOCAL_SHA256" ]; then
   echo "Asset '$ASSET_NAME' matches the local bytes; idempotent republish is safe."

@@ -158,6 +158,7 @@ jobs:
             --clobber
 
       - name: Generate update metadata
+        id: generate-metadata
         if: steps.upload-apk.outcome == 'success'
         run: |
           bash .github/scripts/generate-update-metadata.sh \
@@ -165,7 +166,7 @@ jobs:
             update-metadata.json
 
       - name: Upload update metadata to GitHub release
-        if: steps.upload-apk.outcome == 'success'
+        if: steps.generate-metadata.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: ${{ github.ref_name }}
