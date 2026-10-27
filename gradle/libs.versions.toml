@@ -14,7 +14,6 @@ datastore = "1.2.1"
 coil = "2.7.0"
 coroutines = "1.11.0"
 json = "20230618"
-gson = "2.14.0"
 biometric = "1.1.0"
 browser = "1.10.0"
 webkit = "1.17.0"
@@ -69,7 +68,6 @@ androidx-datastore-preferences = { module = "androidx.datastore:datastore-prefer
 coil-compose = { module = "io.coil-kt:coil-compose", version.ref = "coil" }
 kotlinx-coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
 json = { module = "org.json:json", version.ref = "json" }
-gson = { module = "com.google.code.gson:gson", version.ref = "gson" }
 androidx-biometric = { module = "androidx.biometric:biometric", version.ref = "biometric" }
 androidx-browser = { module = "androidx.browser:browser", version.ref = "browser" }
 androidx-webkit = { module = "androidx.webkit:webkit", version.ref = "webkit" }
