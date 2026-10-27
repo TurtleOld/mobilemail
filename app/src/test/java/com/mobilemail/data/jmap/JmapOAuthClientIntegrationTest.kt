@@ -3,9 +3,12 @@ package com.mobilemail.data.jmap
 import com.mobilemail.data.oauth.OAuthServerMetadata
 import com.mobilemail.data.oauth.StoredToken
 import com.mobilemail.data.oauth.TokenResponse
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.test.runTest
+import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import okhttp3.mockwebserver.SocketPolicy
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
@@ -239,6 +242,94 @@ class JmapOAuthClientIntegrationTest {
         } finally {
             server.shutdown()
         }
+    }
+
+    @Test
+    fun `sendEmail sends EmailSubmission set only once when the response times out`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(sessionResponse(server)))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "methodResponses": [
+                    ["Mailbox/get", {"list":[{"id":"drafts","name":"Drafts","role":"drafts"}]}, "0"]
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "methodResponses": [
+                    ["Email/set", {"created":{"draft":{"id":"draft1"}}}, "d1"]
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "methodResponses": [
+                    ["Identity/get", {"list":[{"id":"identity1","email":"user@example.com"}]}, "i1"]
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(MockResponse().setSocketPolicy(SocketPolicy.NO_RESPONSE))
+        try {
+            val tokenAccess = FakeTokenStoreAccess(
+                StoredToken(
+                    accessToken = "access",
+                    tokenType = "Bearer",
+                    expiresAt = System.currentTimeMillis() + 60_000,
+                    refreshToken = "refresh"
+                )
+            )
+            val client = JmapOAuthClient(
+                baseUrl = server.url("/").toString(),
+                email = "user@example.com",
+                accountId = "acc1",
+                tokenStoreAccess = tokenAccess,
+                metadata = metadata(server),
+                clientId = "mobilemail-test"
+            )
+            client.withReadTimeout(200)
+
+            try {
+                client.sendEmail(
+                    from = "user@example.com",
+                    to = listOf("rcpt@example.com"),
+                    subject = "Subject",
+                    body = "Body",
+                    attachments = emptyList(),
+                    draftId = null,
+                    accountId = "acc1"
+                )
+                fail("Expected submission request to fail on response timeout")
+            } catch (expected: Exception) {
+                // Expected: the response never arrives.
+            }
+
+            val requests = (0 until server.requestCount).map { server.takeRequest() }
+            val submissionRequests = requests.filter { it.body.readUtf8().contains("EmailSubmission/set") }
+            assertEquals(1, submissionRequests.size)
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    private fun JmapOAuthClient.withReadTimeout(millis: Long) {
+        val field = JmapOAuthClient::class.java.getDeclaredField("client")
+        field.isAccessible = true
+        val current = field.get(this) as OkHttpClient
+        field.set(this, current.newBuilder().readTimeout(millis, TimeUnit.MILLISECONDS).build())
     }
 
     private fun metadata(server: MockWebServer): OAuthServerMetadata {
