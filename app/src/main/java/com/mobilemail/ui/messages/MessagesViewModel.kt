@@ -21,7 +21,7 @@ import com.mobilemail.ui.common.SnackbarDuration
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.ErrorMapper
-import com.mobilemail.data.common.fold
+import com.mobilemail.domain.common.fold
 import com.mobilemail.domain.common.Result
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.CoroutineStart
@@ -72,7 +72,7 @@ class MessagesViewModel(
         val id: String,
         val restoreState: MessagesUiState,
         val job: Job,
-        val commit: suspend () -> com.mobilemail.data.common.Result<Unit>,
+        val commit: suspend () -> com.mobilemail.domain.common.Result<Unit>,
         val onQueued: suspend () -> Unit
     )
 
@@ -511,7 +511,7 @@ class MessagesViewModel(
     private fun scheduleFolderAction(
         messageIds: Set<String>,
         pendingMessage: String,
-        commitAction: suspend (String) -> com.mobilemail.data.common.Result<Boolean>,
+        commitAction: suspend (String) -> com.mobilemail.domain.common.Result<Boolean>,
         enqueueAction: suspend (String) -> Unit,
         allowUndo: Boolean = true,
         commitDelayMs: Long = 5000L
