@@ -10,13 +10,8 @@
 # Keep Room generated implementations and entities metadata.
 -keep class * extends androidx.room.RoomDatabase
 
-# Gson: preserve fields annotated with @SerializedName for reflection-based access.
--keepclassmembers,allowobfuscation class * {
-    @com.google.gson.annotations.SerializedName <fields>;
-}
-
 # JMAP DTOs: constructed manually from JSONObject but class/field names must survive R8
-# because external code (Gson, logging, future serialization) may reference them by name.
+# because external code (logging, future serialization) may reference them by name.
 -keep class com.mobilemail.data.model.** { *; }
 
 # OkHttp / Okio: suppress warnings from optional TLS provider integrations.
