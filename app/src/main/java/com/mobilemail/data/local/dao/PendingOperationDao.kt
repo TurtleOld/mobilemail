@@ -22,6 +22,9 @@ interface PendingOperationDao {
     @Query("DELETE FROM pending_operations WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    @Query("UPDATE pending_operations SET status = 'pending', updatedAt = :updatedAt WHERE status = 'running'")
+    suspend fun resetRunning(updatedAt: Long)
+
     @Query("DELETE FROM pending_operations WHERE accountId = :accountId")
     suspend fun deleteByAccount(accountId: String)
 

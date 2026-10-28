@@ -70,11 +70,6 @@ class OAuthTokenRefresh(
     }
     
     companion object {
-        fun createClient(): OkHttpClient = OAuthHttpClientFactory.sharedClient(
-            connectTimeoutSeconds = 30,
-            readTimeoutSeconds = 30,
-            writeTimeoutSeconds = 30,
-            retryOnConnectionFailure = true
-        )
+        fun createClient(): OkHttpClient = OAuthHttpClientFactory.forTokenRefresh()
     }
 }

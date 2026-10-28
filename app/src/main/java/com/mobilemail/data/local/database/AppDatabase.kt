@@ -31,6 +31,7 @@ abstract class AppDatabase : RoomDatabase() {
     
     companion object {
         const val DATABASE_NAME = "mobilemail_db"
+        private const val WRONG_PASSPHRASE_MESSAGE = "file is not a database"
 
         @Volatile
         private var instance: AppDatabase? = null
@@ -93,10 +94,31 @@ abstract class AppDatabase : RoomDatabase() {
         private fun buildEncryptedDatabase(context: Context): AppDatabase {
             return runCatching {
                 createEncryptedDatabase(context).also { it.openHelper.writableDatabase }
-            }.getOrElse {
+            }.getOrElse { error ->
+                if (!isWrongPassphraseError(error)) throw error
                 context.deleteDatabase(DATABASE_NAME)
                 createEncryptedDatabase(context).also { it.openHelper.writableDatabase }
             }
+        }
+
+        /**
+         * Checks whether [error] was caused by opening the database with a wrong passphrase.
+         *
+         * SQLCipher reports a wrong key as "file is not a database". Any other error, such as a
+         * failed migration, must not lead to the database being deleted.
+         *
+         * @param error Failure thrown while opening the database.
+         * @return True when the error means the database was encrypted with another key.
+         */
+        internal fun isWrongPassphraseError(error: Throwable): Boolean {
+            var current: Throwable? = error
+            while (current != null) {
+                if (current.message?.contains(WRONG_PASSPHRASE_MESSAGE, ignoreCase = true) == true) {
+                    return true
+                }
+                current = current.cause
+            }
+            return false
         }
 
         private fun createEncryptedDatabase(context: Context): AppDatabase {

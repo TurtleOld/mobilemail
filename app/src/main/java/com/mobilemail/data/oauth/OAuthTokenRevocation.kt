@@ -45,11 +45,6 @@ class OAuthTokenRevocation(
     }
 
     companion object {
-        fun createClient(): OkHttpClient = OAuthHttpClientFactory.sharedClient(
-            connectTimeoutSeconds = 10,
-            readTimeoutSeconds = 10,
-            writeTimeoutSeconds = 10,
-            retryOnConnectionFailure = false
-        )
+        fun createClient(): OkHttpClient = OAuthHttpClientFactory.forRevocation()
     }
 }

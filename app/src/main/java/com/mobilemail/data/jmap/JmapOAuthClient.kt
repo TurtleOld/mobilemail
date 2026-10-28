@@ -14,6 +14,8 @@ import com.mobilemail.data.model.JmapSession
 import com.mobilemail.data.model.PrimaryAccounts
 import com.mobilemail.data.oauth.OAuthAccessTokenProvider
 import com.mobilemail.data.oauth.OAuthHttpClientFactory
+import com.mobilemail.data.oauth.OAuthRefreshFailure
+import com.mobilemail.data.oauth.OAuthRefreshFailureClassifier
 import com.mobilemail.data.oauth.OAuthServerMetadata
 import com.mobilemail.data.oauth.OAuthTokenRefresh
 import com.mobilemail.data.oauth.StoredToken
@@ -75,7 +77,7 @@ class JmapOAuthClient(
         }
     }
 
-    private val tokenRefresh = OAuthTokenRefresh(metadata, clientId, OAuthHttpClientFactory.sharedClient)
+    private val tokenRefresh = OAuthTokenRefresh(metadata, clientId, OAuthHttpClientFactory.forTokenRefresh())
     private val accessTokenProvider = JmapAccessTokenProvider()
     private val client = OAuthHttpClientFactory.authorizedClient(accessTokenProvider)
 
@@ -96,14 +98,7 @@ class JmapOAuthClient(
         if (stored != null && stored.isValid()) return@withLock stored.accessToken
 
         if (stored?.refreshToken != null) {
-            try {
-                val newToken = tokenRefresh.refreshToken(stored.refreshToken)
-                tokenStoreAccess.saveTokens(serverUrl, email, newToken)
-                return@withLock newToken.accessToken
-            } catch (e: Exception) {
-                tokenStoreAccess.clearTokens(serverUrl, email)
-                throw OAuthTokenExpiredException("Не удалось обновить токен: ${e.message}")
-            }
+            return@withLock refreshAndStore(stored.refreshToken)
         }
 
         throw OAuthTokenExpiredException("Токен отсутствует или истёк. Требуется авторизация.")
@@ -146,17 +141,33 @@ class JmapOAuthClient(
         }
 
         if (stored?.refreshToken != null) {
-            try {
-                val newToken = tokenRefresh.refreshToken(stored.refreshToken)
-                tokenStoreAccess.saveTokens(serverUrl, email, newToken)
-                return@withLock newToken.accessToken
-            } catch (e: Exception) {
-                tokenStoreAccess.clearTokens(serverUrl, email)
-                throw OAuthTokenExpiredException("Не удалось обновить токен: ${e.message}")
-            }
+            return@withLock refreshAndStore(stored.refreshToken)
         }
 
         throw OAuthTokenExpiredException("Токен отсутствует. Требуется авторизация.")
+    }
+
+    /**
+     * Транзиентный сбой (таймаут, обрыв сети, 5xx) пробрасывается как есть —
+     * токены остаются на месте, чтобы следующая попытка могла повторить
+     * обновление. Только подтверждённый терминальный отказ сервера
+     * авторизации (400/401/403, см. [OAuthRefreshFailureClassifier]) очищает
+     * хранилище и переводит приложение в состояние «нужен повторный вход».
+     */
+    private suspend fun refreshAndStore(refreshToken: String): String {
+        try {
+            val newToken = tokenRefresh.refreshToken(refreshToken)
+            tokenStoreAccess.saveTokens(serverUrl, email, newToken)
+            return newToken.accessToken
+        } catch (e: Exception) {
+            when (val outcome = OAuthRefreshFailureClassifier.classify(e)) {
+                is OAuthRefreshFailure.TerminalAuthFailure -> {
+                    tokenStoreAccess.clearTokens(serverUrl, email)
+                    throw OAuthTokenExpiredException("Не удалось обновить токен: ${outcome.reason}", outcome.cause)
+                }
+                is OAuthRefreshFailure.Transient -> throw outcome.cause
+            }
+        }
     }
 
     private inner class JmapAccessTokenProvider : OAuthAccessTokenProvider {
@@ -530,24 +541,6 @@ class JmapOAuthClient(
         )
     }
 
-    /** Execute request with retry on transient IO errors only. Non-IO exceptions are thrown immediately. */
-    private suspend fun executeWithRetry(request: Request): Pair<okhttp3.Response, String> =
-        withContext(Dispatchers.IO) {
-            var lastException: java.io.IOException? = null
-            repeat(3) { attempt ->
-                try {
-                    val resp = client.newCall(request).execute()
-                    val body = resp.body?.string() ?: "{}"
-                    return@withContext Pair(resp, body)
-                } catch (e: java.io.IOException) {
-                    Log.w("JmapOAuthClient", "IOException в makeRequest, попытка ${attempt + 1}/3: ${e.message}")
-                    lastException = e
-                    if (attempt < 2) delay((attempt + 1) * 1000L)
-                }
-            }
-            throw lastException!!
-        }
-
     private suspend fun makeRequest(url: String, requestJson: JSONObject): JSONObject = requestSemaphore.withPermit {
         if (isFirstLaunch) {
             Log.d("JmapOAuthClient", "Первый запрос после запуска, добавляем задержку для оптимизации")
@@ -564,7 +557,10 @@ class JmapOAuthClient(
             .post(requestBody)
             .build()
 
-        val (response, responseBody) = executeWithRetry(request)
+        val (response, responseBody) = withContext(Dispatchers.IO) {
+            val resp = client.newCall(request).execute()
+            Pair(resp, resp.body?.string() ?: "{}")
+        }
 
         if (!response.isSuccessful) {
             val errBody = LogRedactor.redact(responseBody.take(200))
@@ -1190,4 +1186,4 @@ class JmapOAuthClient(
     }
 }
 
-class OAuthTokenExpiredException(message: String) : Exception(message)
+class OAuthTokenExpiredException(message: String, cause: Throwable? = null) : Exception(message, cause)

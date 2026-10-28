@@ -5,8 +5,6 @@ import com.mobilemail.BuildConfig
 import com.mobilemail.data.oauth.OAuthHttpClientFactory
 import com.mobilemail.data.update.GithubReleaseUpdateRepository
 
-private const val UPDATE_CHECK_TIMEOUT_SECONDS = 15L
-
 /**
  * Держит единственный [UpdateCheckCoordinator] на процесс приложения.
  *
@@ -27,12 +25,7 @@ object UpdateCheckCoordinatorHolder {
 
     private fun create(): UpdateCheckCoordinator {
         val repository = GithubReleaseUpdateRepository(
-            httpClient = OAuthHttpClientFactory.sharedClient(
-                connectTimeoutSeconds = UPDATE_CHECK_TIMEOUT_SECONDS,
-                readTimeoutSeconds = UPDATE_CHECK_TIMEOUT_SECONDS,
-                writeTimeoutSeconds = UPDATE_CHECK_TIMEOUT_SECONDS,
-                retryOnConnectionFailure = true
-            ),
+            httpClient = OAuthHttpClientFactory.forUpdateCheck(),
             repoOwnerAndName = BuildConfig.UPDATE_CHECK_REPO,
             expectedApplicationId = BuildConfig.APPLICATION_ID,
             deviceSdkInt = Build.VERSION.SDK_INT

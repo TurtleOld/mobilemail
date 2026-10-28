@@ -6,6 +6,7 @@ import com.mobilemail.domain.common.Result
 import com.mobilemail.domain.common.Result.Success
 import com.mobilemail.domain.common.Result.Error
 import com.mobilemail.data.jmap.MailClientFactory
+import com.mobilemail.data.local.dao.PendingOperationDao
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.local.entity.PendingOperationEntity
 import com.mobilemail.data.model.Attachment
@@ -13,6 +14,7 @@ import com.mobilemail.data.repository.ComposeRepository
 import com.mobilemail.domain.model.toDomain
 import com.mobilemail.domain.model.toData
 import com.mobilemail.data.repository.MessageActionsRepository
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -196,6 +198,16 @@ object OfflineQueueManager {
 
     suspend fun processPending(application: Application, limit: Int = 25): OfflineQueueSummary = mutex.withLock {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
+        processOperations(dao, limit) { operation -> executeOperation(application, operation) }
+    }
+
+    internal suspend fun processOperations(
+        dao: PendingOperationDao,
+        limit: Int,
+        execute: suspend (PendingOperationEntity) -> Result<Unit>
+    ): OfflineQueueSummary {
+        // No worker is running while the mutex is held, so any 'running' row was left by a killed process.
+        dao.resetRunning(System.currentTimeMillis())
         val operations = dao.getProcessable(limit)
         var processedCount = 0
         var failedCount = 0
@@ -209,7 +221,15 @@ object OfflineQueueManager {
                 updatedAt = System.currentTimeMillis()
             )
 
-            when (val result = executeOperation(application, operation)) {
+            val result = try {
+                execute(operation)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                Result.Error(error)
+            }
+
+            when (result) {
                 is Result.Success -> {
                     dao.deleteById(operation.id)
                     processedCount++
@@ -237,7 +257,7 @@ object OfflineQueueManager {
 
         val pendingCount = dao.getPendingCount()
         val permanentFailedCount = dao.getPermanentFailedCount()
-        OfflineQueueSummary(
+        return OfflineQueueSummary(
             processedCount = processedCount,
             failedCount = failedCount,
             pendingCount = pendingCount,
