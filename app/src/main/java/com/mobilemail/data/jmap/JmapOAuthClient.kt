@@ -515,24 +515,6 @@ class JmapOAuthClient(
         )
     }
 
-    /** Execute request with retry on transient IO errors only. Non-IO exceptions are thrown immediately. */
-    private suspend fun executeWithRetry(request: Request): Pair<okhttp3.Response, String> =
-        withContext(Dispatchers.IO) {
-            var lastException: java.io.IOException? = null
-            repeat(3) { attempt ->
-                try {
-                    val resp = client.newCall(request).execute()
-                    val body = resp.body?.string() ?: "{}"
-                    return@withContext Pair(resp, body)
-                } catch (e: java.io.IOException) {
-                    Log.w("JmapOAuthClient", "IOException в makeRequest, попытка ${attempt + 1}/3: ${e.message}")
-                    lastException = e
-                    if (attempt < 2) delay((attempt + 1) * 1000L)
-                }
-            }
-            throw lastException!!
-        }
-
     private suspend fun makeRequest(url: String, requestJson: JSONObject): JSONObject = requestSemaphore.withPermit {
         if (isFirstLaunch) {
             Log.d("JmapOAuthClient", "Первый запрос после запуска, добавляем задержку для оптимизации")
@@ -549,7 +531,10 @@ class JmapOAuthClient(
             .post(requestBody)
             .build()
 
-        val (response, responseBody) = executeWithRetry(request)
+        val (response, responseBody) = withContext(Dispatchers.IO) {
+            val resp = client.newCall(request).execute()
+            Pair(resp, resp.body?.string() ?: "{}")
+        }
 
         if (!response.isSuccessful) {
             val errBody = LogRedactor.redact(responseBody.take(200))
