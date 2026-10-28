@@ -13,6 +13,11 @@
   "prConcurrentLimit": 5,
   "packageRules": [
     {
+      "description": "detekt 1.23.x fails on JDK 25; keep CI on JDK < 25 until detekt supports it",
+      "matchDepNames": ["java-jdk"],
+      "allowedVersions": "<25"
+    },
+    {
       "description": "Compose BOM — single PR for all compose artifacts",
       "matchPackageNames": ["androidx.compose:compose-bom"],
       "groupName": "Compose BOM"
