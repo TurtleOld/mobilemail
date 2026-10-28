@@ -1,8 +1,7 @@
 package com.mobilemail.data.repository
 
-import com.mobilemail.data.common.Result
-import com.mobilemail.data.common.ResultSuccess
-import com.mobilemail.data.common.runCatchingSuspend
+import com.mobilemail.domain.common.Result
+import com.mobilemail.domain.common.runCatchingSuspend
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.local.dao.MessageDao
 import com.mobilemail.data.model.EmailAddress
@@ -35,7 +34,7 @@ class SearchRepository(
         limit: Int = 50
     ): Result<SearchPage> {
         val remoteResult = searchRemoteMessagesPage(searchQuery, position, limit)
-        if (remoteResult is ResultSuccess) return remoteResult
+        if (remoteResult is Result.Success) return remoteResult
 
         return searchCachedMessagesPage(searchQuery, position, limit)
             ?: remoteResult

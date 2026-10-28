@@ -21,7 +21,7 @@ import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.ErrorMapper
-import com.mobilemail.data.common.fold
+import com.mobilemail.domain.common.fold
 import com.mobilemail.data.local.database.AppDatabase
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.ExperimentalCoroutinesApi

@@ -19,7 +19,7 @@ import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.FeatureScreenUiState
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.NotificationState
-import com.mobilemail.data.common.fold
+import com.mobilemail.domain.common.fold
 import com.mobilemail.util.FileManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -53,7 +53,7 @@ class MessageDetailViewModel(
     private data class PendingDetailAction(
         val id: String,
         val job: Job,
-        val commit: suspend () -> com.mobilemail.data.common.Result<Boolean>,
+        val commit: suspend () -> com.mobilemail.domain.common.Result<Boolean>,
         val onCommitted: () -> Unit,
         val onQueued: suspend () -> Unit
     )
@@ -420,7 +420,7 @@ class MessageDetailViewModel(
 
     private fun scheduleDeferredAction(
         pendingMessage: String,
-        commitAction: suspend () -> com.mobilemail.data.common.Result<Boolean>,
+        commitAction: suspend () -> com.mobilemail.domain.common.Result<Boolean>,
         onCommitted: () -> Unit,
         onQueued: suspend () -> Unit
     ) {

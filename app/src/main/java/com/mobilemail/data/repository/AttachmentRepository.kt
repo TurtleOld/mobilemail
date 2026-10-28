@@ -1,7 +1,7 @@
 package com.mobilemail.data.repository
 
-import com.mobilemail.data.common.Result
-import com.mobilemail.data.common.runCatchingSuspend
+import com.mobilemail.domain.common.Result
+import com.mobilemail.domain.common.runCatchingSuspend
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.domain.repository.IAttachmentRepository
 

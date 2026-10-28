@@ -1,6 +1,6 @@
 package com.mobilemail.data.update
 
-import com.mobilemail.data.error.ErrorMapper
+import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.domain.model.UpdateReleaseManifest
 import com.mobilemail.domain.port.UpdateCheckPort

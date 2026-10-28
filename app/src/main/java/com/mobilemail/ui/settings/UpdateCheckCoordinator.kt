@@ -1,6 +1,6 @@
 package com.mobilemail.ui.settings
 
-import com.mobilemail.data.error.ErrorMapper
+import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.domain.model.UpdateCheckResult
 import com.mobilemail.domain.port.UpdateCheckPort
 import java.util.concurrent.atomic.AtomicBoolean
