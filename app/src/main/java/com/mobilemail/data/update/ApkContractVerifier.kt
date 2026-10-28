@@ -55,13 +55,7 @@ class ApkContractVerifier(private val context: Context) : ApkVerifierPort {
         signatures = signatureFingerprintsOf(packageInfo)
     )
 
-    private fun signingFlags(): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            PackageManager.GET_SIGNING_CERTIFICATES
-        } else {
-            @Suppress("DEPRECATION")
-            PackageManager.GET_SIGNATURES
-        }
+    private fun signingFlags(): Int = PackageManager.GET_SIGNING_CERTIFICATES
 
     private fun signatureFingerprintsOf(packageInfo: PackageInfo): Set<String>? {
         val signatures = rawSignaturesOf(packageInfo) ?: return null
@@ -69,20 +63,10 @@ class ApkContractVerifier(private val context: Context) : ApkVerifierPort {
     }
 
     private fun rawSignaturesOf(packageInfo: PackageInfo): Array<Signature>? {
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            val signingInfo = packageInfo.signingInfo ?: return null
-            signingInfo.apkContentsSigners ?: signingInfo.signingCertificateHistory
-        } else {
-            @Suppress("DEPRECATION")
-            packageInfo.signatures
-        }
+        val signingInfo = packageInfo.signingInfo ?: return null
+        return signingInfo.apkContentsSigners ?: signingInfo.signingCertificateHistory
     }
 
     private fun versionCodeOf(packageInfo: PackageInfo): Int =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            packageInfo.longVersionCode.toInt()
-        } else {
-            @Suppress("DEPRECATION")
-            packageInfo.versionCode
-        }
+        packageInfo.longVersionCode.toInt()
 }

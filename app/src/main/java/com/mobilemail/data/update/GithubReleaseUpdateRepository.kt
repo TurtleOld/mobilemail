@@ -6,21 +6,29 @@ import com.mobilemail.domain.model.UpdateReleaseManifest
 import com.mobilemail.domain.port.UpdateCheckPort
 import com.mobilemail.ui.common.AppError
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.ResponseBody
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import kotlin.coroutines.resume
+import kotlin.coroutines.resumeWithException
 
 private const val METADATA_ASSET_NAME = "update-metadata.json"
 private const val DEFAULT_MAX_METADATA_BYTES = 8L * 1024
 private const val HTTP_NOT_MODIFIED = 304
 private const val HTTP_TOO_MANY_REQUESTS = 429
 private const val HTTP_FORBIDDEN = 403
+private const val DEFAULT_OVERALL_TIMEOUT_MILLIS = 20_000L
 
 /**
  * Клиент ручной проверки обновлений через GitHub Releases.
@@ -38,27 +46,43 @@ class GithubReleaseUpdateRepository(
     private val expectedApplicationId: String,
     private val deviceSdkInt: Int,
     private val apiBaseUrl: String = "https://api.github.com",
-    private val maxMetadataBytes: Long = DEFAULT_MAX_METADATA_BYTES
+    private val maxMetadataBytes: Long = DEFAULT_MAX_METADATA_BYTES,
+    private val overallTimeoutMillis: Long = DEFAULT_OVERALL_TIMEOUT_MILLIS
 ) : UpdateCheckPort {
 
     private val cacheMutex = Mutex()
     private var cachedETag: String? = null
     private var cachedReleases: List<GithubRelease>? = null
 
+    /**
+     * checkForUpdate делает до двух последовательных запросов (список
+     * релизов, затем manifest-ассет). Таймаут OkHttp-клиента ограничивает
+     * только один round-trip — без общего бюджета на всю операцию
+     * пользователь мог прождать сумму обоих таймаутов. [withTimeout] держит
+     * единый предсказуемый предел независимо от числа стадий.
+     */
     override suspend fun checkForUpdate(currentVersionCode: Int): UpdateCheckResult = withContext(Dispatchers.IO) {
+        try {
+            withTimeout(overallTimeoutMillis) { performCheck(currentVersionCode) }
+        } catch (e: TimeoutCancellationException) {
+            UpdateCheckResult.Failed(timeoutError())
+        }
+    }
+
+    private suspend fun performCheck(currentVersionCode: Int): UpdateCheckResult {
         val releases = when (val outcome = fetchReleases()) {
             is FetchOutcome.Success -> outcome.releases
-            FetchOutcome.RateLimited -> return@withContext UpdateCheckResult.Failed(rateLimitedError())
-            is FetchOutcome.Error -> return@withContext UpdateCheckResult.Failed(ErrorMapper.mapException(outcome.throwable))
+            FetchOutcome.RateLimited -> return UpdateCheckResult.Failed(rateLimitedError())
+            is FetchOutcome.Error -> return UpdateCheckResult.Failed(ErrorMapper.mapException(outcome.throwable))
         }
 
         val candidate = releases.firstOrNull { !it.draft && !it.prerelease }
-            ?: return@withContext UpdateCheckResult.ReleaseNotReady
+            ?: return UpdateCheckResult.ReleaseNotReady
 
-        resolveCandidate(candidate, currentVersionCode)
+        return resolveCandidate(candidate, currentVersionCode)
     }
 
-    private fun resolveCandidate(candidate: GithubRelease, currentVersionCode: Int): UpdateCheckResult {
+    private suspend fun resolveCandidate(candidate: GithubRelease, currentVersionCode: Int): UpdateCheckResult {
         val metadataAsset = candidate.assets.firstOrNull { it.name == METADATA_ASSET_NAME }
             ?: return UpdateCheckResult.ReleaseNotReady
 
@@ -134,7 +158,7 @@ class GithubReleaseUpdateRepository(
         cachedETag?.let { requestBuilder.header("If-None-Match", it) }
 
         try {
-            httpClient.newCall(requestBuilder.build()).execute().use { response ->
+            httpClient.newCall(requestBuilder.build()).await().use { response ->
                 when {
                     response.code == HTTP_NOT_MODIFIED -> notModifiedOutcome()
                     isRateLimited(response) -> FetchOutcome.RateLimited
@@ -168,10 +192,10 @@ class GithubReleaseUpdateRepository(
         (response.code == HTTP_FORBIDDEN || response.code == HTTP_TOO_MANY_REQUESTS) &&
             response.header("X-RateLimit-Remaining") == "0"
 
-    private fun fetchMetadata(url: String): MetadataOutcome {
+    private suspend fun fetchMetadata(url: String): MetadataOutcome {
         val request = Request.Builder().url(url).build()
         return try {
-            httpClient.newCall(request).execute().use { response ->
+            httpClient.newCall(request).await().use { response ->
                 if (!response.isSuccessful) {
                     return MetadataOutcome.Error(IOException("Не удалось загрузить метаданные обновления: ${response.code}"))
                 }
@@ -192,6 +216,11 @@ class GithubReleaseUpdateRepository(
         statusCode = HTTP_TOO_MANY_REQUESTS
     )
 
+    private fun timeoutError() = AppError.NetworkError(
+        errorMessage = "Превышено время ожидания. Проверьте подключение к сети.",
+        isTimeout = true
+    )
+
     private sealed class FetchOutcome {
         data class Success(val releases: List<GithubRelease>) : FetchOutcome()
         data object RateLimited : FetchOutcome()
@@ -201,6 +230,28 @@ class GithubReleaseUpdateRepository(
     private sealed class MetadataOutcome {
         data class Success(val metadata: UpdateMetadata) : MetadataOutcome()
         data class Error(val throwable: Throwable) : MetadataOutcome()
+    }
+}
+
+/**
+ * Отменяемая suspend-обёртка над [Call.execute]: без неё отмена корутины
+ * (например, срабатывание [withTimeout] на общем бюджете checkForUpdate) не
+ * прерывает уже идущий блокирующий сетевой вызов — она лишь выбрасывает
+ * TimeoutCancellationException после того, как он сам вернётся.
+ */
+private suspend fun Call.await(): Response = suspendCancellableCoroutine { continuation ->
+    enqueue(object : Callback {
+        override fun onResponse(call: Call, response: Response) {
+            continuation.resume(response)
+        }
+
+        override fun onFailure(call: Call, e: IOException) {
+            if (continuation.isCancelled) return
+            continuation.resumeWithException(e)
+        }
+    })
+    continuation.invokeOnCancellation {
+        runCatching { cancel() }
     }
 }
 

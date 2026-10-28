@@ -7,7 +7,8 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.oauth.OAuthDiscovery
-import com.mobilemail.data.oauth.OAuthException
+import com.mobilemail.data.oauth.OAuthRefreshFailure
+import com.mobilemail.data.oauth.OAuthRefreshFailureClassifier
 import com.mobilemail.data.oauth.OAuthTokenRefresh
 import com.mobilemail.data.oauth.StoredToken
 import com.mobilemail.data.oauth.TokenStore
@@ -64,11 +65,8 @@ class TokenRefreshWorker(
 
             tokenStore.saveTokens(session.server, session.email, refreshedToken)
             TokenRefreshSummary(refreshedCount = 1, failedCount = 0, skippedCount = 0)
-        } catch (error: OAuthException) {
-            handleOAuthRefreshError(tokenStore, session, error)
         } catch (error: Exception) {
-            Log.e("TokenRefreshWorker", "Failed to refresh OAuth token", error)
-            TokenRefreshSummary(refreshedCount = 0, failedCount = 1, skippedCount = 0)
+            handleRefreshFailure(tokenStore, session, error)
         }
     }
 
@@ -81,17 +79,27 @@ class TokenRefreshWorker(
         return metadata
     }
 
-    private fun handleOAuthRefreshError(
+    /**
+     * Тот же шов классификации, что использует [com.mobilemail.data.jmap.JmapOAuthClient]:
+     * только подтверждённый терминальный отказ сервера авторизации очищает
+     * токены. Транзиентный сбой (таймаут, 5xx, 429/408) считается ретраибл —
+     * WorkManager повторит попытку по [TokenRefreshWorkPolicy] backoff.
+     */
+    private fun handleRefreshFailure(
         tokenStore: TokenStore,
         session: SavedSession,
-        error: OAuthException
+        error: Exception
     ): TokenRefreshSummary {
         Log.e("TokenRefreshWorker", "Failed to refresh OAuth token", error)
-        if (error.statusCode in 400..499) {
-            tokenStore.clearTokens(session.server, session.email)
-            return TokenRefreshSummary(refreshedCount = 0, failedCount = 0, skippedCount = 1)
+        return when (OAuthRefreshFailureClassifier.classify(error)) {
+            is OAuthRefreshFailure.TerminalAuthFailure -> {
+                tokenStore.clearTokens(session.server, session.email)
+                TokenRefreshSummary(refreshedCount = 0, failedCount = 0, skippedCount = 1)
+            }
+            is OAuthRefreshFailure.Transient -> {
+                TokenRefreshSummary(refreshedCount = 0, failedCount = 1, skippedCount = 0)
+            }
         }
-        return TokenRefreshSummary(refreshedCount = 0, failedCount = 1, skippedCount = 0)
     }
 
     companion object {

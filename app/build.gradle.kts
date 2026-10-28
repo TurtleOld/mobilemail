@@ -194,7 +194,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.json)
-    implementation(libs.gson)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.browser)
     implementation(libs.androidx.webkit)

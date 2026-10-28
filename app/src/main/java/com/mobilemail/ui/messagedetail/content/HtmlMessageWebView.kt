@@ -75,12 +75,8 @@ internal fun HtmlMessageWebView(
                             view: WebView?,
                             request: WebResourceRequest?
                         ): Boolean {
-                            val targetUri = request?.url ?: return true
-                            // Allow only safe schemes; everything else (data:, file:,
-                            // intent:, javascript:, market:, …) is blocked here.
-                            // isAllowedExternalUri permits https/http/mailto only.
-                            if (isAllowedExternalUri(targetUri)) {
-                                openExternalUriSafely(ctx, targetUri)
+                            if (request != null && shouldOpenExternalUri(request)) {
+                                openExternalUriSafely(ctx, request.url)
                             }
                             return true
                         }
@@ -120,6 +116,15 @@ internal fun HtmlMessageWebView(
         }
     }
 }
+
+/**
+ * Returns whether an intercepted navigation may open an external app.
+ *
+ * Only https/http/mailto links initiated by a user gesture are allowed, so
+ * content-driven navigations cannot leave the application.
+ */
+internal fun shouldOpenExternalUri(request: WebResourceRequest?): Boolean =
+    request?.hasGesture() == true && isAllowedExternalUri(request.url)
 
 @Composable
 private fun HtmlLoadingPlaceholder(minHeight: Dp) {
