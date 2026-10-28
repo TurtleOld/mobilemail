@@ -5,11 +5,9 @@ import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
-import com.mobilemail.BuildConfig
-import com.mobilemail.data.oauth.OAuthDiscovery
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.oauth.OAuthRefreshFailure
 import com.mobilemail.data.oauth.OAuthRefreshFailureClassifier
-import com.mobilemail.data.oauth.OAuthTokenRefresh
 import com.mobilemail.data.oauth.StoredToken
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
@@ -37,12 +35,11 @@ class TokenRefreshWorker(
         val tokenStore = TokenStore(appContext)
         return preferencesManager.getSavedAccounts()
             .fold(TokenRefreshSummary(refreshedCount = 0, failedCount = 0, skippedCount = 0)) { summary, session ->
-                summary + refreshSession(preferencesManager, tokenStore, session)
+                summary + refreshSession(tokenStore, session)
             }
     }
 
     private suspend fun refreshSession(
-        preferencesManager: PreferencesManager,
         tokenStore: TokenStore,
         session: SavedSession
     ): TokenRefreshSummary {
@@ -51,32 +48,18 @@ class TokenRefreshWorker(
             return TokenRefreshSummary(refreshedCount = 0, failedCount = 0, skippedCount = 1)
         }
 
-        val refreshToken = stored?.refreshToken
-            ?: return TokenRefreshSummary(refreshedCount = 0, failedCount = 0, skippedCount = 1)
-
         return try {
-            val metadata = preferencesManager.getOAuthMetadata(session.server)
-                ?: discoverAndCacheMetadata(preferencesManager, session.server)
-            val refreshedToken = OAuthTokenRefresh(
-                metadata = metadata,
-                clientId = BuildConfig.OAUTH_CLIENT_ID,
-                client = OAuthTokenRefresh.createClient()
-            ).refreshToken(refreshToken)
-
-            tokenStore.saveTokens(session.server, session.email, refreshedToken)
+            val client = MailClientFactory.create(
+                application = applicationContext,
+                server = session.server,
+                email = session.email,
+                accountId = session.accountId
+            )
+            client.getValidAccessToken(REFRESH_WINDOW_MILLIS)
             TokenRefreshSummary(refreshedCount = 1, failedCount = 0, skippedCount = 0)
         } catch (error: Exception) {
             handleRefreshFailure(tokenStore, session, error)
         }
-    }
-
-    private suspend fun discoverAndCacheMetadata(
-        preferencesManager: PreferencesManager,
-        server: String
-    ): com.mobilemail.data.oauth.OAuthServerMetadata {
-        val metadata = OAuthDiscovery(OAuthDiscovery.createClient()).discover(server)
-        preferencesManager.saveOAuthMetadata(server, metadata)
-        return metadata
     }
 
     /**

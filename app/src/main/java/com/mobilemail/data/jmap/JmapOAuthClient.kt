@@ -18,6 +18,7 @@ import com.mobilemail.data.oauth.OAuthRefreshFailure
 import com.mobilemail.data.oauth.OAuthRefreshFailureClassifier
 import com.mobilemail.data.oauth.OAuthServerMetadata
 import com.mobilemail.data.oauth.OAuthTokenRefresh
+import com.mobilemail.data.oauth.StoredToken
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.util.LogRedactor
 import kotlinx.coroutines.Dispatchers
@@ -98,6 +99,31 @@ class JmapOAuthClient(
         }
 
         throw OAuthTokenExpiredException("Токен отсутствует или истёк. Требуется авторизация.")
+    }
+
+    /**
+     * Возвращает access-токен, действующий не меньше [refreshWindowMillis].
+     * Обновление выполняется под [tokenMutex], поэтому параллельные вызовы делают один запрос.
+     */
+    suspend fun getValidAccessToken(refreshWindowMillis: Long = 0L): String = tokenMutex.withLock {
+        val stored = tokenStoreAccess.getTokens(serverUrl, email)
+
+        if (stored != null && !needsRefresh(stored, refreshWindowMillis)) {
+            return@withLock stored.accessToken
+        }
+
+        val refreshToken = stored?.refreshToken
+            ?: throw OAuthTokenExpiredException("Токен отсутствует или истёк. Требуется авторизация.")
+
+        val newToken = tokenRefresh.refreshToken(refreshToken)
+        tokenStoreAccess.saveTokens(serverUrl, email, newToken)
+        newToken.accessToken
+    }
+
+    private fun needsRefresh(stored: StoredToken, refreshWindowMillis: Long): Boolean {
+        if (stored.isExpired()) return true
+        val expiresAt = stored.expiresAt ?: return false
+        return refreshWindowMillis > 0 && expiresAt - System.currentTimeMillis() <= refreshWindowMillis
     }
 
     // Token at the time the 401 was observed; passed so we can detect a concurrent refresh.

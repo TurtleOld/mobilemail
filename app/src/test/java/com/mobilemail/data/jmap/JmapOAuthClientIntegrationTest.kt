@@ -4,6 +4,9 @@ import com.mobilemail.data.oauth.OAuthServerMetadata
 import com.mobilemail.data.oauth.StoredToken
 import com.mobilemail.data.oauth.TokenResponse
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.test.runTest
 import okhttp3.OkHttpClient
 import okhttp3.mockwebserver.MockResponse
@@ -473,6 +476,55 @@ class JmapOAuthClientIntegrationTest {
             assertEquals(2, update.length())
             assertTrue(update.isNull("mailboxIds/inbox"))
             assertTrue(update.getBoolean("mailboxIds/archive"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `concurrent token requests with expired access token refresh once`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "access_token": "new_access",
+                  "token_type": "Bearer",
+                  "expires_in": 3600,
+                  "refresh_token": "new_refresh"
+                }
+                """.trimIndent()
+            )
+        )
+        try {
+            val tokenAccess = FakeTokenStoreAccess(
+                StoredToken(
+                    accessToken = "expired_access",
+                    tokenType = "Bearer",
+                    expiresAt = System.currentTimeMillis() - 1_000,
+                    refreshToken = "old_refresh"
+                )
+            )
+            val client = JmapOAuthClient(
+                baseUrl = server.url("/").toString(),
+                email = "user@example.com",
+                accountId = "acc1",
+                tokenStoreAccess = tokenAccess,
+                metadata = metadata(server),
+                clientId = "mobilemail-test"
+            )
+
+            val tokens = coroutineScope {
+                listOf(
+                    async { client.getValidAccessToken() },
+                    async { client.getValidAccessToken() }
+                ).awaitAll()
+            }
+
+            assertEquals(listOf("new_access", "new_access"), tokens)
+            assertEquals(1, tokenAccess.savedTokens.size)
+            assertEquals(1, server.requestCount)
         } finally {
             server.shutdown()
         }

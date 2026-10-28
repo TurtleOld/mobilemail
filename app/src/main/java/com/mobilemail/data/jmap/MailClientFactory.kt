@@ -1,6 +1,6 @@
 package com.mobilemail.data.jmap
 
-import android.app.Application
+import android.content.Context
 import com.mobilemail.BuildConfig
 import com.mobilemail.data.oauth.OAuthDiscovery
 import com.mobilemail.data.oauth.TokenStore
@@ -8,11 +8,11 @@ import com.mobilemail.data.preferences.PreferencesManager
 
 object MailClientFactory {
     suspend fun create(
-        application: Application,
+        application: Context,
         server: String,
         email: String,
         accountId: String
-    ): JmapApi {
+    ): JmapOAuthClient {
         val tokenStore = TokenStore(application)
         tokenStore.getTokens(server, email)
             ?: throw OAuthTokenExpiredException("Сессия истекла. Выполните вход заново.")
