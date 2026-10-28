@@ -4,10 +4,8 @@ import android.content.Context
 import android.net.Uri
 import androidx.core.content.edit
 import com.mobilemail.BuildConfig
-import com.mobilemail.data.oauth.OAuthDiscovery
+import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.oauth.OAuthHttpClientFactory
-import com.mobilemail.data.oauth.OAuthTokenRefresh
-import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
 import kotlinx.coroutines.Dispatchers
@@ -29,7 +27,6 @@ class NtfyClient(context: Context) {
     private val appContext = context.applicationContext
     private val preferences = context.getSharedPreferences("ntfy_cursor", Context.MODE_PRIVATE)
     private val preferencesManager = PreferencesManager(appContext)
-    private val tokenStore = TokenStore(appContext)
 
     suspend fun fetchPendingMessages(topic: String): List<NtfyEnvelope> = withContext(Dispatchers.IO) {
         val lastMessageId = preferences.getString(cursorKey(topic), null)
@@ -74,23 +71,13 @@ class NtfyClient(context: Context) {
     }
 
     private suspend fun resolveAccessToken(session: SavedSession): String {
-        val stored = tokenStore.getTokens(session.server, session.email)
-        if (stored?.isValid() == true) {
-            return stored.accessToken
-        }
-
-        val refreshToken = stored?.refreshToken ?: error("No valid OAuth access token for push proxy")
-        val metadata = preferencesManager.getOAuthMetadata(session.server)
-            ?: OAuthDiscovery(OAuthDiscovery.createClient()).discover(session.server).also { metadata ->
-                preferencesManager.saveOAuthMetadata(session.server, metadata)
-            }
-        val refreshedToken = OAuthTokenRefresh(
-            metadata = metadata,
-            clientId = BuildConfig.OAUTH_CLIENT_ID,
-            client = OAuthTokenRefresh.createClient()
-        ).refreshToken(refreshToken)
-        tokenStore.saveTokens(session.server, session.email, refreshedToken)
-        return refreshedToken.accessToken
+        val client = MailClientFactory.create(
+            application = appContext,
+            server = session.server,
+            email = session.email,
+            accountId = session.accountId
+        )
+        return client.getValidAccessToken()
     }
 
     private fun saveCursor(topic: String, messageId: String) {
