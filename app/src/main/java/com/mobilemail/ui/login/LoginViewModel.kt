@@ -18,7 +18,7 @@ import com.mobilemail.data.oauth.OAuthServerMetadata
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.repository.MailRepository
-import com.mobilemail.data.common.fold
+import com.mobilemail.domain.common.fold
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.FeatureScreenUiState

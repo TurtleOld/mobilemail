@@ -1,8 +1,8 @@
 package com.mobilemail.data.repository
 
 import android.util.Log
-import com.mobilemail.data.common.Result
-import com.mobilemail.data.common.runCatchingSuspend
+import com.mobilemail.domain.common.Result
+import com.mobilemail.domain.common.runCatchingSuspend
 import com.mobilemail.data.jmap.JmapApi
 import com.mobilemail.data.local.dao.FolderDao
 import com.mobilemail.data.local.dao.MessageDao

@@ -18,8 +18,8 @@ object FileManager {
         filename: String,
         data: ByteArray,
         mimeType: String = "application/octet-stream"
-    ): com.mobilemail.data.common.Result<Uri> = withContext(Dispatchers.IO) {
-        com.mobilemail.data.common.runCatchingSuspend {
+    ): com.mobilemail.domain.common.Result<Uri> = withContext(Dispatchers.IO) {
+        com.mobilemail.domain.common.runCatchingSuspend {
             val uri = saveToDownloadsApi29Plus(context, filename, data, mimeType)
             Log.d("FileManager", "Файл сохранен: $uri")
             uri
@@ -82,8 +82,8 @@ object FileManager {
         filename: String,
         data: ByteArray,
         mimeType: String = "application/octet-stream"
-    ): com.mobilemail.data.common.Result<Uri> = withContext(Dispatchers.IO) {
-        com.mobilemail.data.common.runCatchingSuspend {
+    ): com.mobilemail.domain.common.Result<Uri> = withContext(Dispatchers.IO) {
+        com.mobilemail.domain.common.runCatchingSuspend {
             val cacheDir = context.cacheDir
             val extension = mimeType.substringAfter('/', "").substringBefore(';').ifBlank { "bin" }
             val normalizedExtension = if (extension == "octet-stream") "bin" else extension

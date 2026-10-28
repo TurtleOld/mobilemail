@@ -1,7 +1,7 @@
 package com.mobilemail.data.sync
 
 import android.app.Application
-import com.mobilemail.data.common.fold
+import com.mobilemail.domain.common.fold
 import com.mobilemail.domain.common.Result
 import com.mobilemail.domain.common.Result.Success
 import com.mobilemail.domain.common.Result.Error

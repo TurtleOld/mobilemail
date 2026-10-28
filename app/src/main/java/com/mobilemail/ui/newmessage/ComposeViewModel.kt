@@ -4,7 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.mobilemail.data.common.fold
+import com.mobilemail.domain.common.fold
 import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Attachment
 import com.mobilemail.domain.model.toData
