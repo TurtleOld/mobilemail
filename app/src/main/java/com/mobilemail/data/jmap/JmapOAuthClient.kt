@@ -79,13 +79,10 @@ class JmapOAuthClient(
     private val client = OAuthHttpClientFactory.authorizedClient(accessTokenProvider)
 
     private var session: JmapSession? = null
-    private val sessionCache = mutableMapOf<String, Pair<JmapSession, Long>>()
-    private val sessionCacheTtl = 5 * 60 * 1000L
 
     private val sessionMutex = Mutex()
     private val tokenMutex = Mutex()
     private val requestSemaphore = Semaphore(permits = 2)
-    private var isFirstLaunch = true
 
     private val serverUrl = baseUrl.trimEnd('/')
 
@@ -145,16 +142,7 @@ class JmapOAuthClient(
 
     override suspend fun getSession(): JmapSession {
         return sessionMutex.withLock {
-            val cacheKey = accountId
-            val cached = sessionCache[cacheKey]
-            if (cached != null && cached.second > System.currentTimeMillis()) {
-                return@withLock cached.first
-            }
-
-            session?.let {
-                sessionCache[cacheKey] = Pair(it, System.currentTimeMillis() + sessionCacheTtl)
-                return@withLock it
-            }
+            session?.let { return@withLock it }
 
             val sessionUrl = "$serverUrl/.well-known/jmap"
 
@@ -176,7 +164,6 @@ class JmapOAuthClient(
 
             val created = parseSession(JSONObject(body))
             session = created
-            sessionCache[cacheKey] = Pair(created, System.currentTimeMillis() + sessionCacheTtl)
             return@withLock created
         }
     }
@@ -523,12 +510,6 @@ class JmapOAuthClient(
         }
 
     private suspend fun makeRequest(url: String, requestJson: JSONObject): JSONObject = requestSemaphore.withPermit {
-        if (isFirstLaunch) {
-            Log.d("JmapOAuthClient", "Первый запрос после запуска, добавляем задержку для оптимизации")
-            delay(150)
-            isFirstLaunch = false
-        }
-
         val requestBody = requestJson.toString().replace("\\/", "/")
             .toRequestBody("application/json".toMediaType())
 
