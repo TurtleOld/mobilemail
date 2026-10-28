@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.6.1](https://github.com/TurtleOld/mobilemail/compare/v1.6.0...v1.6.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **auth:** serialize OAuth token refresh through JmapOAuthClient ([#132](https://github.com/TurtleOld/mobilemail/issues/132)) ([9bd17c5](https://github.com/TurtleOld/mobilemail/commit/9bd17c5f7513c7e2c63100387b17ff48b822a69d)), closes [#115](https://github.com/TurtleOld/mobilemail/issues/115)
+* **auth:** различать временный сбой сети и терминальный отказ токена при обновлении ([#104](https://github.com/TurtleOld/mobilemail/issues/104)) ([344570c](https://github.com/TurtleOld/mobilemail/commit/344570c71fce97c55eb486cc22e43d976ea2a739))
+* **database:** recreate encrypted db only on wrong passphrase ([#122](https://github.com/TurtleOld/mobilemail/issues/122)) ([63017f6](https://github.com/TurtleOld/mobilemail/commit/63017f67fcbcf4e753305e3fe490f599781b0ae6)), closes [#116](https://github.com/TurtleOld/mobilemail/issues/116)
+* **deps:** update all non-major dependencies ([#106](https://github.com/TurtleOld/mobilemail/issues/106)) ([97cc3eb](https://github.com/TurtleOld/mobilemail/commit/97cc3eb72ba7edc16de8b79d95cdce3ffa8bb57f))
+* **deps:** update dependency com.squareup.okhttp3:okhttp to v5 ([#108](https://github.com/TurtleOld/mobilemail/issues/108)) ([d102593](https://github.com/TurtleOld/mobilemail/commit/d102593843c17f9a8866cbcc45f0e1fedf75c5a4))
+* **deps:** update dependency org.json:json to v20231013 ([#109](https://github.com/TurtleOld/mobilemail/issues/109)) ([642d0f8](https://github.com/TurtleOld/mobilemail/commit/642d0f8304365e79f6d0be402de2c3de96506ef5))
+* **jmap:** move email via mailboxIds patch without reading ([#131](https://github.com/TurtleOld/mobilemail/issues/131)) ([e7ae5bc](https://github.com/TurtleOld/mobilemail/commit/e7ae5bcbd98d7a6eb1e47e852e1ddbe219d8effc)), closes [#114](https://github.com/TurtleOld/mobilemail/issues/114)
+* **jmap:** не повторять JMAP POST вслепую при таймауте ответа ([#125](https://github.com/TurtleOld/mobilemail/issues/125)) ([7a6aa83](https://github.com/TurtleOld/mobilemail/commit/7a6aa8300e5463dc14700eb6691c649ff4a405c3)), closes [#113](https://github.com/TurtleOld/mobilemail/issues/113)
+* **messagedetail:** require user gesture for external navigation ([#124](https://github.com/TurtleOld/mobilemail/issues/124)) ([6cf12f3](https://github.com/TurtleOld/mobilemail/commit/6cf12f36ef67639211e7e126dff2b1d0a0fec60e))
+* **sync:** retry offline queue operations after execution errors ([#112](https://github.com/TurtleOld/mobilemail/issues/112)) ([19a7ab7](https://github.com/TurtleOld/mobilemail/commit/19a7ab7a9cf7de58de5fc0b517f76af5ba100501))
+
+
+### Refactoring
+
+* **data:** удалить обёртки Result и ErrorMapper ([#130](https://github.com/TurtleOld/mobilemail/issues/130)) ([3ad0eef](https://github.com/TurtleOld/mobilemail/commit/3ad0eefa97199e4b03511dacdbc5cbbfe158b69b)), closes [#121](https://github.com/TurtleOld/mobilemail/issues/121)
+* **jmap:** вынести выбор accountId в resolveAccountId ([#129](https://github.com/TurtleOld/mobilemail/issues/129)) ([41a648e](https://github.com/TurtleOld/mobilemail/commit/41a648ea71c9492fc5c005c96a487f2759902765)), closes [#118](https://github.com/TurtleOld/mobilemail/issues/118)
+* **jmap:** удалить мёртвый TTL-кеш сессии и задержку первого запроса ([#128](https://github.com/TurtleOld/mobilemail/issues/128)) ([b57c9ac](https://github.com/TurtleOld/mobilemail/commit/b57c9ac4d74c3158f61db9372ed6d7baca3c620f)), closes [#119](https://github.com/TurtleOld/mobilemail/issues/119)
+* **update:** убрать ветки Android &lt; 9 в ApkContractVerifier ([#123](https://github.com/TurtleOld/mobilemail/issues/123)) ([7bb4f50](https://github.com/TurtleOld/mobilemail/commit/7bb4f50df54c50c559f3c950e197a5f82783f4bb)), closes [#120](https://github.com/TurtleOld/mobilemail/issues/120)
+
 ## [1.6.0](https://github.com/TurtleOld/mobilemail/compare/v1.5.5...v1.6.0) (2026-09-20)
 
 
