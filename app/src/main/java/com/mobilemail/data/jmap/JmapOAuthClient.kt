@@ -182,6 +182,12 @@ class JmapOAuthClient(
     }
 
 
+    private suspend fun resolveAccountId(accountId: String?): String {
+        val session = getSession()
+        return accountId ?: session.primaryAccounts?.mail
+            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+    }
+
     private fun parseSession(json: JSONObject): JmapSession {
         val accountsJson = json.optJSONObject("accounts") ?: JSONObject()
         val accounts = mutableMapOf<String, JmapAccount>()
@@ -223,9 +229,7 @@ class JmapOAuthClient(
 
     override suspend fun getMailboxes(accountId: String?): List<JmapMailbox> {
         Log.d("JmapOAuthClient", "getMailboxes вызван для accountId: $accountId")
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         Log.d("JmapOAuthClient", "Запрос Mailbox/get для accountId: $targetAccountId")
         val methodCallArray = JSONArray().apply {
@@ -273,9 +277,7 @@ class JmapOAuthClient(
         filter: Map<String, Any>?,
         searchText: String?
     ): EmailQueryResult {
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val methodCall = buildQueryMethodCall(targetAccountId, mailboxId, searchText, filter, position, limit, callId = "0")
         val response = makeRequest(getApiUrl(), buildJmapRequest(methodCall))
@@ -287,9 +289,7 @@ class JmapOAuthClient(
         accountId: String?,
         properties: List<String>?
     ): List<JmapEmail> {
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val defaultProperties = listOf(
             "id", "threadId", "mailboxIds", "keywords", "size",
@@ -342,9 +342,7 @@ class JmapOAuthClient(
         searchText: String?,
         properties: List<String>?
     ): Pair<EmailQueryResult, List<JmapEmail>> {
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val queryMethodCall = buildQueryMethodCall(targetAccountId, mailboxId, searchText, filter, position, limit, callId = "q0")
         val getMethodCall = buildGetMethodCall(targetAccountId, properties, backReferenceCallId = "q0")
@@ -559,9 +557,7 @@ class JmapOAuthClient(
         keywords: Map<String, Boolean>,
         accountId: String?
     ): Boolean {
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val keywordsJson = JSONObject()
         keywords.forEach { (key, value) -> keywordsJson.put(key, value) }
@@ -596,9 +592,7 @@ class JmapOAuthClient(
         emailId: String,
         accountId: String?
     ): Boolean {
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val methodCallArray = JSONArray().apply {
             put("Email/set")
@@ -626,9 +620,7 @@ class JmapOAuthClient(
         toMailboxId: String,
         accountId: String?
     ): Boolean {
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val mailboxIds = try {
             val current = getEmails(
@@ -710,9 +702,7 @@ class JmapOAuthClient(
             throw IllegalArgumentException("blobId не может быть пустым")
         }
 
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val downloadUrl = getDownloadUrl(targetAccountId, blobId)
         Log.d("JmapOAuthClient", "Загрузка вложения с URL: $downloadUrl")
@@ -740,8 +730,7 @@ class JmapOAuthClient(
         accountId: String?
     ): Attachment {
         val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val uploadUrl = session.uploadUrl
             .replace("{accountId}", targetAccountId)
@@ -853,9 +842,7 @@ class JmapOAuthClient(
             "saveDraft: from=$from, toCount=${to.size}, subject=${subject.length}ch, " +
                 "body=${body.length}ch, attachments=${attachments.size}, draftId=$draftId"
         )
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val mailboxes = getMailboxes(targetAccountId)
         val draftsMailbox = mailboxes.firstOrNull { it.role == "drafts" } ?: mailboxes.firstOrNull()
@@ -986,9 +973,7 @@ class JmapOAuthClient(
             "sendEmail: from=$from, toCount=${to.size}, subject=${subject.length}ch, " +
                 "body=${body.length}ch, attachments=${attachments.size}, draftId=$draftId"
         )
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val resolvedDraftId = saveDraft(from, to, subject, body, attachments, draftId, targetAccountId)
 
@@ -1036,9 +1021,7 @@ class JmapOAuthClient(
         submissionId: String,
         accountId: String?
     ): EmailSubmissionStatus {
-        val session = getSession()
-        val targetAccountId = accountId ?: session.primaryAccounts?.mail
-            ?: session.accounts.keys.firstOrNull() ?: this.accountId
+        val targetAccountId = resolveAccountId(accountId)
 
         val methodCallArray = JSONArray().apply {
             put("EmailSubmission/get")
