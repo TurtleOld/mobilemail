@@ -6,7 +6,9 @@ import com.mobilemail.data.oauth.TokenResponse
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -236,6 +238,81 @@ class JmapOAuthClientIntegrationTest {
                 assertTrue(error.message.orEmpty().contains("JMAP method error"))
                 assertTrue(error.message.orEmpty().contains("serverFail"))
             }
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    @Test
+    fun `moveEmail sends mailboxIds patch without reading current mailboxes`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(sessionResponse(server)))
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "methodResponses": [
+                    ["Email/set", {"updated":{"email1":null}}, "0"]
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "methodResponses": [
+                    ["Email/get", {"list":[{"id":"email1","mailboxIds":{"inbox":true,"work":true}}]}, "0"]
+                  ]
+                }
+                """.trimIndent()
+            )
+        )
+        try {
+            val tokenAccess = FakeTokenStoreAccess(
+                StoredToken(
+                    accessToken = "old_access",
+                    tokenType = "Bearer",
+                    expiresAt = System.currentTimeMillis() + 60_000,
+                    refreshToken = "old_refresh"
+                )
+            )
+            val client = JmapOAuthClient(
+                baseUrl = server.url("/").toString(),
+                email = "user@example.com",
+                accountId = "acc1",
+                tokenStoreAccess = tokenAccess,
+                metadata = metadata(server),
+                clientId = "mobilemail-test"
+            )
+
+            val moved = client.moveEmail(
+                emailId = "email1",
+                fromMailboxId = "inbox",
+                toMailboxId = "archive",
+                accountId = "acc1"
+            )
+
+            assertTrue(moved)
+
+            val sessionRequest = server.takeRequest()
+            assertEquals("/.well-known/jmap", sessionRequest.path)
+
+            val setRequest = server.takeRequest()
+            assertEquals("/jmap/api", setRequest.path)
+            assertEquals(2, server.requestCount)
+
+            val body = JSONObject(setRequest.body.readUtf8())
+            val methodCall = body.getJSONArray("methodCalls").getJSONArray(0)
+            assertEquals("Email/set", methodCall.getString(0))
+
+            val update = methodCall.getJSONObject(1).getJSONObject("update").getJSONObject("email1")
+            assertFalse(update.has("mailboxIds"))
+            assertEquals(2, update.length())
+            assertTrue(update.isNull("mailboxIds/inbox"))
+            assertTrue(update.getBoolean("mailboxIds/archive"))
         } finally {
             server.shutdown()
         }

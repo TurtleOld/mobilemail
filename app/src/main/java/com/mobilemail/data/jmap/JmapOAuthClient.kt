@@ -630,24 +630,11 @@ class JmapOAuthClient(
         val targetAccountId = accountId ?: session.primaryAccounts?.mail
             ?: session.accounts.keys.firstOrNull() ?: this.accountId
 
-        val mailboxIds = try {
-            val current = getEmails(
-                ids = listOf(emailId),
-                accountId = targetAccountId,
-                properties = listOf("id", "mailboxIds")
-            ).firstOrNull()
-            JSONObject().apply {
-                current?.mailboxIds?.forEach { (k, v) -> if (v) put(k, true) }
-                remove(fromMailboxId)
-                put(toMailboxId, true)
-            }
-        } catch (e: Exception) {
-            Log.w("JmapOAuthClient", "moveEmail: не удалось прочитать текущие mailboxIds, fallback", e)
-            JSONObject().apply { put(toMailboxId, true) }
-        }
-
         val updateObject = JSONObject().apply {
-            put(emailId, JSONObject().apply { put("mailboxIds", mailboxIds) })
+            put(emailId, JSONObject().apply {
+                put("mailboxIds/$fromMailboxId", JSONObject.NULL)
+                put("mailboxIds/$toMailboxId", true)
+            })
         }
 
         val setParams = JSONObject().apply {
