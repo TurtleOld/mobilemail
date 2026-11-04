@@ -304,6 +304,8 @@ class MailRepositoryReadStatusTest {
 
         override suspend fun getById(id: Long): PendingOperationEntity? = null
 
+        override suspend fun getAll(): List<PendingOperationEntity> = activeReadStatusOperations
+
         override suspend fun getFailedOperations(): List<PendingOperationEntity> = emptyList()
 
         override suspend fun delete(id: Long) = Unit
