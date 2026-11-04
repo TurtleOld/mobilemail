@@ -85,7 +85,7 @@ class MailRepository(
             val queryResult = fetchEmailQuery(folderId, accountId, position, limit)
 
             if (queryResult.ids.isEmpty()) {
-                return@runCatchingSuspend buildEmptyPageResult(cachedMessages, queryResult.queryState)
+                return@runCatchingSuspend handleEmptyPage(folderId, accountId, position, queryResult.queryState)
             }
 
             val cachedQueryState = folderMetadata?.queryState
@@ -145,19 +145,27 @@ class MailRepository(
         )
     }
 
-    private fun buildEmptyPageResult(
-        cachedMessages: List<com.mobilemail.data.local.entity.MessageEntity>?,
+    /**
+     * Обрабатывает успешный ответ Email/query с пустым списком идентификаторов.
+     *
+     * Пустая первая страница означает, что папка пуста: сохранённые письма этой
+     * папки удаляются как устаревшие. Пустая следующая страница только завершает
+     * пагинацию и не трогает уже загруженные страницы.
+     */
+    private suspend fun handleEmptyPage(
+        folderId: String,
+        accountId: String,
+        position: Int,
         queryState: String?
     ): MessagePage {
-        Log.d("MailRepository", "Список писем пуст")
-        cachedMessages?.let {
-            return MessagePage(
-                items = it.map { entity -> entity.toMessageListItem().toDomain() },
-                nextPosition = null,
-                hasMore = false,
-                queryState = queryState,
-                fromCache = true
-            )
+        Log.d("MailRepository", "Список писем пуст: folderId=$folderId, position=$position")
+        if (position == 0) {
+            try {
+                messageDao?.deleteMessagesByFolder(folderId, accountId)
+                Log.d("MailRepository", "Кэш папки очищен: folderId=$folderId")
+            } catch (e: Exception) {
+                Log.e("MailRepository", "Ошибка очистки кэша папки", e)
+            }
         }
         return MessagePage(emptyList(), null, false, queryState)
     }
