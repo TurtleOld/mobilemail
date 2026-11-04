@@ -1,0 +1,30 @@
+name: Auto-update PR branches
+
+on:
+  pull_request:
+    branches: [main]
+    types: [closed]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: auto-update-pr-branches
+  cancel-in-progress: false
+
+jobs:
+  update-branches:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Update open PR branches from main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -eu
+          for pr in $(gh pr list -R "$REPO" --base main --state open --json number --jq '.[].number'); do
+            echo "Updating PR #$pr from main"
+            gh pr update-branch -R "$REPO" "$pr" || echo "PR #$pr skipped (already up to date or conflict)"
+          done
