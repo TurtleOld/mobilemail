@@ -363,6 +363,18 @@ object OfflineQueueManager {
             TYPE_DELETE -> executeDelete(client, operation.payload)
             TYPE_MOVE -> executeMove(client, operation.payload)
             TYPE_MARK_READ -> executeMarkRead(client, operation.payload)
+                .also { result ->
+                    if (result is Result.Success) {
+                        // Keep the cache in step with a status the server has just accepted.
+                        runCatching {
+                            val json = JSONObject(operation.payload)
+                            AppDatabase.getInstance(application).messageDao().updateReadStatus(
+                                messageId = json.getString("messageId"),
+                                isUnread = !json.getBoolean("isRead")
+                            )
+                        }
+                    }
+                }
             TYPE_TOGGLE_STAR -> executeToggleStar(client, operation.payload)
             else -> Result.Error(IllegalArgumentException("Unsupported queue op: ${operation.type}"))
         }

@@ -104,6 +104,8 @@ internal class FakePendingOperationDao(initial: List<PendingOperationEntity>) : 
 
     override suspend fun getById(id: Long): PendingOperationEntity? = error("not used")
 
+    override suspend fun getActiveReadStatusOperations(): List<PendingOperationEntity> = error("not used")
+
     override suspend fun getFailedOperations(): List<PendingOperationEntity> = error("not used")
 
     override suspend fun delete(id: Long) = error("not used")

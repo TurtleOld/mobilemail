@@ -18,6 +18,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.IOException
 
 class MailRepositoryTest {
 
@@ -48,13 +49,12 @@ class MailRepositoryTest {
         repository.getMessage("m1").getOrThrow()
         repository.getMessage("m2").getOrThrow()
         repository.getMessage("m3").getOrThrow()
-        repository.getMessage("m2").getOrThrow()
+        api.offline = true
 
-        assertEquals(3, api.emailGetProperties.size)
+        assertEquals("m2", repository.getMessage("m2").getOrThrow().id)
+        assertTrue(repository.getMessage("m1") is com.mobilemail.domain.common.Result.Error)
+        assertEquals("m3", repository.getMessage("m3").getOrThrow().id)
 
-        repository.getMessage("m1").getOrThrow()
-
-        assertEquals(4, api.emailGetProperties.size)
     }
 
     @Test
@@ -85,6 +85,7 @@ private class FakeJmapApi(
     private val ids: List<String> = emptyList()
 ) : JmapApi {
     val emailGetProperties = mutableListOf<List<String>>()
+    var offline = false
 
     private val session = JmapSession(
         apiUrl = "https://example.test/jmap",
@@ -112,6 +113,7 @@ private class FakeJmapApi(
         accountId: String?,
         properties: List<String>?
     ): List<JmapEmail> {
+        if (offline) throw IOException("offline")
         emailGetProperties += properties.orEmpty()
         val includeBody = properties == null || properties.any { it in BODY_PROPERTY_NAMES }
         return ids.map { id ->
