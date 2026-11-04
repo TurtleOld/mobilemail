@@ -1,5 +1,45 @@
 # Changelog
 
+## [1.6.1](https://github.com/TurtleOld/mobilemail/compare/v1.6.0...v1.6.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* **attachments:** освобождать локальные копии вложений ([#151](https://github.com/TurtleOld/mobilemail/issues/151)) ([dd23355](https://github.com/TurtleOld/mobilemail/commit/dd23355ee0d27fa239eb46fac0704043133119d6)), closes [#145](https://github.com/TurtleOld/mobilemail/issues/145)
+* **auth:** serialize OAuth token refresh through JmapOAuthClient ([#132](https://github.com/TurtleOld/mobilemail/issues/132)) ([9bd17c5](https://github.com/TurtleOld/mobilemail/commit/9bd17c5f7513c7e2c63100387b17ff48b822a69d)), closes [#115](https://github.com/TurtleOld/mobilemail/issues/115)
+* **auth:** различать временный сбой сети и терминальный отказ токена при обновлении ([#104](https://github.com/TurtleOld/mobilemail/issues/104)) ([344570c](https://github.com/TurtleOld/mobilemail/commit/344570c71fce97c55eb486cc22e43d976ea2a739))
+* **ci:** запускать Android CI после автообновления PR ([#161](https://github.com/TurtleOld/mobilemail/issues/161)) ([a2fa9f9](https://github.com/TurtleOld/mobilemail/commit/a2fa9f92433cc9c34a71438d6679aadcad104bfe))
+* **ci:** надёжные обновления PR и полный Android gate ([#162](https://github.com/TurtleOld/mobilemail/issues/162)) ([b367838](https://github.com/TurtleOld/mobilemail/commit/b36783819a030bca62c28d14abe582c441744770))
+* **compose:** serialize draft autosave and send for one message ([#157](https://github.com/TurtleOld/mobilemail/issues/157)) ([24d0284](https://github.com/TurtleOld/mobilemail/commit/24d02843000493240ce8f7919af3478fc78f35dd)), closes [#141](https://github.com/TurtleOld/mobilemail/issues/141)
+* **compose:** ограничивать чтение вложения при добавлении ([#150](https://github.com/TurtleOld/mobilemail/issues/150)) ([96042c8](https://github.com/TurtleOld/mobilemail/commit/96042c839b404739079d0db8c66f2fb652873479))
+* **compose:** сохранять текст редактора при повороте и выходе ([#156](https://github.com/TurtleOld/mobilemail/issues/156)) ([12d1302](https://github.com/TurtleOld/mobilemail/commit/12d1302c58c8221be3fe2ff5a9082f7d9fae660b)), closes [#140](https://github.com/TurtleOld/mobilemail/issues/140)
+* **database:** recreate encrypted db only on wrong passphrase ([#122](https://github.com/TurtleOld/mobilemail/issues/122)) ([63017f6](https://github.com/TurtleOld/mobilemail/commit/63017f67fcbcf4e753305e3fe490f599781b0ae6)), closes [#116](https://github.com/TurtleOld/mobilemail/issues/116)
+* **data:** isolate local mail by account and server ([#159](https://github.com/TurtleOld/mobilemail/issues/159)) ([8b9e9a3](https://github.com/TurtleOld/mobilemail/commit/8b9e9a357a3d2df3c66d18c8ba3bc26e16685436))
+* **data:** preserve encrypted database and outbox queue on open error ([#152](https://github.com/TurtleOld/mobilemail/issues/152)) ([fcfe8e4](https://github.com/TurtleOld/mobilemail/commit/fcfe8e40ca0c2e15bce013c95f8659d972c26f72)), closes [#148](https://github.com/TurtleOld/mobilemail/issues/148)
+* **deps:** update all non-major dependencies ([#106](https://github.com/TurtleOld/mobilemail/issues/106)) ([97cc3eb](https://github.com/TurtleOld/mobilemail/commit/97cc3eb72ba7edc16de8b79d95cdce3ffa8bb57f))
+* **deps:** update dependency com.google.firebase:firebase-bom to v35 ([#136](https://github.com/TurtleOld/mobilemail/issues/136)) ([94a1173](https://github.com/TurtleOld/mobilemail/commit/94a11737db49b13d4a3c199ffe1cc8a40689c482))
+* **deps:** update dependency com.squareup.okhttp3:mockwebserver to v5.5.1 ([#134](https://github.com/TurtleOld/mobilemail/issues/134)) ([9dc70c1](https://github.com/TurtleOld/mobilemail/commit/9dc70c13071158840b03c2953887161745778bf5))
+* **deps:** update dependency com.squareup.okhttp3:okhttp to v5 ([#108](https://github.com/TurtleOld/mobilemail/issues/108)) ([d102593](https://github.com/TurtleOld/mobilemail/commit/d102593843c17f9a8866cbcc45f0e1fedf75c5a4))
+* **deps:** update dependency org.json:json to v20231013 ([#109](https://github.com/TurtleOld/mobilemail/issues/109)) ([642d0f8](https://github.com/TurtleOld/mobilemail/commit/642d0f8304365e79f6d0be402de2c3de96506ef5))
+* **drafts:** сохранять старую версию черновика при отказе создания новой ([#155](https://github.com/TurtleOld/mobilemail/issues/155)) ([73c81a4](https://github.com/TurtleOld/mobilemail/commit/73c81a435d15c344ffa1172d8876376d65c42bb6)), closes [#139](https://github.com/TurtleOld/mobilemail/issues/139)
+* **jmap:** move email via mailboxIds patch without reading ([#131](https://github.com/TurtleOld/mobilemail/issues/131)) ([e7ae5bc](https://github.com/TurtleOld/mobilemail/commit/e7ae5bcbd98d7a6eb1e47e852e1ddbe219d8effc)), closes [#114](https://github.com/TurtleOld/mobilemail/issues/114)
+* **jmap:** patch only the changed keyword on Email/set ([#164](https://github.com/TurtleOld/mobilemail/issues/164)) ([5a0b05a](https://github.com/TurtleOld/mobilemail/commit/5a0b05a30427e25298d9dc0caa9f526c92b5113f)), closes [#137](https://github.com/TurtleOld/mobilemail/issues/137)
+* **jmap:** не повторять JMAP POST вслепую при таймауте ответа ([#125](https://github.com/TurtleOld/mobilemail/issues/125)) ([7a6aa83](https://github.com/TurtleOld/mobilemail/commit/7a6aa8300e5463dc14700eb6691c649ff4a405c3)), closes [#113](https://github.com/TurtleOld/mobilemail/issues/113)
+* **mail:** load message bodies only when a message is opened ([#149](https://github.com/TurtleOld/mobilemail/issues/149)) ([dd5271d](https://github.com/TurtleOld/mobilemail/commit/dd5271d0a733e8e509b61d6cc13f296e56b651da)), closes [#146](https://github.com/TurtleOld/mobilemail/issues/146)
+* **mail:** очищать кэш папки при пустом ответе Email/query ([#153](https://github.com/TurtleOld/mobilemail/issues/153)) ([c37516a](https://github.com/TurtleOld/mobilemail/commit/c37516add69a1f1d1605e9bd4debbd2bfd44a8c2)), closes [#142](https://github.com/TurtleOld/mobilemail/issues/142)
+* **messagedetail:** require user gesture for external navigation ([#124](https://github.com/TurtleOld/mobilemail/issues/124)) ([6cf12f3](https://github.com/TurtleOld/mobilemail/commit/6cf12f36ef67639211e7e126dff2b1d0a0fec60e))
+* **sync:** reconcile read status with server unless a local action is pending ([#154](https://github.com/TurtleOld/mobilemail/issues/154)) ([e156b25](https://github.com/TurtleOld/mobilemail/commit/e156b258352fcd3dfd6994869ec5051393cc353a))
+* **sync:** retry offline queue operations after execution errors ([#112](https://github.com/TurtleOld/mobilemail/issues/112)) ([19a7ab7](https://github.com/TurtleOld/mobilemail/commit/19a7ab7a9cf7de58de5fc0b517f76af5ba100501))
+* **sync:** не повторять отправку при неизвестном результате ([#158](https://github.com/TurtleOld/mobilemail/issues/158)) ([280a5ab](https://github.com/TurtleOld/mobilemail/commit/280a5abb7fd9defb181d7f6fd4df22d643914ca3)), closes [#138](https://github.com/TurtleOld/mobilemail/issues/138)
+
+
+### Refactoring
+
+* **data:** удалить обёртки Result и ErrorMapper ([#130](https://github.com/TurtleOld/mobilemail/issues/130)) ([3ad0eef](https://github.com/TurtleOld/mobilemail/commit/3ad0eefa97199e4b03511dacdbc5cbbfe158b69b)), closes [#121](https://github.com/TurtleOld/mobilemail/issues/121)
+* **jmap:** вынести выбор accountId в resolveAccountId ([#129](https://github.com/TurtleOld/mobilemail/issues/129)) ([41a648e](https://github.com/TurtleOld/mobilemail/commit/41a648ea71c9492fc5c005c96a487f2759902765)), closes [#118](https://github.com/TurtleOld/mobilemail/issues/118)
+* **jmap:** удалить мёртвый TTL-кеш сессии и задержку первого запроса ([#128](https://github.com/TurtleOld/mobilemail/issues/128)) ([b57c9ac](https://github.com/TurtleOld/mobilemail/commit/b57c9ac4d74c3158f61db9372ed6d7baca3c620f)), closes [#119](https://github.com/TurtleOld/mobilemail/issues/119)
+* **update:** убрать ветки Android &lt; 9 в ApkContractVerifier ([#123](https://github.com/TurtleOld/mobilemail/issues/123)) ([7bb4f50](https://github.com/TurtleOld/mobilemail/commit/7bb4f50df54c50c559f3c950e197a5f82783f4bb)), closes [#120](https://github.com/TurtleOld/mobilemail/issues/120)
+
 ## [1.6.0](https://github.com/TurtleOld/mobilemail/compare/v1.5.5...v1.6.0) (2026-09-20)
 
 
