@@ -64,7 +64,7 @@ class AppDatabaseMigrationTest {
             TEST_DB,
             5,
             true,
-            *AppDatabase.ALL_MIGRATIONS
+            *AppDatabase.migrations { emptyMap() }
         ).apply {
             query("PRAGMA table_info(folders)").use { cursor ->
                 assertTrue("folders.queryState column must exist", cursorHasColumn(cursor, "queryState"))

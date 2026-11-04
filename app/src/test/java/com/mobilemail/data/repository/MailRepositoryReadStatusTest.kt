@@ -113,6 +113,7 @@ class MailRepositoryReadStatusTest {
         jmapClient = FakeJmapApi(serverEmails),
         messageDao = messageDao,
         folderDao = FakeFolderDao(),
+        localAccountId = "https://example.test|user@example.test",
         pendingOperationDao = FakePendingOperationDao(pendingOperations)
     )
 
@@ -132,6 +133,7 @@ class MailRepositoryReadStatusTest {
         threadId = "t-$id",
         folderId = folderId,
         accountId = accountId,
+        localAccountId = "https://example.test|user@example.test",
         fromName = "Sender",
         fromEmail = "sender@example.test",
         subject = "Subject $id",
@@ -169,27 +171,27 @@ class MailRepositoryReadStatusTest {
 
         fun getStored(id: String): MessageEntity? = stored[id]
 
-        override fun getMessagesByFolder(folderId: String, accountId: String): Flow<List<MessageEntity>> =
+        override fun getMessagesByFolder(folderId: String, localAccountId: String): Flow<List<MessageEntity>> =
             flowOf(stored.values.toList())
 
         override suspend fun getMessagesByFolderPaged(
             folderId: String,
-            accountId: String,
+            localAccountId: String,
             limit: Int,
             offset: Int
         ): List<MessageEntity> = stored.values
-            .filter { it.folderId == folderId && it.accountId == accountId }
+            .filter { it.folderId == folderId && it.localAccountId == localAccountId }
             .sortedByDescending { it.date }
             .drop(offset)
             .take(limit)
 
-        override suspend fun getMessageCountByFolder(folderId: String, accountId: String): Int =
-            stored.values.count { it.folderId == folderId && it.accountId == accountId }
+        override suspend fun getMessageCountByFolder(folderId: String, localAccountId: String): Int =
+            stored.values.count { it.folderId == folderId && it.localAccountId == localAccountId }
 
-        override suspend fun getLatestSyncedAtByFolder(folderId: String, accountId: String): Long? =
-            stored.values.filter { it.folderId == folderId && it.accountId == accountId }.maxOfOrNull { it.syncedAt }
+        override suspend fun getLatestSyncedAtByFolder(folderId: String, localAccountId: String): Long? =
+            stored.values.filter { it.folderId == folderId && it.localAccountId == localAccountId }.maxOfOrNull { it.syncedAt }
 
-        override suspend fun getMessageById(messageId: String): MessageEntity? = stored[messageId]
+        override suspend fun getMessageById(messageId: String, localAccountId: String): MessageEntity? = stored[messageId]
 
         override suspend fun insertMessage(message: MessageEntity) {
             stored[message.id] = message
@@ -207,18 +209,18 @@ class MailRepositoryReadStatusTest {
             stored.remove(message.id)
         }
 
-        override suspend fun deleteMessagesByFolder(folderId: String, accountId: String) = Unit
+        override suspend fun deleteMessagesByFolder(folderId: String, localAccountId: String) = Unit
 
-        override suspend fun deleteMessagesByAccount(accountId: String) = Unit
+        override suspend fun deleteMessagesByAccount(localAccountId: String) = Unit
 
-        override suspend fun updateReadStatus(messageId: String, isUnread: Boolean) {
+        override suspend fun updateReadStatus(messageId: String, localAccountId: String, isUnread: Boolean) {
             stored[messageId]?.let { stored[messageId] = it.copy(isUnread = isUnread) }
         }
 
-        override suspend fun updateStarredStatus(messageId: String, isStarred: Boolean) = Unit
+        override suspend fun updateStarredStatus(messageId: String, localAccountId: String, isStarred: Boolean) = Unit
 
         override suspend fun searchMessagesFts(
-            accountId: String,
+            localAccountId: String,
             matchQuery: String,
             folderId: String?,
             senderLike: String?,
@@ -232,7 +234,7 @@ class MailRepositoryReadStatusTest {
         ): List<MessageEntity> = emptyList()
 
         override suspend fun searchMessagesFiltered(
-            accountId: String,
+            localAccountId: String,
             folderId: String?,
             senderLike: String?,
             unreadOnly: Boolean,
@@ -246,15 +248,15 @@ class MailRepositoryReadStatusTest {
     }
 
     private class FakeFolderDao : FolderDao {
-        override fun getFoldersByAccount(accountId: String): Flow<List<FolderEntity>> = flowOf(emptyList())
+        override fun getFoldersByAccount(localAccountId: String): Flow<List<FolderEntity>> = flowOf(emptyList())
 
-        override suspend fun getFoldersByAccountSync(accountId: String): List<FolderEntity> = emptyList()
+        override suspend fun getFoldersByAccountSync(localAccountId: String): List<FolderEntity> = emptyList()
 
-        override suspend fun getFolderById(folderId: String, accountId: String): FolderEntity? = null
+        override suspend fun getFolderById(folderId: String, localAccountId: String): FolderEntity? = null
 
         override suspend fun updateFolderSyncState(
             folderId: String,
-            accountId: String,
+            localAccountId: String,
             queryState: String?,
             syncedAt: Long
         ) = Unit
@@ -267,7 +269,7 @@ class MailRepositoryReadStatusTest {
 
         override suspend fun deleteFolder(folder: FolderEntity) = Unit
 
-        override suspend fun deleteFoldersByAccount(accountId: String) = Unit
+        override suspend fun deleteFoldersByAccount(localAccountId: String) = Unit
     }
 
     private class FakePendingOperationDao(
@@ -296,11 +298,19 @@ class MailRepositoryReadStatusTest {
 
         override suspend fun getUnknownOutcomeCount(): Int = 0
 
-        override suspend fun deleteByAccount(accountId: String) = Unit
+        override suspend fun deleteByAccount(server: String, email: String) = Unit
 
         override suspend fun getPendingCount(): Int = 0
 
-        override suspend fun getFailedCount(): Int = 0
+
+        override suspend fun getPendingCountForAccount(server: String, email: String): Int =
+            getAll().count { it.server == server && it.email == email && it.status in listOf("pending", "failed") }
+
+        override suspend fun getFailedCountForAccount(server: String, email: String): Int =
+            getAll().count { it.server == server && it.email == email && it.status == "failed" }
+
+        override suspend fun getPermanentFailedCountForAccount(server: String, email: String): Int =
+            getAll().count { it.server == server && it.email == email && it.status == "permanent_failed" }
 
         override suspend fun getPermanentFailedCount(): Int = 0
 
@@ -308,17 +318,20 @@ class MailRepositoryReadStatusTest {
 
         override suspend fun getById(id: Long): PendingOperationEntity? = null
 
+        override suspend fun getUnknownOutcomeCountForAccount(server: String, email: String): Int =
+            getAll().count { it.server == server && it.email == email && it.status == "unknown_outcome" }
+
         override suspend fun getAll(): List<PendingOperationEntity> = activeReadStatusOperations
 
-        override suspend fun getFailedOperations(): List<PendingOperationEntity> = emptyList()
+        override suspend fun getFailedOperations(server: String, email: String): List<PendingOperationEntity> = emptyList()
 
         override suspend fun delete(id: Long) = Unit
 
         override suspend fun retryById(id: Long, updatedAt: Long) = Unit
 
-        override suspend fun retryAllFailed(updatedAt: Long) = Unit
+        override suspend fun retryAllFailed(server: String, email: String, updatedAt: Long) = Unit
 
-        override suspend fun clearFailed() = Unit
+        override suspend fun clearFailed(server: String, email: String) = Unit
     }
 
     private class FakeJmapApi(

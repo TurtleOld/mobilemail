@@ -74,12 +74,20 @@ class LogoutAccountUseCaseTest {
                 calls += "remove"
                 null
             },
-            clearLocalCache = { accountId -> calls += "clearCache:$accountId" },
+            clearLocalCache = { clearedSession ->
+                calls += "clearCache:${clearedSession.server}:${clearedSession.email}"
+            },
             shouldClearLocalCache = { true }
         )
 
         assertEquals(
-            listOf("unsubscribe", "revoke", "clearTokens", "clearCache:acc-1", "remove"),
+            listOf(
+                "unsubscribe",
+                "revoke",
+                "clearTokens",
+                "clearCache:https://mail.example.com:user@example.com",
+                "remove"
+            ),
             calls
         )
     }

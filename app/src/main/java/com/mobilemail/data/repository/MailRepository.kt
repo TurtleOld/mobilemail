@@ -15,7 +15,6 @@ import com.mobilemail.data.sync.PendingReadStatusQueue
 import com.mobilemail.domain.model.Account as DomainAccount
 import com.mobilemail.data.repository.Mappers.toDomainAccount
 import com.mobilemail.data.repository.Mappers.toFolder
-import com.mobilemail.data.repository.Mappers.toFolderEntity
 import com.mobilemail.data.repository.Mappers.toMessageDetail
 import com.mobilemail.data.repository.Mappers.toMessageEntity
 import com.mobilemail.data.repository.Mappers.toMessageListItem
@@ -40,7 +39,8 @@ class MailRepository(
     private val messageDao: MessageDao? = null,
     private val folderDao: FolderDao? = null,
     private val pendingOperationDao: PendingOperationDao? = null,
-    bodyCacheSize: Int = DEFAULT_BODY_CACHE_SIZE
+    bodyCacheSize: Int = DEFAULT_BODY_CACHE_SIZE,
+    private val localAccountId: String? = null
 ) : IMailRepository {
     private val client = jmapClient
 
@@ -89,9 +89,13 @@ class MailRepository(
             error("AccountId не найден")
         }
 
-        val cachedMessages = messageDao?.getMessagesByFolderPaged(folderId, accountId, limit, position)
-        val folderMetadata = folderDao?.getFolderById(folderId, accountId)
-        val latestCachedSync = messageDao?.getLatestSyncedAtByFolder(folderId, accountId)
+        val cachedMessages = localAccountId?.let {
+            messageDao?.getMessagesByFolderPaged(folderId, it, limit, position)
+        }
+        val folderMetadata = localAccountId?.let { folderDao?.getFolderById(folderId, it) }
+        val latestCachedSync = localAccountId?.let {
+            messageDao?.getLatestSyncedAtByFolder(folderId, it)
+        }
         val isCacheFresh = latestCachedSync != null && (System.currentTimeMillis() - latestCachedSync) <= cacheTtlMillis
         val pendingReadStatus = pendingReadStatusOverrides()
 
@@ -99,7 +103,7 @@ class MailRepository(
             val queryResult = fetchEmailQuery(folderId, accountId, position, limit)
 
             if (queryResult.ids.isEmpty()) {
-                return@runCatchingSuspend handleEmptyPage(folderId, accountId, position, queryResult.queryState)
+                return@runCatchingSuspend handleEmptyPage(folderId, position, queryResult.queryState)
             }
 
             val cachedQueryState = folderMetadata?.queryState
@@ -172,14 +176,13 @@ class MailRepository(
      */
     private suspend fun handleEmptyPage(
         folderId: String,
-        accountId: String,
         position: Int,
         queryState: String?
     ): MessagePage {
         Log.d("MailRepository", "Список писем пуст: folderId=$folderId, position=$position")
         if (position == 0) {
             try {
-                messageDao?.deleteMessagesByFolder(folderId, accountId)
+                localAccountId?.let { messageDao?.deleteMessagesByFolder(folderId, it) }
                 Log.d("MailRepository", "Кэш папки очищен: folderId=$folderId")
             } catch (e: Exception) {
                 Log.e("MailRepository", "Ошибка очистки кэша папки", e)
@@ -229,7 +232,9 @@ class MailRepository(
 
     private suspend fun pendingReadStatusOverrides(): Map<String, Boolean> =
         try {
-            val operations = pendingOperationDao?.getActiveReadStatusOperations().orEmpty()
+            val operations = pendingOperationDao?.getActiveReadStatusOperations().orEmpty().filter {
+                com.mobilemail.data.local.LocalAccountIdentity.of(it.server, it.email) == localAccountId
+            }
             PendingReadStatusQueue.unreadOverrides(operations)
         } catch (e: Exception) {
             Log.e("MailRepository", "Не удалось прочитать ожидающие операции очереди", e)
@@ -242,6 +247,7 @@ class MailRepository(
         accountId: String,
         queryState: String?
     ) {
+        val accountKey = localAccountId ?: return
         messageDao?.let { dao ->
             try {
                 val now = System.currentTimeMillis()
@@ -249,12 +255,12 @@ class MailRepository(
                 for (messageListItem in result) {
                     // The cache mirrors the server. Local intents are applied when reading,
                     // so a stale row must never win over a fresh server response.
-                    val entity = messageListItem.toMessageEntity(folderId, accountId).copy(syncedAt = now)
+                    val entity = messageListItem.toMessageEntity(folderId, accountId, accountKey).copy(syncedAt = now)
                     messagesToSave.add(entity)
                 }
                 dao.insertMessages(messagesToSave)
-                trimFolderCache(folderId, accountId)
-                folderDao?.updateFolderSyncState(folderId, accountId, queryState, now)
+                trimFolderCache(folderId, accountKey)
+                folderDao?.updateFolderSyncState(folderId, accountKey, queryState, now)
                 Log.d("MailRepository", "Письма сохранены в кэш: ${result.size}")
             } catch (e: Exception) {
                 Log.e("MailRepository", "Ошибка сохранения писем в кэш", e)
@@ -285,7 +291,7 @@ class MailRepository(
             onError = { error ->
                 // Offline fallback: the cached copy is the last server state plus any local intent.
                 val cachedMessage = cachedMessage(messageId)
-                    ?: messageDao?.getMessageById(messageId)?.toMessageDetail()
+                    ?: localAccountId?.let { messageDao?.getMessageById(messageId, it)?.toMessageDetail() }
                 cachedMessage?.let { Result.Success(it.withUnreadOverride(pendingUnread)) }
                     ?: Result.Error(error)
             }
@@ -347,9 +353,9 @@ class MailRepository(
             Log.d("MailRepository", "Статус обновлен в памяти кэше")
         }
 
-        messageDao?.let { dao ->
+        localAccountId?.let { accountKey ->
             try {
-                dao.updateReadStatus(messageId, isUnread)
+                messageDao?.updateReadStatus(messageId, accountKey, isUnread)
                 Log.d("MailRepository", "Статус обновлен в Room")
             } catch (e: Exception) {
                 Log.e("MailRepository", "Ошибка обновления статуса в Room", e)
@@ -363,12 +369,12 @@ class MailRepository(
     suspend fun hasPendingReadStatusChange(messageId: String): Boolean =
         pendingReadStatusOverrides().containsKey(messageId)
 
-    private suspend fun trimFolderCache(folderId: String, accountId: String, maxMessages: Int = 200) {
+    private suspend fun trimFolderCache(folderId: String, localAccountId: String, maxMessages: Int = 200) {
         val dao = messageDao ?: return
-        val totalCount = dao.getMessageCountByFolder(folderId, accountId)
+        val totalCount = dao.getMessageCountByFolder(folderId, localAccountId)
         if (totalCount <= maxMessages) return
-        val messagesToKeep = dao.getMessagesByFolderPaged(folderId, accountId, maxMessages, 0).map { it.id }.toSet()
-        val allMessages = dao.getMessagesByFolderPaged(folderId, accountId, totalCount, 0)
+        val messagesToKeep = dao.getMessagesByFolderPaged(folderId, localAccountId, maxMessages, 0).map { it.id }.toSet()
+        val allMessages = dao.getMessagesByFolderPaged(folderId, localAccountId, totalCount, 0)
         allMessages.filterNot { it.id in messagesToKeep }.forEach { dao.deleteMessage(it) }
     }
 

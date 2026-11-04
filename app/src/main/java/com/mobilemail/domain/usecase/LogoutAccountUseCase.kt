@@ -9,7 +9,7 @@ class LogoutAccountUseCase {
         revokeTokens: suspend (String, String) -> Unit,
         clearTokens: suspend (String, String) -> Unit,
         removeSavedAccount: suspend (String, String) -> SavedSession?,
-        clearLocalCache: suspend (String) -> Unit = {},
+        clearLocalCache: suspend (SavedSession) -> Unit = {},
         shouldClearLocalCache: suspend () -> Boolean = { false }
     ): SavedSession? {
         unsubscribeTopic(session.accountId)
@@ -20,7 +20,7 @@ class LogoutAccountUseCase {
         }
         clearTokens(session.server, session.email)
         if (shouldClearLocalCache()) {
-            clearLocalCache(session.accountId)
+            clearLocalCache(session)
         }
         return removeSavedAccount(session.server, session.email)
     }

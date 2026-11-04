@@ -27,7 +27,7 @@ class MailRepositoryEmptyFolderTest {
     @Test
     fun `empty first page clears cached folder`() = runTest {
         val dao = InMemoryMessageDao(listOf(cachedMessage("m1"), cachedMessage("m2")))
-        val repository = MailRepository(FakeJmapApi { position -> emptyQuery(position) }, dao)
+        val repository = MailRepository(FakeJmapApi { position -> emptyQuery(position) }, dao, localAccountId = ACCOUNT_ID)
 
         val page = repository.getMessagesPage(FOLDER_ID, position = 0, limit = PAGE_SIZE, forceRefresh = true).getOrThrow()
 
@@ -41,7 +41,7 @@ class MailRepositoryEmptyFolderTest {
     fun `empty next page ends pagination and keeps cached pages`() = runTest {
         val cached = listOf(cachedMessage("m1"), cachedMessage("m2"), cachedMessage("m3"))
         val dao = InMemoryMessageDao(cached)
-        val repository = MailRepository(FakeJmapApi { position -> emptyQuery(position) }, dao)
+        val repository = MailRepository(FakeJmapApi { position -> emptyQuery(position) }, dao, localAccountId = ACCOUNT_ID)
 
         val page = repository.getMessagesPage(FOLDER_ID, position = 2, limit = PAGE_SIZE).getOrThrow()
 
@@ -54,7 +54,7 @@ class MailRepositoryEmptyFolderTest {
     @Test
     fun `network error keeps cached messages available`() = runTest {
         val dao = InMemoryMessageDao(listOf(cachedMessage("m1")))
-        val repository = MailRepository(FakeJmapApi { throw IOException("offline") }, dao)
+        val repository = MailRepository(FakeJmapApi { throw IOException("offline") }, dao, localAccountId = ACCOUNT_ID)
 
         val page = repository.getMessagesPage(FOLDER_ID, position = 0, limit = PAGE_SIZE, forceRefresh = true).getOrThrow()
 
@@ -75,6 +75,7 @@ class MailRepositoryEmptyFolderTest {
         threadId = "thread-$id",
         folderId = FOLDER_ID,
         accountId = ACCOUNT_ID,
+        localAccountId = ACCOUNT_ID,
         fromName = "Sender",
         fromEmail = "sender@example.test",
         subject = "Subject $id",
@@ -165,28 +166,28 @@ class MailRepositoryEmptyFolderTest {
     private class InMemoryMessageDao(initial: List<MessageEntity>) : MessageDao {
         val messages = initial.toMutableList()
 
-        override fun getMessagesByFolder(folderId: String, accountId: String): Flow<List<MessageEntity>> =
-            flowOf(messages.filter { it.folderId == folderId && it.accountId == accountId })
+        override fun getMessagesByFolder(folderId: String, localAccountId: String): Flow<List<MessageEntity>> =
+            flowOf(messages.filter { it.folderId == folderId && it.localAccountId == localAccountId })
 
         override suspend fun getMessagesByFolderPaged(
             folderId: String,
-            accountId: String,
+            localAccountId: String,
             limit: Int,
             offset: Int
         ): List<MessageEntity> = messages
-            .filter { it.folderId == folderId && it.accountId == accountId }
+            .filter { it.folderId == folderId && it.localAccountId == localAccountId }
             .sortedByDescending { it.date }
             .drop(offset)
             .take(limit)
 
-        override suspend fun getMessageCountByFolder(folderId: String, accountId: String): Int =
-            messages.count { it.folderId == folderId && it.accountId == accountId }
+        override suspend fun getMessageCountByFolder(folderId: String, localAccountId: String): Int =
+            messages.count { it.folderId == folderId && it.localAccountId == localAccountId }
 
-        override suspend fun getLatestSyncedAtByFolder(folderId: String, accountId: String): Long? = messages
-            .filter { it.folderId == folderId && it.accountId == accountId }
+        override suspend fun getLatestSyncedAtByFolder(folderId: String, localAccountId: String): Long? = messages
+            .filter { it.folderId == folderId && it.localAccountId == localAccountId }
             .maxOfOrNull { it.syncedAt }
 
-        override suspend fun getMessageById(messageId: String): MessageEntity? =
+        override suspend fun getMessageById(messageId: String, localAccountId: String): MessageEntity? =
             messages.firstOrNull { it.id == messageId }
 
         override suspend fun insertMessage(message: MessageEntity) {
@@ -202,26 +203,26 @@ class MailRepositoryEmptyFolderTest {
             messages.removeAll { it.id == message.id }
         }
 
-        override suspend fun deleteMessagesByFolder(folderId: String, accountId: String) {
-            messages.removeAll { it.folderId == folderId && it.accountId == accountId }
+        override suspend fun deleteMessagesByFolder(folderId: String, localAccountId: String) {
+            messages.removeAll { it.folderId == folderId && it.localAccountId == localAccountId }
         }
 
-        override suspend fun deleteMessagesByAccount(accountId: String) {
-            messages.removeAll { it.accountId == accountId }
+        override suspend fun deleteMessagesByAccount(localAccountId: String) {
+            messages.removeAll { it.localAccountId == localAccountId }
         }
 
-        override suspend fun updateReadStatus(messageId: String, isUnread: Boolean) {
+        override suspend fun updateReadStatus(messageId: String, localAccountId: String, isUnread: Boolean) {
             val index = messages.indexOfFirst { it.id == messageId }
             if (index >= 0) messages[index] = messages[index].copy(isUnread = isUnread)
         }
 
-        override suspend fun updateStarredStatus(messageId: String, isStarred: Boolean) {
+        override suspend fun updateStarredStatus(messageId: String, localAccountId: String, isStarred: Boolean) {
             val index = messages.indexOfFirst { it.id == messageId }
             if (index >= 0) messages[index] = messages[index].copy(isStarred = isStarred)
         }
 
         override suspend fun searchMessagesFts(
-            accountId: String,
+            localAccountId: String,
             matchQuery: String,
             folderId: String?,
             senderLike: String?,
@@ -235,7 +236,7 @@ class MailRepositoryEmptyFolderTest {
         ) = error("not used")
 
         override suspend fun searchMessagesFiltered(
-            accountId: String,
+            localAccountId: String,
             folderId: String?,
             senderLike: String?,
             unreadOnly: Boolean,

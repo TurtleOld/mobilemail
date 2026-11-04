@@ -8,6 +8,7 @@ import androidx.paging.cachedIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.MailClientFactory
+import com.mobilemail.data.local.LocalAccountIdentity
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.paging.MailPagingSource
 import com.mobilemail.domain.model.Folder
@@ -114,7 +115,8 @@ class MessagesViewModel(
                     jmapClient = jmapClient,
                     messageDao = database?.messageDao(),
                     folderDao = database?.folderDao(),
-                    pendingOperationDao = database?.pendingOperationDao()
+                    pendingOperationDao = database?.pendingOperationDao(),
+                    localAccountId = LocalAccountIdentity.of(server, email)
                 )
                 messageActionsRepository = MessageActionsRepository(jmapClient)
             } catch (e: Exception) {
@@ -685,13 +687,14 @@ class MessagesViewModel(
     private fun observeQueueStats() {
         viewModelScope.launch {
             OfflineQueueManager.observeAll(app).collect { operations ->
+                val accountOperations = operations.filter { it.server == server && it.email == email }
                 val currentState = _uiState.value
-                val rejectedReadStatusIds = PendingReadStatusQueue.permanentlyFailedMessageIds(operations)
+                val rejectedReadStatusIds = PendingReadStatusQueue.permanentlyFailedMessageIds(accountOperations)
                 _uiState.value = currentState.copy(
-                    pendingQueueCount = operations.count {
+                    pendingQueueCount = accountOperations.count {
                         it.status == OfflineQueueManager.STATUS_PENDING || it.status == OfflineQueueManager.STATUS_FAILED
                     },
-                    queueAttentionCount = operations.count {
+                    queueAttentionCount = accountOperations.count {
                         it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED ||
                             it.status == OfflineQueueManager.STATUS_UNKNOWN_OUTCOME
                     },
@@ -703,7 +706,7 @@ class MessagesViewModel(
     }
 
     private suspend fun refreshQueueStats() {
-        val stats = OfflineQueueManager.getStats(app)
+        val stats = OfflineQueueManager.getStats(app, server, email)
         _uiState.value = _uiState.value.copy(
             pendingQueueCount = stats.pendingCount + stats.failedCount,
             queueAttentionCount = stats.permanentFailedCount + stats.unknownOutcomeCount
