@@ -73,16 +73,18 @@ fun OutboxScreen(
                     }
                 },
                 actions = {
-                    if (uiState.isProcessing) {
-                        CircularProgressIndicator(modifier = Modifier.padding(12.dp))
-                    } else {
-                        if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
-                            IconButton(onClick = viewModel::retryFailed) {
-                                Icon(Icons.Default.Warning, contentDescription = "Повторить неуспешные")
+                    if (uiState.queueUnavailableMessage == null) {
+                        if (uiState.isProcessing) {
+                            CircularProgressIndicator(modifier = Modifier.padding(12.dp))
+                        } else {
+                            if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
+                                IconButton(onClick = viewModel::retryFailed) {
+                                    Icon(Icons.Default.Warning, contentDescription = "Повторить неуспешные")
+                                }
                             }
-                        }
-                        IconButton(onClick = viewModel::retryNow) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Повторить")
+                            IconButton(onClick = viewModel::retryNow) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Повторить")
+                            }
                         }
                     }
                 }
@@ -96,52 +98,82 @@ fun OutboxScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            if (uiState.operations.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text("Очередь пуста", style = MaterialTheme.typography.titleMedium)
-                    Spacer(modifier = Modifier.padding(4.dp))
-                    Text("Отложенные отправки и действия появятся здесь")
-                }
-            } else {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        QueueStatChip(label = "В очереди", count = uiState.stats.pendingCount)
-                        QueueStatChip(label = "Сбои", count = uiState.stats.failedCount)
-                        QueueStatChip(label = "Требуют внимания", count = uiState.stats.permanentFailedCount)
-                    }
-                    if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            AssistChip(onClick = viewModel::retryFailed, label = { Text("Повторить неуспешные") })
-                            AssistChip(onClick = viewModel::clearFailed, label = { Text("Очистить неуспешные") })
-                        }
-                    }
-                    LazyColumn(
+            when {
+                uiState.queueUnavailableMessage != null -> QueueUnavailableState(
+                    message = uiState.queueUnavailableMessage.orEmpty()
+                )
+                uiState.operations.isEmpty() -> {
+                    Column(
                         modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text("Очередь пуста", style = MaterialTheme.typography.titleMedium)
+                        Spacer(modifier = Modifier.padding(4.dp))
+                        Text("Отложенные отправки и действия появятся здесь")
+                    }
+                }
+                else -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(uiState.operations, key = { it.id }) { operation ->
-                            PendingOperationCard(
-                                operation = operation,
-                                onRemove = { viewModel.remove(operation.id) },
-                                onRetry = { viewModel.retryOperation(operation.id) }
-                            )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            QueueStatChip(label = "В очереди", count = uiState.stats.pendingCount)
+                            QueueStatChip(label = "Сбои", count = uiState.stats.failedCount)
+                            QueueStatChip(label = "Требуют внимания", count = uiState.stats.permanentFailedCount)
+                        }
+                        if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                AssistChip(onClick = viewModel::retryFailed, label = { Text("Повторить неуспешные") })
+                                AssistChip(onClick = viewModel::clearFailed, label = { Text("Очистить неуспешные") })
+                            }
+                        }
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(uiState.operations, key = { it.id }) { operation ->
+                                PendingOperationCard(
+                                    operation = operation,
+                                    onRemove = { viewModel.remove(operation.id) },
+                                    onRetry = { viewModel.retryOperation(operation.id) }
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun QueueUnavailableState(message: String) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Icon(
+            imageVector = Icons.Default.Warning,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error
+        )
+        Spacer(modifier = Modifier.padding(8.dp))
+        Text(
+            text = "Очередь недоступна",
+            style = MaterialTheme.typography.titleMedium
+        )
+        Spacer(modifier = Modifier.padding(4.dp))
+        Text(text = message)
     }
 }
 
