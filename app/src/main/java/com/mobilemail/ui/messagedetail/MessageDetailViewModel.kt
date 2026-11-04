@@ -7,6 +7,7 @@ import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.MailClientFactory
+import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.domain.model.Folder
 import com.mobilemail.domain.model.FolderRole
 import com.mobilemail.domain.model.MessageDetail
@@ -71,7 +72,12 @@ class MessageDetailViewModel(
         viewModelScope.launch {
             try {
                 val jmapClient = MailClientFactory.create(app, session.server, session.email, session.accountId)
-                repository = MailRepository(jmapClient)
+                repository = MailRepository(
+                    jmapClient = jmapClient,
+                    pendingOperationDao = runCatching {
+                        AppDatabase.getInstance(app).pendingOperationDao()
+                    }.getOrNull()
+                )
                 messageActionsRepository = MessageActionsRepository(jmapClient)
                 attachmentRepository = AttachmentRepository(jmapClient)
             } catch (e: Exception) {
@@ -114,7 +120,8 @@ class MessageDetailViewModel(
         viewModelScope.launch {
             Log.d("MessageDetailViewModel", "Начало загрузки письма: messageId=$messageId")
             _uiState.value = _uiState.value.copy(isLoading = true)
-            (repository ?: return@launch).getMessage(messageId).fold(
+            val mailRepository = repository ?: return@launch
+            mailRepository.getMessage(messageId).fold(
                 onError = { e ->
                     Log.e("MessageDetailViewModel", "Ошибка загрузки письма", e)
                     _uiState.value = _uiState.value.copy(
@@ -124,19 +131,23 @@ class MessageDetailViewModel(
                 },
                 onSuccess = { message ->
                     Log.d("MessageDetailViewModel", "Письмо получено успешно, unread=${message.flags.unread}")
-                    
+
+                    // Ожидающее локальное действие важнее серверного статуса: иначе открытие
+                    // письма сразу отменило бы, например, поставленную в очередь "непрочитанность".
+                    val hasPendingLocalReadStatus = mailRepository.hasPendingReadStatusChange(messageId)
+
                     // Автоматически помечаем как прочитанное, если оно непрочитанное
                     // Делаем это ДО обновления UI, чтобы статус сразу был правильным
-                    if (message.flags.unread) {
+                    if (message.flags.unread && !hasPendingLocalReadStatus) {
                         Log.d("MessageDetailViewModel", "Письмо непрочитанное, автоматически помечаем как прочитанное")
                         markAsReadSilently(message)
                     } else {
-                        Log.d("MessageDetailViewModel", "Письмо уже прочитанное, статус не изменяем")
+                        Log.d("MessageDetailViewModel", "Статус прочитанности не изменяем")
                     }
-                    
+
                     // Обновляем UI с правильным статусом
                     _uiState.value = _uiState.value.copy(
-                        message = if (message.flags.unread) {
+                        message = if (message.flags.unread && !hasPendingLocalReadStatus) {
                             // Если было непрочитанным, сразу обновляем статус в UI
                             message.copy(flags = message.flags.copy(unread = false))
                         } else {

@@ -160,6 +160,8 @@ class OfflineQueueManagerProcessTest {
 
         override suspend fun getFailedOperations(): List<PendingOperationEntity> = error("not used")
 
+        override suspend fun getActiveReadStatusOperations(): List<PendingOperationEntity> = error("not used")
+
         override suspend fun delete(id: Long) = error("not used")
 
         override suspend fun retryById(id: Long, updatedAt: Long) = error("not used")
