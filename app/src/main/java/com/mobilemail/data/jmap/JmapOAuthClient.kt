@@ -21,6 +21,7 @@ import com.mobilemail.data.oauth.OAuthTokenRefresh
 import com.mobilemail.data.oauth.StoredToken
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.util.LogRedactor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
@@ -850,9 +851,6 @@ class JmapOAuthClient(
         val setParams = JSONObject().apply {
             put("accountId", targetAccountId)
             put("create", JSONObject().apply { put("draft", createEmailObject) })
-            if (!draftId.isNullOrBlank()) {
-                put("destroy", JSONArray().apply { put(draftId) })
-            }
         }
 
         val methodCallArray = JSONArray().apply {
@@ -872,9 +870,48 @@ class JmapOAuthClient(
         val created = setResponse.optJSONObject("created")?.optJSONObject("draft")
         val createdId = created?.optString("id")
         if (createdId.isNullOrBlank()) {
-            error("Не удалось создать черновик")
+            val rejection = setResponse.optJSONObject("notCreated")?.optJSONObject("draft")
+            val reason = rejection?.optString("description").orEmpty()
+                .ifBlank { rejection?.optString("type").orEmpty() }
+            error(if (reason.isBlank()) "Не удалось создать черновик" else "Не удалось создать черновик: $reason")
+        }
+
+        if (!draftId.isNullOrBlank()) {
+            destroyDraft(targetAccountId, draftId)
         }
         return createdId
+    }
+
+    /**
+     * Удаляет предыдущую версию черновика отдельным запросом после подтверждённого создания новой.
+     *
+     * Ошибка удаления не прерывает сохранение: новая версия уже на сервере, а старая останется лишь
+     * лишней копией в Drafts. Поэтому сбой только логируется.
+     */
+    private suspend fun destroyDraft(targetAccountId: String, draftId: String) {
+        try {
+            val methodCallArray = JSONArray().apply {
+                put("Email/set")
+                put(JSONObject().apply {
+                    put("accountId", targetAccountId)
+                    put("destroy", JSONArray().apply { put(draftId) })
+                })
+                put("d2")
+            }
+
+            val response = makeRequest(getApiUrl(), buildJmapRequest(methodCallArray))
+            val setResponse = response.getJSONArray("methodResponses").getJSONArray(0).getJSONObject(1)
+            val destroyedIds = setResponse.optJSONArray("destroyed")
+            val destroyed = destroyedIds != null &&
+                (0 until destroyedIds.length()).any { destroyedIds.optString(it) == draftId }
+            if (!destroyed) {
+                Log.w("JmapOAuthClient", "Старая версия черновика не удалена: id=$draftId, ответ=$setResponse")
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            Log.w("JmapOAuthClient", "Не удалось удалить старую версию черновика: id=$draftId", e)
+        }
     }
 
     private fun buildSubmissionRequest(
