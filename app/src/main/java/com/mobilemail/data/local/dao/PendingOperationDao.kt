@@ -25,6 +25,13 @@ interface PendingOperationDao {
     @Query("UPDATE pending_operations SET status = 'pending', updatedAt = :updatedAt WHERE status = 'running'")
     suspend fun resetRunning(updatedAt: Long)
 
+    /**
+     * Переводит задания, прерванные после запроса отправки, в «результат неизвестен».
+     * Такие задания не попадают в автоматический повтор.
+     */
+    @Query("UPDATE pending_operations SET status = 'unknown_outcome', updatedAt = :updatedAt WHERE status = 'submitting'")
+    suspend fun resetInterruptedSubmissions(updatedAt: Long)
+
     @Query("DELETE FROM pending_operations WHERE accountId = :accountId")
     suspend fun deleteByAccount(accountId: String)
 
@@ -36,6 +43,9 @@ interface PendingOperationDao {
 
     @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'permanent_failed'")
     suspend fun getPermanentFailedCount(): Int
+
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'unknown_outcome'")
+    suspend fun getUnknownOutcomeCount(): Int
 
     @Query("SELECT * FROM pending_operations ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PendingOperationEntity>>

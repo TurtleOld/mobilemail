@@ -40,8 +40,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.mobilemail.data.local.entity.PendingOperationEntity
+import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -120,6 +122,9 @@ fun OutboxScreen(
                         QueueStatChip(label = "В очереди", count = uiState.stats.pendingCount)
                         QueueStatChip(label = "Сбои", count = uiState.stats.failedCount)
                         QueueStatChip(label = "Требуют внимания", count = uiState.stats.permanentFailedCount)
+                        if (uiState.stats.unknownOutcomeCount > 0) {
+                            QueueStatChip(label = "Результат неизвестен", count = uiState.stats.unknownOutcomeCount)
+                        }
                     }
                     if (uiState.stats.failedCount + uiState.stats.permanentFailedCount > 0) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -176,8 +181,22 @@ private fun PendingOperationCard(
                 }
             }
             Text("Статус: ${operationStatusLabel(operation.status)}")
+            if (operation.type == OfflineQueueManager.TYPE_SEND) {
+                sendSubject(operation.payload)?.let { subject ->
+                    Text("Тема: $subject")
+                }
+            }
             Text("Попыток: ${operation.attemptCount}")
             Text("Создано: ${formatter.format(Date(operation.createdAt))}")
+            if (operation.status == OfflineQueueManager.STATUS_UNKNOWN_OUTCOME) {
+                HorizontalDivider()
+                Text(
+                    "Сервер мог принять письмо, подтверждение не получено. Автоматического повтора " +
+                        "не будет: проверьте «Отправленные», затем отправьте повторно или удалите задание.",
+                    style = MaterialTheme.typography.bodySmall
+                )
+                AssistChip(onClick = onRetry, label = { Text("Отправить повторно") })
+            }
             if (!operation.lastError.isNullOrBlank()) {
                 HorizontalDivider()
                 Text(operation.lastError.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -195,6 +214,10 @@ private fun QueueStatChip(label: String, count: Int) {
     )
 }
 
+private fun sendSubject(payload: String): String? = runCatching {
+    JSONObject(payload).optString("subject").takeIf { it.isNotBlank() }
+}.getOrNull()
+
 private fun operationTypeLabel(type: String): String = when (type) {
     "send" -> "Отправка письма"
     "move" -> "Перемещение письма"
@@ -207,7 +230,9 @@ private fun operationTypeLabel(type: String): String = when (type) {
 private fun operationStatusLabel(status: String): String = when (status) {
     "pending" -> "Ожидает"
     "running" -> "Выполняется"
+    "submitting" -> "Отправляется"
     "failed" -> "Повтор будет выполнен"
+    "unknown_outcome" -> "Результат неизвестен"
     "permanent_failed" -> "Требует внимания"
     else -> status
 }

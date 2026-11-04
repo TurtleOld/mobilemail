@@ -653,8 +653,9 @@ class MessagesViewModel(
                                 message = "Синхронизировано операций: ${queueSummary.processedCount}",
                                 duration = SnackbarDuration.Short
                             )
-                            queueSummary.permanentFailedCount > 0 -> NotificationState.Snackbar(
-                                message = "Есть операции, требующие внимания: ${queueSummary.permanentFailedCount}",
+                            queueSummary.permanentFailedCount + queueSummary.unknownOutcomeCount > 0 -> NotificationState.Snackbar(
+                                message = "Есть операции, требующие внимания: " +
+                                    (queueSummary.permanentFailedCount + queueSummary.unknownOutcomeCount),
                                 duration = SnackbarDuration.Long
                             )
                             queueSummary.pendingCount > 0 -> NotificationState.Snackbar(
@@ -677,7 +678,8 @@ class MessagesViewModel(
                         it.status == OfflineQueueManager.STATUS_PENDING || it.status == OfflineQueueManager.STATUS_FAILED
                     },
                     queueAttentionCount = operations.count {
-                        it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED
+                        it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED ||
+                            it.status == OfflineQueueManager.STATUS_UNKNOWN_OUTCOME
                     }
                 )
             }
@@ -688,7 +690,7 @@ class MessagesViewModel(
         val stats = OfflineQueueManager.getStats(app)
         _uiState.value = _uiState.value.copy(
             pendingQueueCount = stats.pendingCount + stats.failedCount,
-            queueAttentionCount = stats.permanentFailedCount
+            queueAttentionCount = stats.permanentFailedCount + stats.unknownOutcomeCount
         )
     }
 }

@@ -394,8 +394,8 @@ class JmapOAuthClientIntegrationTest {
                     accountId = "acc1"
                 )
                 fail("Expected submission request to fail on response timeout")
-            } catch (expected: Exception) {
-                // Expected: the response never arrives.
+            } catch (expected: SendOutcomeUnknownException) {
+                // Expected: the server may have accepted the submission, the response never arrived.
             }
 
             val requests = (0 until server.requestCount).map { server.takeRequest() }

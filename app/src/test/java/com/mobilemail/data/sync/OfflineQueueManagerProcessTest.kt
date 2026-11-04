@@ -1,5 +1,6 @@
 package com.mobilemail.data.sync
 
+import com.mobilemail.data.jmap.SendOutcomeUnknownException
 import com.mobilemail.data.local.dao.PendingOperationDao
 import com.mobilemail.data.local.entity.PendingOperationEntity
 import com.mobilemail.domain.common.Result
@@ -9,6 +10,7 @@ import kotlinx.coroutines.test.runTest
 import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -24,7 +26,7 @@ class OfflineQueueManagerProcessTest {
         val dao = FakePendingOperationDao(listOf(send, delete))
         val processed = mutableListOf<Long>()
 
-        val summary = OfflineQueueManager.processOperations(dao, limit = 25) { pending ->
+        val summary = OfflineQueueManager.processOperations(dao, limit = 25) { pending, _ ->
             if (pending.type == OfflineQueueManager.TYPE_SEND) {
                 val path = JSONObject(pending.payload)
                     .getJSONArray("attachments")
@@ -52,7 +54,7 @@ class OfflineQueueManagerProcessTest {
         val dao = FakePendingOperationDao(listOf(stuck))
         val processed = mutableListOf<Long>()
 
-        val summary = OfflineQueueManager.processOperations(dao, limit = 25) { pending ->
+        val summary = OfflineQueueManager.processOperations(dao, limit = 25) { pending, _ ->
             processed += pending.id
             Result.Success(Unit)
         }
@@ -61,6 +63,77 @@ class OfflineQueueManagerProcessTest {
         assertEquals(listOf(7L), processed)
         assertNull(dao.operation(7))
         assertEquals(1, summary.processedCount)
+    }
+
+    @Test
+    fun `send interrupted before the submission request stays retryable`() = runTest {
+        val send = operation(id = 3, type = OfflineQueueManager.TYPE_SEND, status = OfflineQueueManager.STATUS_RUNNING)
+        val dao = FakePendingOperationDao(listOf(send))
+        val processed = mutableListOf<Long>()
+
+        OfflineQueueManager.processOperations(dao, limit = 25) { pending, _ ->
+            processed += pending.id
+            Result.Success(Unit)
+        }
+
+        assertEquals(listOf(3L), processed)
+        assertNull(dao.operation(3))
+    }
+
+    @Test
+    fun `send interrupted after the submission request becomes unknown outcome`() = runTest {
+        val interrupted = operation(
+            id = 4,
+            type = OfflineQueueManager.TYPE_SEND,
+            status = OfflineQueueManager.STATUS_SUBMITTING
+        )
+        val dao = FakePendingOperationDao(listOf(interrupted))
+        val processed = mutableListOf<Long>()
+
+        val summary = OfflineQueueManager.processOperations(dao, limit = 25) { pending, _ ->
+            processed += pending.id
+            Result.Success(Unit)
+        }
+
+        assertEquals(emptyList<Long>(), processed)
+        assertEquals(OfflineQueueManager.STATUS_UNKNOWN_OUTCOME, dao.operation(4)?.status)
+        assertEquals(1, summary.unknownOutcomeCount)
+        assertEquals(OfflineQueueManager.TYPE_SEND, dao.operation(4)?.type)
+    }
+
+    @Test
+    fun `unknown send outcome is excluded from subsequent retries`() = runTest {
+        val send = operation(id = 5, type = OfflineQueueManager.TYPE_SEND)
+        val dao = FakePendingOperationDao(listOf(send))
+        val processed = mutableListOf<Long>()
+
+        val firstSummary = OfflineQueueManager.processOperations(dao, limit = 25) { pending, _ ->
+            processed += pending.id
+            Result.Error(SendOutcomeUnknownException("ответ потерян"))
+        }
+        val secondSummary = OfflineQueueManager.processOperations(dao, limit = 25) { pending, _ ->
+            processed += pending.id
+            Result.Success(Unit)
+        }
+
+        assertEquals(OfflineQueueManager.STATUS_UNKNOWN_OUTCOME, dao.operation(5)?.status)
+        assertEquals(listOf(5L), processed)
+        assertEquals(0, firstSummary.failedCount)
+        assertEquals(1, firstSummary.unknownOutcomeCount)
+        assertEquals(1, secondSummary.unknownOutcomeCount)
+        assertNotNull(dao.operation(5))
+    }
+
+    @Test
+    fun `connection failure before submission keeps the send retryable`() = runTest {
+        val send = operation(id = 6, type = OfflineQueueManager.TYPE_SEND)
+        val dao = FakePendingOperationDao(listOf(send))
+
+        OfflineQueueManager.processOperations(dao, limit = 25) { _, _ ->
+            Result.Error(java.net.ConnectException("connection refused"))
+        }
+
+        assertEquals(OfflineQueueManager.STATUS_FAILED, dao.operation(6)?.status)
     }
 
     private fun operation(
@@ -104,6 +177,7 @@ class OfflineQueueManagerProcessTest {
 
     private class FakePendingOperationDao(initial: List<PendingOperationEntity>) : PendingOperationDao {
         private val operations = initial.toMutableList()
+        val statusHistory = mutableListOf<Pair<Long, String>>()
         var resetRunningCalls = 0
             private set
 
@@ -119,12 +193,25 @@ class OfflineQueueManagerProcessTest {
             }
         }
 
+        override suspend fun resetInterruptedSubmissions(updatedAt: Long) {
+            operations.indices.forEach { index ->
+                val item = operations[index]
+                if (item.status == OfflineQueueManager.STATUS_SUBMITTING) {
+                    operations[index] = item.copy(
+                        status = OfflineQueueManager.STATUS_UNKNOWN_OUTCOME,
+                        updatedAt = updatedAt
+                    )
+                }
+            }
+        }
+
         override suspend fun getProcessable(limit: Int): List<PendingOperationEntity> = operations
             .filter { it.status == OfflineQueueManager.STATUS_PENDING || it.status == OfflineQueueManager.STATUS_FAILED }
             .sortedBy { it.createdAt }
             .take(limit)
 
         override suspend fun updateStatus(id: Long, status: String, attemptCount: Int, lastError: String?, updatedAt: Long) {
+            statusHistory += id to status
             val index = operations.indexOfFirst { it.id == id }
             if (index >= 0) {
                 operations[index] = operations[index].copy(
@@ -146,6 +233,10 @@ class OfflineQueueManagerProcessTest {
 
         override suspend fun getPermanentFailedCount(): Int = operations.count {
             it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED
+        }
+
+        override suspend fun getUnknownOutcomeCount(): Int = operations.count {
+            it.status == OfflineQueueManager.STATUS_UNKNOWN_OUTCOME
         }
 
         override suspend fun insert(operation: PendingOperationEntity): Long = error("not used")

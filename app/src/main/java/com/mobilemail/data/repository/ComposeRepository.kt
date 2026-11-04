@@ -21,7 +21,8 @@ class ComposeRepository(
         subject: String,
         body: String,
         attachments: List<DomainAttachment>,
-        draftId: String?
+        draftId: String?,
+        onBeforeSubmission: (suspend () -> Unit)?
     ): Result<String> = runCatchingSuspend {
         val session = jmapClient.getSession()
         val accountId = session.primaryAccounts?.mail
@@ -37,7 +38,8 @@ class ComposeRepository(
             body = body,
             attachments = attachments.map { it.toData() },
             draftId = draftId,
-            accountId = accountId
+            accountId = accountId,
+            onBeforeSubmission = onBeforeSubmission
         )
     }
 

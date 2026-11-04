@@ -166,8 +166,12 @@ class ComposeViewModel(
         resolvedAttachments: List<Attachment>,
         onSuccess: () -> Unit
     ) {
-        if (OfflineQueueManager.shouldQueue(e)) {
-            viewModelScope.launch {
+        val outcomeUnknown = OfflineQueueManager.isSendOutcomeUnknown(e)
+        when {
+            outcomeUnknown || OfflineQueueManager.shouldQueue(e) -> viewModelScope.launch {
+                if (outcomeUnknown) {
+                    Log.w("ComposeViewModel", "Результат отправки неизвестен", e)
+                }
                 OfflineQueueManager.enqueueSend(
                     application = getApplication(),
                     server = server,
@@ -177,27 +181,34 @@ class ComposeViewModel(
                     subject = trimmedSubject,
                     body = trimmedBody,
                     attachments = resolvedAttachments.map { it.toData() },
-                    draftId = _uiState.value.draftId
+                    draftId = _uiState.value.draftId,
+                    outcomeUnknown = outcomeUnknown
                 )
                 _uiState.value = _uiState.value.copy(
                     isSending = false,
                     attachments = emptyList(),
                     draftId = null,
                     notification = NotificationState.Snackbar(
-                        message = "Нет сети. Письмо поставлено в очередь на отправку.",
+                        message = if (outcomeUnknown) {
+                            "Не удалось подтвердить отправку: сервер мог принять письмо. " +
+                                "Автоматического повтора не будет — проверьте «Отправленные» и очередь."
+                        } else {
+                            "Нет сети. Письмо поставлено в очередь на отправку."
+                        },
                         duration = SnackbarDuration.Long
                     )
                 )
                 onSuccess()
             }
-        } else {
-            _uiState.value = _uiState.value.copy(
-                isSending = false,
-                notification = NotificationState.Snackbar(
-                    message = "Не удалось отправить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
-                    duration = SnackbarDuration.Long
+            else -> {
+                _uiState.value = _uiState.value.copy(
+                    isSending = false,
+                    notification = NotificationState.Snackbar(
+                        message = "Не удалось отправить письмо: ${ErrorMapper.mapException(e).getUserMessage()}",
+                        duration = SnackbarDuration.Long
+                    )
                 )
-            )
+            }
         }
     }
 

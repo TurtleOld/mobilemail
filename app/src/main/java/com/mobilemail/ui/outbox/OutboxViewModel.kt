@@ -18,7 +18,12 @@ import kotlinx.coroutines.launch
 
 data class OutboxUiState(
     val operations: List<PendingOperationEntity> = emptyList(),
-    val stats: OfflineQueueStats = OfflineQueueStats(0, 0, 0, 0),
+    val stats: OfflineQueueStats = OfflineQueueStats(
+        pendingCount = 0,
+        failedCount = 0,
+        permanentFailedCount = 0,
+        totalCount = 0
+    ),
     override val error: AppError? = null,
     override val notification: NotificationState = NotificationState.None,
     val isProcessing: Boolean = false
@@ -43,7 +48,10 @@ class OutboxViewModel(
                     pendingCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_PENDING },
                     failedCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_FAILED },
                     permanentFailedCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED },
-                    totalCount = accountOperations.size
+                    totalCount = accountOperations.size,
+                    unknownOutcomeCount = accountOperations.count {
+                        it.status == OfflineQueueManager.STATUS_UNKNOWN_OUTCOME
+                    }
                 )
                 _uiState.value = _uiState.value.copy(operations = accountOperations, stats = stats)
             }

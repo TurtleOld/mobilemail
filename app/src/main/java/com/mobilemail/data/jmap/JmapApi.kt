@@ -72,8 +72,14 @@ interface JmapApi {
     /**
      * Отправляет письмо через JMAP EmailSubmission/set.
      *
+     * @param onBeforeSubmission вызывается непосредственно перед запросом создания
+     *   EmailSubmission; офлайн-очередь использует его, чтобы сохранить точку восстановления
+     *   на случай завершения процесса.
      * @return submissionId, по которому можно запросить статус доставки через [getEmailSubmission].
+     * @throws com.mobilemail.data.jmap.SendOutcomeUnknownException если запрос мог быть принят
+     *   сервером, а подтверждение потеряно.
      */
+    @Suppress("LongParameterList")
     suspend fun sendEmail(
         from: String,
         to: List<String>,
@@ -81,7 +87,8 @@ interface JmapApi {
         body: String,
         attachments: List<com.mobilemail.data.model.Attachment> = emptyList(),
         draftId: String? = null,
-        accountId: String? = null
+        accountId: String? = null,
+        onBeforeSubmission: (suspend () -> Unit)? = null
     ): String
 
     /**

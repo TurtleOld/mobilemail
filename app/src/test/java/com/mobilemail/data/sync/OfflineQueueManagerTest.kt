@@ -41,6 +41,17 @@ class OfflineQueueManagerTest {
     }
 
     @Test
+    fun `resolveNextStatus returns unknown outcome for an unconfirmed send`() {
+        val status = OfflineQueueManager.resolveNextStatus(
+            operationType = OfflineQueueManager.TYPE_SEND,
+            nextAttemptCount = 1,
+            error = com.mobilemail.data.jmap.SendOutcomeUnknownException("response lost")
+        )
+
+        assertEquals(OfflineQueueManager.STATUS_UNKNOWN_OUTCOME, status)
+    }
+
+    @Test
     fun `resolveNextStatus returns permanent_failed for non queueable errors`() {
         val status = OfflineQueueManager.resolveNextStatus(
             operationType = OfflineQueueManager.TYPE_SEND,
