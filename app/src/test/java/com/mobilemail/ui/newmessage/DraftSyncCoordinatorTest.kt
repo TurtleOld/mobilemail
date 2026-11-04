@@ -32,6 +32,25 @@ class DraftSyncCoordinatorTest {
     }
 
     @Test
+    fun `unknown submission outcome blocks subsequent autosaves`() = runTest {
+        var saves = 0
+        val coordinator = DraftSyncCoordinator(
+            scope = backgroundScope,
+            saveDraft = { _, _ -> saves++; Result.Success("draft") },
+            sendMessage = { _, _ ->
+                Result.Error(com.mobilemail.data.jmap.SendOutcomeUnknownException("response lost"))
+            }
+        )
+        val snapshot = DraftSnapshot(subject = "sent maybe")
+        assertFalse(coordinator.send(snapshot).isSuccess)
+        coordinator.requestSave(snapshot)
+        runCurrent()
+        assertTrue(coordinator.save(snapshot))
+        assertEquals(0, saves)
+        assertFalse(coordinator.isSaving.value)
+    }
+
+    @Test
     fun `editor flush waits for confirmation and send uses the saved draft id`() = runTest {
         val editorSnapshot = DraftSnapshot(subject = "editor")
         var sentDraftId: String? = null

@@ -145,7 +145,8 @@ class MailRepositoryEmptyFolderTest {
             body: String,
             attachments: List<Attachment>,
             draftId: String?,
-            accountId: String?
+            accountId: String?,
+        onBeforeSubmission: (suspend () -> Unit)?
         ) = error("not used")
 
         override suspend fun getEmailSubmission(submissionId: String, accountId: String?) = error("not used")

@@ -177,7 +177,8 @@ private class FakeJmapApi(
         body: String,
         attachments: List<Attachment>,
         draftId: String?,
-        accountId: String?
+        accountId: String?,
+        onBeforeSubmission: (suspend () -> Unit)?
     ): String = error("not used")
 
     override suspend fun getEmailSubmission(

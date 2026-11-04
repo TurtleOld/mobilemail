@@ -78,6 +78,11 @@ class DraftSyncCoordinator(
             sent = true
             draftId = null
             persisted = null
+        } else if (result is Result.Error &&
+            com.mobilemail.data.sync.OfflineQueueManager.isSendOutcomeUnknown(result.exception)
+        ) {
+            sent = true
+            pending.value = null
         } else {
             // Письмо не ушло, поэтому несохранённые правки возвращаются в очередь.
             pending.value = snapshot

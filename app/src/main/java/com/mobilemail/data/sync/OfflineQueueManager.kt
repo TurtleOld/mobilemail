@@ -6,12 +6,12 @@ import com.mobilemail.domain.common.Result
 import com.mobilemail.domain.common.Result.Success
 import com.mobilemail.domain.common.Result.Error
 import com.mobilemail.data.jmap.MailClientFactory
+import com.mobilemail.data.jmap.SendOutcomeUnknownException
 import com.mobilemail.data.local.dao.PendingOperationDao
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.local.entity.PendingOperationEntity
 import com.mobilemail.data.model.Attachment
 import com.mobilemail.data.repository.ComposeRepository
-import com.mobilemail.domain.model.toDomain
 import com.mobilemail.domain.model.toData
 import com.mobilemail.data.repository.MessageActionsRepository
 import kotlinx.coroutines.CancellationException
@@ -37,14 +37,16 @@ data class OfflineQueueSummary(
     val processedCount: Int,
     val failedCount: Int,
     val pendingCount: Int,
-    val permanentFailedCount: Int = 0
+    val permanentFailedCount: Int = 0,
+    val unknownOutcomeCount: Int = 0
 )
 
 data class OfflineQueueStats(
     val pendingCount: Int,
     val failedCount: Int,
     val permanentFailedCount: Int,
-    val totalCount: Int
+    val totalCount: Int,
+    val unknownOutcomeCount: Int = 0
 )
 
 object OfflineQueueManager {
@@ -57,16 +59,30 @@ object OfflineQueueManager {
     const val STATUS_PENDING = "pending"
     const val STATUS_FAILED = "failed"
     const val STATUS_RUNNING = "running"
+
+    /** Запрос отправки уже ушёл на сервер; только для операций [TYPE_SEND]. */
+    const val STATUS_SUBMITTING = "submitting"
+
+    /** Результат отправки неизвестен: письмо нельзя отправлять повторно автоматически. */
+    const val STATUS_UNKNOWN_OUTCOME = "unknown_outcome"
     const val STATUS_PERMANENT_FAILED = "permanent_failed"
 
     private val mutex = Mutex()
 
+    /**
+     * Ставит отправку письма в офлайн-очередь.
+     *
+     * @param outcomeUnknown True, когда запрос отправки мог дойти до сервера, но подтверждение
+     *   потеряно: задание попадает в очередь как [STATUS_UNKNOWN_OUTCOME] и не повторяется
+     *   автоматически.
+     */
     suspend fun enqueueSend(
         application: Application,
         server: String,
         email: String,
         accountId: String,
-        params: SendParams
+        params: SendParams,
+        outcomeUnknown: Boolean = false
     ) {
         enqueue(
             application = application,
@@ -93,7 +109,8 @@ object OfflineQueueManager {
                         )
                     }
                 })
-            }.toString()
+            }.toString(),
+            status = if (outcomeUnknown) STATUS_UNKNOWN_OUTCOME else STATUS_PENDING
         )
         OfflineQueueWorker.scheduleNow(application)
     }
@@ -108,13 +125,15 @@ object OfflineQueueManager {
         subject: String,
         body: String,
         attachments: List<Attachment>,
-        draftId: String?
+        draftId: String?,
+        outcomeUnknown: Boolean = false
     ) = enqueueSend(
         application = application,
         server = server,
         email = email,
         accountId = accountId,
-        params = SendParams(to = to, subject = subject, body = body, attachments = attachments, draftId = draftId)
+        params = SendParams(to = to, subject = subject, body = body, attachments = attachments, draftId = draftId),
+        outcomeUnknown = outcomeUnknown
     )
 
     suspend fun enqueueDelete(
@@ -203,17 +222,26 @@ object OfflineQueueManager {
             dao = dao,
             limit = limit,
             releaseAttachments = { operation -> QueuedAttachmentCleanup.releaseForOperations(application, listOf(operation)) }
-        ) { operation -> executeOperation(application, operation) }
+        ) { operation, onBeforeSubmission -> executeOperation(application, operation, onBeforeSubmission) }
     }
 
+    /**
+     * Выполняет задания очереди.
+     *
+     * @param execute обработчик задания; второй аргумент — точка восстановления, которую
+     *   операция отправки обязана вызвать непосредственно перед запросом EmailSubmission/set.
+     */
     internal suspend fun processOperations(
         dao: PendingOperationDao,
         limit: Int,
         releaseAttachments: suspend (PendingOperationEntity) -> Unit = {},
-        execute: suspend (PendingOperationEntity) -> Result<Unit>
+        execute: suspend (PendingOperationEntity, suspend () -> Unit) -> Result<Unit>
     ): OfflineQueueSummary {
         // No worker is running while the mutex is held, so any 'running' row was left by a killed process.
         dao.resetRunning(System.currentTimeMillis())
+        // A 'submitting' row died after the EmailSubmission/set request may have reached the server,
+        // so its result is unknown and it must not be resent automatically.
+        dao.resetInterruptedSubmissions(System.currentTimeMillis())
         val operations = dao.getProcessable(limit)
         var processedCount = 0
         var failedCount = 0
@@ -226,9 +254,18 @@ object OfflineQueueManager {
                 lastError = operation.lastError,
                 updatedAt = System.currentTimeMillis()
             )
+            val onBeforeSubmission: suspend () -> Unit = {
+                dao.updateStatus(
+                    id = operation.id,
+                    status = STATUS_SUBMITTING,
+                    attemptCount = operation.attemptCount,
+                    lastError = operation.lastError,
+                    updatedAt = System.currentTimeMillis()
+                )
+            }
 
             val result = try {
-                execute(operation)
+                execute(operation, onBeforeSubmission)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -269,7 +306,8 @@ object OfflineQueueManager {
             processedCount = processedCount,
             failedCount = failedCount,
             pendingCount = pendingCount,
-            permanentFailedCount = permanentFailedCount
+            permanentFailedCount = permanentFailedCount,
+            unknownOutcomeCount = dao.getUnknownOutcomeCount()
         )
     }
 
@@ -284,11 +322,13 @@ object OfflineQueueManager {
         val pending = dao.getPendingCount()
         val failed = dao.getFailedCount()
         val permanent = dao.getPermanentFailedCount()
+        val unknownOutcome = dao.getUnknownOutcomeCount()
         return OfflineQueueStats(
             pendingCount = pending,
             failedCount = failed,
             permanentFailedCount = permanent,
-            totalCount = pending + failed + permanent
+            totalCount = pending + failed + permanent + unknownOutcome,
+            unknownOutcomeCount = unknownOutcome
         )
     }
 
@@ -325,13 +365,29 @@ object OfflineQueueManager {
             root is SSLException
     }
 
+    /**
+     * Проверяет, что отправка могла дойти до сервера, но её результат неизвестен.
+     *
+     * @param error ошибка операции отправки, включая обёрнутые причины.
+     * @return True, когда письмо нельзя отправлять повторно без решения пользователя.
+     */
+    fun isSendOutcomeUnknown(error: Throwable): Boolean {
+        var current: Throwable? = error
+        while (current != null) {
+            if (current is SendOutcomeUnknownException) return true
+            current = current.cause
+        }
+        return false
+    }
+
     private suspend fun enqueue(
         application: Application,
         type: String,
         server: String,
         email: String,
         accountId: String,
-        payload: String
+        payload: String,
+        status: String = STATUS_PENDING
     ) {
         val now = System.currentTimeMillis()
         AppDatabase.getInstance(application).pendingOperationDao().insert(
@@ -341,7 +397,7 @@ object OfflineQueueManager {
                 email = email,
                 accountId = accountId,
                 payload = payload,
-                status = STATUS_PENDING,
+                status = status,
                 attemptCount = 0,
                 lastError = null,
                 createdAt = now,
@@ -350,7 +406,11 @@ object OfflineQueueManager {
         )
     }
 
-    private suspend fun executeOperation(application: Application, operation: PendingOperationEntity): Result<Unit> {
+    private suspend fun executeOperation(
+        application: Application,
+        operation: PendingOperationEntity,
+        onBeforeSubmission: suspend () -> Unit
+    ): Result<Unit> {
         val client = MailClientFactory.create(
             application = application,
             server = operation.server,
@@ -359,7 +419,12 @@ object OfflineQueueManager {
         )
 
         return when (operation.type) {
-            TYPE_SEND -> executeSend(client, operation.payload, operation.email)
+            TYPE_SEND -> OfflineQueueSendExecutor.execute(
+                repository = ComposeRepository(client),
+                payload = operation.payload,
+                fromEmail = operation.email,
+                onBeforeSubmission = onBeforeSubmission
+            )
             TYPE_DELETE -> executeDelete(client, operation.payload)
             TYPE_MOVE -> executeMove(client, operation.payload)
             TYPE_MARK_READ -> executeMarkRead(client, operation.payload)
@@ -378,40 +443,6 @@ object OfflineQueueManager {
             TYPE_TOGGLE_STAR -> executeToggleStar(client, operation.payload)
             else -> Result.Error(IllegalArgumentException("Unsupported queue op: ${operation.type}"))
         }
-    }
-
-    private suspend fun executeSend(
-        client: com.mobilemail.data.jmap.JmapApi,
-        payload: String,
-        fromEmail: String
-    ): Result<Unit> {
-        val json = JSONObject(payload)
-        val repository = ComposeRepository(client)
-        val to = json.getJSONArray("to").toStringList()
-        val sourceAttachments = json.getJSONArray("attachments").toAttachmentList()
-        val attachments: List<com.mobilemail.domain.model.Attachment> = sourceAttachments
-            .map { attachment ->
-                if (attachment.isUploaded) {
-                    attachment.toDomain()
-                } else {
-                    val bytes = OfflineAttachmentStorage.read(requireNotNull(attachment.localFilePath))
-                    repository.uploadAttachment(bytes, attachment.mime, attachment.filename).fold(
-                        onError = { throw it },
-                        onSuccess = { uploaded -> uploaded }
-                    )
-                }
-            }
-        return repository.sendMessage(
-            from = fromEmail,
-            to = to,
-            subject = json.optString("subject"),
-            body = json.optString("body"),
-            attachments = attachments,
-            draftId = json.optString("draftId").takeIf { it.isNotBlank() && it != "null" }
-        ).fold(
-            onError = { Result.Error(it) },
-            onSuccess = { Result.Success(Unit) }
-        )
     }
 
     private suspend fun executeDelete(
@@ -482,6 +513,7 @@ object OfflineQueueManager {
         error: Throwable
     ): String {
         return when {
+            isSendOutcomeUnknown(error) -> STATUS_UNKNOWN_OUTCOME
             !shouldQueue(error) -> STATUS_PERMANENT_FAILED
             nextAttemptCount >= maxAttemptsFor(operationType) -> STATUS_PERMANENT_FAILED
             else -> STATUS_FAILED

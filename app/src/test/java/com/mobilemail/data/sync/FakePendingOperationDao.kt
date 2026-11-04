@@ -63,6 +63,19 @@ internal class FakePendingOperationDao(initial: List<PendingOperationEntity>) : 
         }
     }
 
+    override suspend fun resetInterruptedSubmissions(updatedAt: Long) {
+        operations.indices.forEach { index ->
+            val item = operations[index]
+            if (item.status == OfflineQueueManager.STATUS_SUBMITTING) {
+                operations[index] = item.copy(status = OfflineQueueManager.STATUS_UNKNOWN_OUTCOME, updatedAt = updatedAt)
+            }
+        }
+    }
+
+    override suspend fun getUnknownOutcomeCount(): Int = operations.count {
+        it.status == OfflineQueueManager.STATUS_UNKNOWN_OUTCOME
+    }
+
     override suspend fun getProcessable(limit: Int): List<PendingOperationEntity> = operations
         .filter { it.status == OfflineQueueManager.STATUS_PENDING || it.status == OfflineQueueManager.STATUS_FAILED }
         .sortedBy { it.createdAt }

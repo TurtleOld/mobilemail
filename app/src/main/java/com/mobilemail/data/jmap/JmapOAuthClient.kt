@@ -21,6 +21,7 @@ import com.mobilemail.data.oauth.OAuthTokenRefresh
 import com.mobilemail.data.oauth.StoredToken
 import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.util.LogRedactor
+import java.io.IOException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -45,6 +46,7 @@ class JmapOAuthClient(
     private val clientId: String
 ) : JmapApi {
     companion object {
+        private const val HTTP_SERVER_ERROR = 500
         private val clientCache = mutableMapOf<String, JmapOAuthClient>()
         private val lock = Any()
         private val BODY_PROPERTIES = setOf("bodyStructure", "bodyValues", "textBody", "htmlBody")
@@ -534,7 +536,11 @@ class JmapOAuthClient(
         )
     }
 
-    private suspend fun makeRequest(url: String, requestJson: JSONObject): JSONObject = requestSemaphore.withPermit {
+    private suspend fun makeRequest(
+        url: String,
+        requestJson: JSONObject,
+        ambiguousOnTransportFailure: Boolean = false
+    ): JSONObject = requestSemaphore.withPermit {
         val requestBody = requestJson.toString().replace("\\/", "/")
             .toRequestBody("application/json".toMediaType())
 
@@ -544,12 +550,27 @@ class JmapOAuthClient(
             .post(requestBody)
             .build()
 
-        val (response, responseBody) = withContext(Dispatchers.IO) {
-            val resp = client.newCall(request).execute()
-            Pair(resp, resp.body?.string() ?: "{}")
+        val (response, responseBody) = try {
+            withContext(Dispatchers.IO) {
+                val resp = client.newCall(request).execute()
+                Pair(resp, resp.body?.string() ?: "{}")
+            }
+        } catch (error: IOException) {
+            if (ambiguousOnTransportFailure && !isSendDefinitelyNotDispatched(error)) {
+                throw SendOutcomeUnknownException(
+                    "Ответ на JMAP-запрос потерян: результат неизвестен",
+                    error
+                )
+            }
+            throw error
         }
 
         if (!response.isSuccessful) {
+            if (ambiguousOnTransportFailure && response.code >= HTTP_SERVER_ERROR) {
+                throw SendOutcomeUnknownException(
+                    "JMAP-сервер ответил ${response.code}: результат запроса неизвестен"
+                )
+            }
             val errBody = LogRedactor.redact(responseBody.take(200))
             error("JMAP request failed: код ${response.code}, сообщение: ${response.message}, ответ: $errBody")
         }
@@ -1000,7 +1021,8 @@ class JmapOAuthClient(
         body: String,
         attachments: List<Attachment>,
         draftId: String?,
-        accountId: String?
+        accountId: String?,
+        onBeforeSubmission: (suspend () -> Unit)?
     ): String {
         Log.d(
             "JmapOAuthClient",
@@ -1018,7 +1040,8 @@ class JmapOAuthClient(
         val requestJson = buildSubmissionRequest(targetAccountId, resolvedDraftId, identityId, from, to)
 
         val apiUrl = getApiUrl()
-        val response = makeRequest(apiUrl, requestJson)
+        onBeforeSubmission?.invoke()
+        val response = makeRequest(apiUrl, requestJson, ambiguousOnTransportFailure = true)
         val methodResponses = response.getJSONArray("methodResponses")
 
         val submissionResponse = methodResponses.getJSONArray(0).getJSONObject(1)
@@ -1027,7 +1050,14 @@ class JmapOAuthClient(
         val submissionId = createdSubmission?.optString("id")
 
         if (submissionId.isNullOrBlank()) {
-            error("Не удалось отправить письмо: ответ сервера без id")
+            val rejection = submissionResponse.optJSONObject("notCreated")?.optJSONObject("submit")
+            if (rejection != null) {
+                val reason = rejection.optString("description").ifBlank { rejection.optString("type", "rejected") }
+                error("Не удалось отправить письмо: $reason")
+            }
+            throw SendOutcomeUnknownException(
+                "Ответ EmailSubmission/set без id: отправка могла быть принята сервером"
+            )
         }
 
         Log.d("JmapOAuthClient", "EmailSubmission создан: submissionId=$submissionId, emailId=$resolvedDraftId")

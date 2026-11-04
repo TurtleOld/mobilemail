@@ -292,6 +292,10 @@ class MailRepositoryReadStatusTest {
 
         override suspend fun resetRunning(updatedAt: Long) = Unit
 
+        override suspend fun resetInterruptedSubmissions(updatedAt: Long) = Unit
+
+        override suspend fun getUnknownOutcomeCount(): Int = 0
+
         override suspend fun deleteByAccount(accountId: String) = Unit
 
         override suspend fun getPendingCount(): Int = 0
@@ -400,7 +404,8 @@ class MailRepositoryReadStatusTest {
             body: String,
             attachments: List<Attachment>,
             draftId: String?,
-            accountId: String?
+            accountId: String?,
+        onBeforeSubmission: (suspend () -> Unit)?
         ): String = error("unused")
 
         override suspend fun getEmailSubmission(

@@ -11,7 +11,8 @@ interface IComposeRepository {
         subject: String,
         body: String,
         attachments: List<Attachment> = emptyList(),
-        draftId: String? = null
+        draftId: String? = null,
+        onBeforeSubmission: (suspend () -> Unit)? = null
     ): Result<String>
 
     suspend fun saveDraft(
