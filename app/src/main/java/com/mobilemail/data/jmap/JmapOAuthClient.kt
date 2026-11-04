@@ -591,11 +591,16 @@ class JmapOAuthClient(
     ): Boolean {
         val targetAccountId = resolveAccountId(accountId)
 
-        val keywordsJson = JSONObject()
-        keywords.forEach { (key, value) -> keywordsJson.put(key, value) }
+        // Patch one keyword at a time: replacing the whole map drops flags set by other clients.
+        // JMAP removes a keyword with null because false is not a valid map value.
+        val keywordPatch = JSONObject()
+        keywords.forEach { (keyword, value) ->
+            val path = "keywords/" + keyword.replace("~", "~0").replace("/", "~1")
+            keywordPatch.put(path, if (value) true else JSONObject.NULL)
+        }
 
         val updateObject = JSONObject().apply {
-            put(emailId, JSONObject().apply { put("keywords", keywordsJson) })
+            put(emailId, keywordPatch)
         }
 
         val setParams = JSONObject().apply {

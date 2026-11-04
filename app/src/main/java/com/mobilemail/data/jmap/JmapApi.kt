@@ -39,6 +39,10 @@ interface JmapApi {
         properties: List<String>? = null
     ): Pair<EmailQueryResult, List<JmapEmail>>
 
+    /**
+     * Sets keywords whose value is true and removes those whose value is false,
+     * without touching other keywords already stored on the server.
+     */
     suspend fun updateEmailKeywords(
         emailId: String,
         keywords: Map<String, Boolean>,
