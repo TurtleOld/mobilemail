@@ -27,8 +27,7 @@ data class OutboxUiState(
 class OutboxViewModel(
     application: Application,
     private val server: String,
-    private val email: String,
-    private val accountId: String
+    private val email: String
 ) : AndroidViewModel(application) {
     private val _uiState = MutableStateFlow(OutboxUiState())
     val uiState: StateFlow<OutboxUiState> = _uiState.asStateFlow()
@@ -37,7 +36,7 @@ class OutboxViewModel(
         viewModelScope.launch {
             OfflineQueueManager.observeAll(getApplication()).collect { operations ->
                 val accountOperations = operations.filter {
-                    it.server == server && it.email == email && it.accountId == accountId
+                    it.server == server && it.email == email
                 }
                 val stats = OfflineQueueStats(
                     pendingCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_PENDING },
@@ -83,7 +82,7 @@ class OutboxViewModel(
 
     fun retryFailed() {
         viewModelScope.launch {
-            OfflineQueueManager.retryAllFailed(getApplication())
+            OfflineQueueManager.retryAllFailed(getApplication(), server, email)
             _uiState.value = _uiState.value.copy(
                 notification = NotificationState.Snackbar(
                     message = "Все неуспешные операции поставлены на повтор",
@@ -95,7 +94,7 @@ class OutboxViewModel(
 
     fun clearFailed() {
         viewModelScope.launch {
-            OfflineQueueManager.clearFailed(getApplication())
+            OfflineQueueManager.clearFailed(getApplication(), server, email)
             _uiState.value = _uiState.value.copy(
                 notification = NotificationState.Snackbar(
                     message = "Неуспешные операции очищены",

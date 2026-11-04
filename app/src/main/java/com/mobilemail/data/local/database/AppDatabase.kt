@@ -1,12 +1,14 @@
 package com.mobilemail.data.local.database
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.mobilemail.data.local.LocalAccountIdentity
 import com.mobilemail.data.local.converter.DateConverter
 import com.mobilemail.data.local.converter.FolderRoleConverter
 import com.mobilemail.data.local.dao.FolderDao
@@ -16,11 +18,13 @@ import com.mobilemail.data.local.entity.FolderEntity
 import com.mobilemail.data.local.entity.MessageEntity
 import com.mobilemail.data.local.entity.MessageFtsEntity
 import com.mobilemail.data.local.entity.PendingOperationEntity
+import com.mobilemail.data.preferences.PreferencesManager
+import kotlinx.coroutines.runBlocking
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 
 @Database(
     entities = [MessageEntity::class, MessageFtsEntity::class, FolderEntity::class, PendingOperationEntity::class],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(DateConverter::class, FolderRoleConverter::class)
@@ -70,9 +74,9 @@ abstract class AppDatabase : RoomDatabase() {
 
         internal val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                createMessageFtsTable(db)
-                rebuildMessageFtsIndex(db)
-                createMessageFtsTriggers(db)
+                createLegacyMessageFtsTable(db)
+                rebuildLegacyMessageFtsIndex(db)
+                createLegacyMessageFtsTriggers(db)
             }
         }
 
@@ -82,7 +86,35 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        internal val ALL_MIGRATIONS = arrayOf(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+        /**
+         * Moves cached mail from server account ids to [MessageEntity.localAccountId] keys.
+         *
+         * The [legacyAccountOwners] lookup returns server account ids that exactly one saved
+         * account owns.
+         * Cache rows of those ids are kept; rows of ids shared by several accounts, or unknown to
+         * this device, are dropped instead of being assigned to an arbitrary account. The queue
+         * already stores the server and email, so it is left untouched.
+         *
+         * @param legacyAccountOwners Lazy lookup of server account id to local account key.
+         */
+        internal fun migration5To6(legacyAccountOwners: () -> Map<String, String>): Migration =
+            object : Migration(5, 6) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    createLegacyAccountIdentityMap(db, legacyAccountOwners())
+                    migrateMessagesToLocalAccountId(db)
+                    migrateFoldersToLocalAccountId(db)
+                    recreateMessageFtsForLocalAccountId(db)
+                    db.execSQL("DROP TABLE IF EXISTS legacy_account_identity")
+                }
+            }
+
+        internal fun migrations(legacyAccountOwners: () -> Map<String, String>): Array<Migration> = arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            migration5To6(legacyAccountOwners)
+        )
 
         fun getInstance(context: Context): AppDatabase {
             return instance ?: synchronized(this) {
@@ -98,6 +130,17 @@ abstract class AppDatabase : RoomDatabase() {
                 if (!isWrongPassphraseError(error)) throw error
                 context.deleteDatabase(DATABASE_NAME)
                 createEncryptedDatabase(context).also { it.openHelper.writableDatabase }
+            }
+        }
+
+        private fun readLegacyAccountOwners(context: Context): Map<String, String> {
+            return runCatching {
+                runBlocking {
+                    LocalAccountIdentity.legacyOwners(PreferencesManager(context).getSavedAccounts())
+                }
+            }.getOrElse { error ->
+                Log.w("AppDatabase", "Cannot read saved accounts for cache migration", error)
+                emptyMap()
             }
         }
 
@@ -121,6 +164,7 @@ abstract class AppDatabase : RoomDatabase() {
             return false
         }
 
+        @Suppress("SpreadOperator")
         private fun createEncryptedDatabase(context: Context): AppDatabase {
             System.loadLibrary("sqlcipher")
             val passphrase = DatabasePassphraseProvider(context).getOrCreatePassphrase()
@@ -131,7 +175,7 @@ abstract class AppDatabase : RoomDatabase() {
                 DATABASE_NAME
             )
                 .openHelperFactory(factory)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(*migrations { readLegacyAccountOwners(context) })
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         createMessageFtsTriggers(db)
@@ -140,11 +184,148 @@ abstract class AppDatabase : RoomDatabase() {
                 .build()
         }
 
+        private fun createLegacyAccountIdentityMap(
+            db: SupportSQLiteDatabase,
+            legacyAccountOwners: Map<String, String>
+        ) {
+            db.execSQL(
+                """
+                CREATE TEMP TABLE IF NOT EXISTS legacy_account_identity (
+                    accountId TEXT NOT NULL PRIMARY KEY,
+                    localAccountId TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
+            legacyAccountOwners.forEach { (accountId, localAccountId) ->
+                db.execSQL(
+                    "INSERT OR IGNORE INTO legacy_account_identity(accountId, localAccountId) VALUES(?, ?)",
+                    arrayOf(accountId, localAccountId)
+                )
+            }
+        }
+
+        private fun migrateMessagesToLocalAccountId(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS messages_new (
+                    localAccountId TEXT NOT NULL,
+                    id TEXT NOT NULL,
+                    threadId TEXT NOT NULL,
+                    folderId TEXT NOT NULL,
+                    accountId TEXT NOT NULL,
+                    fromName TEXT,
+                    fromEmail TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    snippet TEXT NOT NULL,
+                    date INTEGER NOT NULL,
+                    isUnread INTEGER NOT NULL,
+                    isStarred INTEGER NOT NULL,
+                    isImportant INTEGER NOT NULL,
+                    hasAttachments INTEGER NOT NULL,
+                    size INTEGER NOT NULL,
+                    textBody TEXT,
+                    htmlBody TEXT,
+                    syncedAt INTEGER NOT NULL,
+                    PRIMARY KEY(localAccountId, id)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT OR REPLACE INTO messages_new(
+                    localAccountId, id, threadId, folderId, accountId, fromName, fromEmail,
+                    subject, snippet, date, isUnread, isStarred, isImportant, hasAttachments,
+                    size, textBody, htmlBody, syncedAt
+                )
+                SELECT
+                    identity.localAccountId, messages.id, messages.threadId, messages.folderId,
+                    messages.accountId, messages.fromName, messages.fromEmail, messages.subject,
+                    messages.snippet, messages.date, messages.isUnread, messages.isStarred,
+                    messages.isImportant, messages.hasAttachments, messages.size,
+                    messages.textBody, messages.htmlBody, messages.syncedAt
+                FROM messages
+                JOIN legacy_account_identity AS identity ON identity.accountId = messages.accountId
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE messages")
+            db.execSQL("ALTER TABLE messages_new RENAME TO messages")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_localAccountId_folderId_date ON messages(localAccountId, folderId, date)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_localAccountId ON messages(localAccountId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_folderId ON messages(folderId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_date ON messages(date)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_localAccountId_threadId ON messages(localAccountId, threadId)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_localAccountId_fromEmail ON messages(localAccountId, fromEmail)")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_syncedAt ON messages(syncedAt)")
+        }
+
+        private fun migrateFoldersToLocalAccountId(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS folders_new (
+                    localAccountId TEXT NOT NULL,
+                    id TEXT NOT NULL,
+                    accountId TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    role TEXT NOT NULL,
+                    unreadCount INTEGER NOT NULL,
+                    queryState TEXT,
+                    syncedAt INTEGER NOT NULL,
+                    PRIMARY KEY(localAccountId, id)
+                )
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                INSERT OR REPLACE INTO folders_new(
+                    localAccountId, id, accountId, name, role, unreadCount, queryState, syncedAt
+                )
+                SELECT
+                    identity.localAccountId, folders.id, folders.accountId, folders.name,
+                    folders.role, folders.unreadCount, folders.queryState, folders.syncedAt
+                FROM folders
+                JOIN legacy_account_identity AS identity ON identity.accountId = folders.accountId
+                """.trimIndent()
+            )
+            db.execSQL("DROP TABLE folders")
+            db.execSQL("ALTER TABLE folders_new RENAME TO folders")
+            db.execSQL("CREATE INDEX IF NOT EXISTS index_folders_localAccountId ON folders(localAccountId)")
+        }
+
+        private fun recreateMessageFtsForLocalAccountId(db: SupportSQLiteDatabase) {
+            db.execSQL("DROP TRIGGER IF EXISTS messages_ai")
+            db.execSQL("DROP TRIGGER IF EXISTS messages_au")
+            db.execSQL("DROP TRIGGER IF EXISTS messages_ad")
+            db.execSQL("DROP TABLE IF EXISTS messages_fts")
+            createMessageFtsTable(db)
+            rebuildMessageFtsIndex(db)
+            createMessageFtsTriggers(db)
+        }
+
+        private fun createLegacyMessageFtsTable(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING FTS4(
+                    messageId TEXT NOT NULL,
+                    accountId TEXT NOT NULL,
+                    folderId TEXT NOT NULL,
+                    fromName TEXT,
+                    fromEmail TEXT NOT NULL,
+                    subject TEXT NOT NULL,
+                    snippet TEXT NOT NULL,
+                    textBody TEXT,
+                    htmlBody TEXT,
+                    tokenize=unicode61
+                )
+                """.trimIndent()
+            )
+        }
+
         private fun createMessageFtsTable(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """
                 CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING FTS4(
                     messageId TEXT NOT NULL,
+                    localAccountId TEXT NOT NULL,
                     accountId TEXT NOT NULL,
                     folderId TEXT NOT NULL,
                     fromName TEXT,
@@ -166,7 +347,7 @@ abstract class AppDatabase : RoomDatabase() {
             db.execSQL("CREATE INDEX IF NOT EXISTS index_messages_date ON messages(date)")
         }
 
-        private fun rebuildMessageFtsIndex(db: SupportSQLiteDatabase) {
+        private fun rebuildLegacyMessageFtsIndex(db: SupportSQLiteDatabase) {
             db.execSQL("DELETE FROM messages_fts")
             db.execSQL(
                 """
@@ -182,7 +363,23 @@ abstract class AppDatabase : RoomDatabase() {
             )
         }
 
-        private fun createMessageFtsTriggers(db: SupportSQLiteDatabase) {
+        private fun rebuildMessageFtsIndex(db: SupportSQLiteDatabase) {
+            db.execSQL("DELETE FROM messages_fts")
+            db.execSQL(
+                """
+                INSERT INTO messages_fts(
+                    messageId, localAccountId, accountId, folderId, fromName, fromEmail,
+                    subject, snippet, textBody, htmlBody
+                )
+                SELECT
+                    id, localAccountId, accountId, folderId, fromName, fromEmail,
+                    subject, snippet, textBody, htmlBody
+                FROM messages
+                """.trimIndent()
+            )
+        }
+
+        private fun createLegacyMessageFtsTriggers(db: SupportSQLiteDatabase) {
             db.execSQL(
                 """
                 CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
@@ -217,6 +414,49 @@ abstract class AppDatabase : RoomDatabase() {
                 """
                 CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
                     DELETE FROM messages_fts WHERE messageId = old.id;
+                END
+                """.trimIndent()
+            )
+        }
+
+        internal fun createMessageFtsTriggers(db: SupportSQLiteDatabase) {
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN
+                    DELETE FROM messages_fts
+                    WHERE messageId = new.id AND localAccountId = new.localAccountId;
+                    INSERT INTO messages_fts(
+                        messageId, localAccountId, accountId, folderId, fromName, fromEmail,
+                        subject, snippet, textBody, htmlBody
+                    )
+                    VALUES(
+                        new.id, new.localAccountId, new.accountId, new.folderId, new.fromName,
+                        new.fromEmail, new.subject, new.snippet, new.textBody, new.htmlBody
+                    );
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN
+                    DELETE FROM messages_fts
+                    WHERE messageId = old.id AND localAccountId = old.localAccountId;
+                    INSERT INTO messages_fts(
+                        messageId, localAccountId, accountId, folderId, fromName, fromEmail,
+                        subject, snippet, textBody, htmlBody
+                    )
+                    VALUES(
+                        new.id, new.localAccountId, new.accountId, new.folderId, new.fromName,
+                        new.fromEmail, new.subject, new.snippet, new.textBody, new.htmlBody
+                    );
+                END
+                """.trimIndent()
+            )
+            db.execSQL(
+                """
+                CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN
+                    DELETE FROM messages_fts
+                    WHERE messageId = old.id AND localAccountId = old.localAccountId;
                 END
                 """.trimIndent()
             )

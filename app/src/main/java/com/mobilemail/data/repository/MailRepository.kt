@@ -12,7 +12,6 @@ import com.mobilemail.data.model.MessageListItem
 import com.mobilemail.domain.model.Account as DomainAccount
 import com.mobilemail.data.repository.Mappers.toDomainAccount
 import com.mobilemail.data.repository.Mappers.toFolder
-import com.mobilemail.data.repository.Mappers.toFolderEntity
 import com.mobilemail.data.repository.Mappers.toMessageDetail
 import com.mobilemail.data.repository.Mappers.toMessageEntity
 import com.mobilemail.data.repository.Mappers.toMessageListItem
@@ -35,7 +34,8 @@ data class MessagePage(
 class MailRepository(
     private val jmapClient: JmapApi,
     private val messageDao: MessageDao? = null,
-    private val folderDao: FolderDao? = null
+    private val folderDao: FolderDao? = null,
+    private val localAccountId: String? = null
 ) : IMailRepository {
     private val client = jmapClient
     private val messageCache = mutableMapOf<String, MessageDetail>()
@@ -76,9 +76,13 @@ class MailRepository(
             error("AccountId не найден")
         }
 
-        val cachedMessages = messageDao?.getMessagesByFolderPaged(folderId, accountId, limit, position)
-        val folderMetadata = folderDao?.getFolderById(folderId, accountId)
-        val latestCachedSync = messageDao?.getLatestSyncedAtByFolder(folderId, accountId)
+        val cachedMessages = localAccountId?.let {
+            messageDao?.getMessagesByFolderPaged(folderId, it, limit, position)
+        }
+        val folderMetadata = localAccountId?.let { folderDao?.getFolderById(folderId, it) }
+        val latestCachedSync = localAccountId?.let {
+            messageDao?.getLatestSyncedAtByFolder(folderId, it)
+        }
         val isCacheFresh = latestCachedSync != null && (System.currentTimeMillis() - latestCachedSync) <= cacheTtlMillis
 
         try {
@@ -215,22 +219,23 @@ class MailRepository(
         accountId: String,
         queryState: String?
     ) {
+        val accountKey = localAccountId ?: return
         messageDao?.let { dao ->
             try {
                 val now = System.currentTimeMillis()
                 val messagesToSave = mutableListOf<com.mobilemail.data.local.entity.MessageEntity>()
                 for (messageListItem in result) {
-                    val existingMessage = dao.getMessageById(messageListItem.id)
+                    val existingMessage = dao.getMessageById(messageListItem.id, accountKey)
                     val finalIsUnread = existingMessage?.isUnread ?: messageListItem.flags.unread
-                    val entity = messageListItem.toMessageEntity(folderId, accountId).copy(
+                    val entity = messageListItem.toMessageEntity(folderId, accountId, accountKey).copy(
                         isUnread = finalIsUnread,
                         syncedAt = now
                     )
                     messagesToSave.add(entity)
                 }
                 dao.insertMessages(messagesToSave)
-                trimFolderCache(folderId, accountId)
-                folderDao?.updateFolderSyncState(folderId, accountId, queryState, now)
+                trimFolderCache(folderId, accountKey)
+                folderDao?.updateFolderSyncState(folderId, accountKey, queryState, now)
                 Log.d("MailRepository", "Письма сохранены в кэш: ${result.size}")
             } catch (e: Exception) {
                 Log.e("MailRepository", "Ошибка сохранения писем в кэш", e)
@@ -255,7 +260,7 @@ class MailRepository(
             return@runCatchingSuspend it
         }
 
-        val cachedEntity = messageDao?.getMessageById(messageId)
+        val cachedEntity = localAccountId?.let { messageDao?.getMessageById(messageId, it) }
         val cachedReadStatus = cachedEntity?.isUnread
         Log.d("MailRepository", "Письмо не найдено в памяти кэше, проверяем Room. Статус из Room: $cachedReadStatus")
 
@@ -318,9 +323,9 @@ class MailRepository(
             Log.d("MailRepository", "Статус обновлен в памяти кэше")
         }
 
-        messageDao?.let { dao ->
+        localAccountId?.let { accountKey ->
             try {
-                dao.updateReadStatus(messageId, isUnread)
+                messageDao?.updateReadStatus(messageId, accountKey, isUnread)
                 Log.d("MailRepository", "Статус обновлен в Room")
             } catch (e: Exception) {
                 Log.e("MailRepository", "Ошибка обновления статуса в Room", e)
@@ -328,12 +333,12 @@ class MailRepository(
         }
     }
 
-    private suspend fun trimFolderCache(folderId: String, accountId: String, maxMessages: Int = 200) {
+    private suspend fun trimFolderCache(folderId: String, localAccountId: String, maxMessages: Int = 200) {
         val dao = messageDao ?: return
-        val totalCount = dao.getMessageCountByFolder(folderId, accountId)
+        val totalCount = dao.getMessageCountByFolder(folderId, localAccountId)
         if (totalCount <= maxMessages) return
-        val messagesToKeep = dao.getMessagesByFolderPaged(folderId, accountId, maxMessages, 0).map { it.id }.toSet()
-        val allMessages = dao.getMessagesByFolderPaged(folderId, accountId, totalCount, 0)
+        val messagesToKeep = dao.getMessagesByFolderPaged(folderId, localAccountId, maxMessages, 0).map { it.id }.toSet()
+        val allMessages = dao.getMessagesByFolderPaged(folderId, localAccountId, totalCount, 0)
         allMessages.filterNot { it.id in messagesToKeep }.forEach { dao.deleteMessage(it) }
     }
 

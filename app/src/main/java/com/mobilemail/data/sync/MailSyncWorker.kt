@@ -8,6 +8,7 @@ import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.data.jmap.OAuthTokenExpiredException
+import com.mobilemail.data.local.LocalAccountIdentity
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
@@ -53,7 +54,8 @@ class MailSyncWorker(
             val repository = MailRepository(
                 jmapClient = client,
                 messageDao = database.messageDao(),
-                folderDao = database.folderDao()
+                folderDao = database.folderDao(),
+                localAccountId = LocalAccountIdentity.of(session.server, session.email)
             )
             val inbox = repository.getFolders()
                 .getOrThrow()

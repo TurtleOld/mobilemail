@@ -25,7 +25,7 @@ data class SearchPage(
 class SearchRepository(
     private val jmapClient: JmapApi,
     private val messageDao: MessageDao? = null,
-    private val cachedAccountId: String? = null
+    private val cachedLocalAccountId: String? = null
 ) : ISearchRepository {
 
     suspend fun searchMessagesPage(
@@ -84,7 +84,7 @@ class SearchRepository(
         limit: Int
     ): Result<SearchPage>? {
         val dao = messageDao ?: return null
-        val accountId = cachedAccountId ?: return null
+        val localAccountId = cachedLocalAccountId ?: return null
         return runCatchingSuspend {
             val matchQuery = searchQuery.query.toFtsMatchQuery()
             val dateFromMillis = dateRangeStartMillis(searchQuery.dateRange)
@@ -95,7 +95,7 @@ class SearchRepository(
                 ?.let { "%$it%" }
             val items = if (matchQuery == null) {
                 dao.searchMessagesFiltered(
-                    accountId = accountId,
+                    localAccountId = localAccountId,
                     folderId = searchQuery.folderId,
                     senderLike = senderLike,
                     unreadOnly = searchQuery.unreadOnly,
@@ -108,7 +108,7 @@ class SearchRepository(
                 )
             } else {
                 dao.searchMessagesFts(
-                    accountId = accountId,
+                    localAccountId = localAccountId,
                     matchQuery = matchQuery,
                     folderId = searchQuery.folderId,
                     senderLike = senderLike,

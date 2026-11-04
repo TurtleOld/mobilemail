@@ -8,6 +8,7 @@ import androidx.paging.cachedIn
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.mobilemail.data.jmap.MailClientFactory
+import com.mobilemail.data.local.LocalAccountIdentity
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.data.paging.MailPagingSource
 import com.mobilemail.domain.model.Folder
@@ -112,7 +113,8 @@ class MessagesViewModel(
                 repository = MailRepository(
                     jmapClient = jmapClient,
                     messageDao = database?.messageDao(),
-                    folderDao = database?.folderDao()
+                    folderDao = database?.folderDao(),
+                    localAccountId = LocalAccountIdentity.of(server, email)
                 )
                 messageActionsRepository = MessageActionsRepository(jmapClient)
             } catch (e: Exception) {
@@ -672,11 +674,12 @@ class MessagesViewModel(
     private fun observeQueueStats() {
         viewModelScope.launch {
             OfflineQueueManager.observeAll(app).collect { operations ->
+                val accountOperations = operations.filter { it.server == server && it.email == email }
                 _uiState.value = _uiState.value.copy(
-                    pendingQueueCount = operations.count {
+                    pendingQueueCount = accountOperations.count {
                         it.status == OfflineQueueManager.STATUS_PENDING || it.status == OfflineQueueManager.STATUS_FAILED
                     },
-                    queueAttentionCount = operations.count {
+                    queueAttentionCount = accountOperations.count {
                         it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED
                     }
                 )
@@ -685,7 +688,7 @@ class MessagesViewModel(
     }
 
     private suspend fun refreshQueueStats() {
-        val stats = OfflineQueueManager.getStats(app)
+        val stats = OfflineQueueManager.getStats(app, server, email)
         _uiState.value = _uiState.value.copy(
             pendingQueueCount = stats.pendingCount + stats.failedCount,
             queueAttentionCount = stats.permanentFailedCount

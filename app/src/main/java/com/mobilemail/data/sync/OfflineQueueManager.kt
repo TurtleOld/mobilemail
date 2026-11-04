@@ -265,17 +265,13 @@ object OfflineQueueManager {
         )
     }
 
-    suspend fun getPendingCount(application: Application): Int {
-        return AppDatabase.getInstance(application).pendingOperationDao().getPendingCount()
-    }
-
     fun observeAll(application: Application) = AppDatabase.getInstance(application).pendingOperationDao().observeAll()
 
-    suspend fun getStats(application: Application): OfflineQueueStats {
+    suspend fun getStats(application: Application, server: String, email: String): OfflineQueueStats {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        val pending = dao.getPendingCount()
-        val failed = dao.getFailedCount()
-        val permanent = dao.getPermanentFailedCount()
+        val pending = dao.getPendingCountForAccount(server, email)
+        val failed = dao.getFailedCountForAccount(server, email)
+        val permanent = dao.getPermanentFailedCountForAccount(server, email)
         return OfflineQueueStats(
             pendingCount = pending,
             failedCount = failed,
@@ -295,15 +291,16 @@ object OfflineQueueManager {
         OfflineQueueWorker.scheduleNow(application)
     }
 
-    suspend fun retryAllFailed(application: Application) {
-        AppDatabase.getInstance(application).pendingOperationDao().retryAllFailed(System.currentTimeMillis())
+    suspend fun retryAllFailed(application: Application, server: String, email: String) {
+        AppDatabase.getInstance(application).pendingOperationDao()
+            .retryAllFailed(server, email, System.currentTimeMillis())
         OfflineQueueWorker.scheduleNow(application)
     }
 
-    suspend fun clearFailed(application: Application) {
+    suspend fun clearFailed(application: Application, server: String, email: String) {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        dao.getFailedOperations().forEach { cleanupOperationFiles(it) }
-        dao.clearFailed()
+        dao.getFailedOperations(server, email).forEach { cleanupOperationFiles(it) }
+        dao.clearFailed(server, email)
     }
 
     fun shouldQueue(error: Throwable): Boolean {

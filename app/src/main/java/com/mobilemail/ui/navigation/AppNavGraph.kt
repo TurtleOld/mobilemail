@@ -30,6 +30,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.mobilemail.data.jmap.JmapOAuthClient
+import com.mobilemail.data.local.LocalAccountIdentity
 import com.mobilemail.data.local.database.AppDatabase
 import com.mobilemail.domain.model.MessageDetail
 import com.mobilemail.data.oauth.OAuthTokenRevocation
@@ -460,11 +461,18 @@ fun AppNavGraph(
                             removeSavedAccount = { targetServer, targetEmail ->
                                 preferencesManager.removeSavedAccount(targetServer, targetEmail)
                             },
-                            clearLocalCache = { targetAccountId ->
+                            clearLocalCache = { loggedOutSession ->
                                 withContext(Dispatchers.IO) {
-                                    database.messageDao().deleteMessagesByAccount(targetAccountId)
-                                    database.folderDao().deleteFoldersByAccount(targetAccountId)
-                                    database.pendingOperationDao().deleteByAccount(targetAccountId)
+                                    val localAccountId = LocalAccountIdentity.of(
+                                        loggedOutSession.server,
+                                        loggedOutSession.email
+                                    )
+                                    database.messageDao().deleteMessagesByAccount(localAccountId)
+                                    database.folderDao().deleteFoldersByAccount(localAccountId)
+                                    database.pendingOperationDao().deleteByAccount(
+                                        loggedOutSession.server,
+                                        loggedOutSession.email
+                                    )
                                 }
                             },
                             shouldClearLocalCache = preferencesManager::isClearCacheOnLogoutEnabled
@@ -536,7 +544,7 @@ fun AppNavGraph(
             val email = routeArgs.email
             val accountId = routeArgs.accountId
             val viewModel: OutboxViewModel = viewModel(
-                factory = OutboxViewModelFactory(application, server, email, accountId)
+                factory = OutboxViewModelFactory(application, server, email)
             )
             OutboxScreen(
                 viewModel = viewModel,

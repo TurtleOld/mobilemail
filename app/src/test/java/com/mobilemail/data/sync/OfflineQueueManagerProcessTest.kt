@@ -150,22 +150,27 @@ class OfflineQueueManagerProcessTest {
 
         override suspend fun insert(operation: PendingOperationEntity): Long = error("not used")
 
-        override suspend fun deleteByAccount(accountId: String) = error("not used")
+        override suspend fun deleteByAccount(server: String, email: String) = error("not used")
 
-        override suspend fun getFailedCount(): Int = error("not used")
+        override suspend fun getPendingCountForAccount(server: String, email: String): Int = error("not used")
+
+        override suspend fun getFailedCountForAccount(server: String, email: String): Int = error("not used")
+
+        override suspend fun getPermanentFailedCountForAccount(server: String, email: String): Int = error("not used")
 
         override fun observeAll(): Flow<List<PendingOperationEntity>> = emptyFlow()
 
         override suspend fun getById(id: Long): PendingOperationEntity? = error("not used")
 
-        override suspend fun getFailedOperations(): List<PendingOperationEntity> = error("not used")
+        override suspend fun getFailedOperations(server: String, email: String): List<PendingOperationEntity> =
+            error("not used")
 
         override suspend fun delete(id: Long) = error("not used")
 
         override suspend fun retryById(id: Long, updatedAt: Long) = error("not used")
 
-        override suspend fun retryAllFailed(updatedAt: Long) = error("not used")
+        override suspend fun retryAllFailed(server: String, email: String, updatedAt: Long) = error("not used")
 
-        override suspend fun clearFailed() = error("not used")
+        override suspend fun clearFailed(server: String, email: String) = error("not used")
     }
 }
