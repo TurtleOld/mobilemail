@@ -37,6 +37,7 @@ import com.mobilemail.data.oauth.TokenStore
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.data.preferences.SavedSession
 import com.mobilemail.data.preferences.SwipeAction
+import com.mobilemail.data.sync.OfflineAttachmentStorage
 import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.domain.usecase.HandleMessagesStartupUseCase
 import com.mobilemail.domain.usecase.LogoutAccountUseCase
@@ -175,7 +176,10 @@ fun AppNavGraph(
                                 withContext(Dispatchers.IO) { PinManager(application).clearPin() }
                             },
                             clearDatabase = {
-                                withContext(Dispatchers.IO) { database.clearAllTables() }
+                                withContext(Dispatchers.IO) {
+                                    database.clearAllTables()
+                                    OfflineAttachmentStorage.forContext(application).clearAll()
+                                }
                             },
                             shouldClearLocalCache = preferencesManager::isClearCacheOnLogoutEnabled
                         ))
@@ -465,6 +469,7 @@ fun AppNavGraph(
                                     database.messageDao().deleteMessagesByAccount(targetAccountId)
                                     database.folderDao().deleteFoldersByAccount(targetAccountId)
                                     database.pendingOperationDao().deleteByAccount(targetAccountId)
+                                    OfflineAttachmentStorage.forContext(application).clearAccount(targetAccountId)
                                 }
                             },
                             shouldClearLocalCache = preferencesManager::isClearCacheOnLogoutEnabled
@@ -472,6 +477,7 @@ fun AppNavGraph(
                         if (nextSession == null && preferencesManager.isClearCacheOnLogoutEnabled()) {
                             withContext(Dispatchers.IO) {
                                 database.clearAllTables()
+                                OfflineAttachmentStorage.forContext(application).clearAll()
                             }
                         }
                         JmapOAuthClient.clearCache()
