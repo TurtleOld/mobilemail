@@ -12,6 +12,7 @@ data class MessageFtsEntity(
     @ColumnInfo(name = "rowid")
     val rowId: Int,
     val messageId: String,
+    val localAccountId: String,
     val accountId: String,
     val folderId: String,
     val fromName: String?,
