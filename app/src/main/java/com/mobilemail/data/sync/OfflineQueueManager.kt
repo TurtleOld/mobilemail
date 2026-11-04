@@ -311,18 +311,14 @@ object OfflineQueueManager {
         )
     }
 
-    suspend fun getPendingCount(application: Application): Int {
-        return AppDatabase.getInstance(application).pendingOperationDao().getPendingCount()
-    }
-
     fun observeAll(application: Application) = AppDatabase.getInstance(application).pendingOperationDao().observeAll()
 
-    suspend fun getStats(application: Application): OfflineQueueStats {
+    suspend fun getStats(application: Application, server: String, email: String): OfflineQueueStats {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        val pending = dao.getPendingCount()
-        val failed = dao.getFailedCount()
-        val permanent = dao.getPermanentFailedCount()
-        val unknownOutcome = dao.getUnknownOutcomeCount()
+        val pending = dao.getPendingCountForAccount(server, email)
+        val failed = dao.getFailedCountForAccount(server, email)
+        val permanent = dao.getPermanentFailedCountForAccount(server, email)
+        val unknownOutcome = dao.getUnknownOutcomeCountForAccount(server, email)
         return OfflineQueueStats(
             pendingCount = pending,
             failedCount = failed,
@@ -344,15 +340,16 @@ object OfflineQueueManager {
         OfflineQueueWorker.scheduleNow(application)
     }
 
-    suspend fun retryAllFailed(application: Application) {
-        AppDatabase.getInstance(application).pendingOperationDao().retryAllFailed(System.currentTimeMillis())
+    suspend fun retryAllFailed(application: Application, server: String, email: String) {
+        AppDatabase.getInstance(application).pendingOperationDao()
+            .retryAllFailed(server, email, System.currentTimeMillis())
         OfflineQueueWorker.scheduleNow(application)
     }
 
-    suspend fun clearFailed(application: Application) {
+    suspend fun clearFailed(application: Application, server: String, email: String) {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        val operations = dao.getFailedOperations()
-        dao.clearFailed()
+        val operations = dao.getFailedOperations(server, email)
+        dao.clearFailed(server, email)
         QueuedAttachmentCleanup.releaseForOperations(application, operations)
     }
 
@@ -435,6 +432,7 @@ object OfflineQueueManager {
                             val json = JSONObject(operation.payload)
                             AppDatabase.getInstance(application).messageDao().updateReadStatus(
                                 messageId = json.getString("messageId"),
+                                localAccountId = com.mobilemail.data.local.LocalAccountIdentity.of(operation.server, operation.email),
                                 isUnread = !json.getBoolean("isRead")
                             )
                         }

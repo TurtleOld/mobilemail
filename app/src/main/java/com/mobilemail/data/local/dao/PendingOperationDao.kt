@@ -34,20 +34,28 @@ interface PendingOperationDao {
     @Query("UPDATE pending_operations SET status = 'unknown_outcome', updatedAt = :updatedAt WHERE status = 'submitting'")
     suspend fun resetInterruptedSubmissions(updatedAt: Long)
 
-    @Query("DELETE FROM pending_operations WHERE accountId = :accountId")
-    suspend fun deleteByAccount(accountId: String)
+    @Query("DELETE FROM pending_operations WHERE server = :server AND email = :email")
+    suspend fun deleteByAccount(server: String, email: String)
 
     @Query("SELECT COUNT(*) FROM pending_operations WHERE status IN ('pending', 'failed')")
     suspend fun getPendingCount(): Int
-
-    @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'failed'")
-    suspend fun getFailedCount(): Int
 
     @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'permanent_failed'")
     suspend fun getPermanentFailedCount(): Int
 
     @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'unknown_outcome'")
     suspend fun getUnknownOutcomeCount(): Int
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE status IN ('pending', 'failed') AND server = :server AND email = :email")
+    suspend fun getPendingCountForAccount(server: String, email: String): Int
+
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'failed' AND server = :server AND email = :email")
+    suspend fun getFailedCountForAccount(server: String, email: String): Int
+
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'permanent_failed' AND server = :server AND email = :email")
+    suspend fun getPermanentFailedCountForAccount(server: String, email: String): Int
+
+    @Query("SELECT COUNT(*) FROM pending_operations WHERE status = 'unknown_outcome' AND server = :server AND email = :email")
+    suspend fun getUnknownOutcomeCountForAccount(server: String, email: String): Int
 
     @Query("SELECT * FROM pending_operations ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PendingOperationEntity>>
@@ -58,8 +66,8 @@ interface PendingOperationDao {
     @Query("SELECT * FROM pending_operations WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): PendingOperationEntity?
 
-    @Query("SELECT * FROM pending_operations WHERE status IN ('failed', 'permanent_failed')")
-    suspend fun getFailedOperations(): List<PendingOperationEntity>
+    @Query("SELECT * FROM pending_operations WHERE status IN ('failed', 'permanent_failed') AND server = :server AND email = :email")
+    suspend fun getFailedOperations(server: String, email: String): List<PendingOperationEntity>
 
     @Query(
         "SELECT * FROM pending_operations " +
@@ -75,9 +83,11 @@ interface PendingOperationDao {
     suspend fun retryById(id: Long, updatedAt: Long)
 
     @Query("UPDATE pending_operations SET status = 'pending', lastError = NULL, " +
-        "updatedAt = :updatedAt WHERE status IN ('failed', 'permanent_failed')")
-    suspend fun retryAllFailed(updatedAt: Long)
+        "updatedAt = :updatedAt WHERE status IN ('failed', 'permanent_failed') " +
+        "AND server = :server AND email = :email")
+    suspend fun retryAllFailed(server: String, email: String, updatedAt: Long)
 
-    @Query("DELETE FROM pending_operations WHERE status IN ('failed', 'permanent_failed')")
-    suspend fun clearFailed()
+    @Query("DELETE FROM pending_operations WHERE status IN ('failed', 'permanent_failed') " +
+        "AND server = :server AND email = :email")
+    suspend fun clearFailed(server: String, email: String)
 }

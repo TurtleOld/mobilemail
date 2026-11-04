@@ -154,8 +154,9 @@ object Mappers {
         )
     }
 
-    fun Folder.toFolderEntity(accountId: String): FolderEntity {
+    fun Folder.toFolderEntity(accountId: String, localAccountId: String): FolderEntity {
         return FolderEntity(
+            localAccountId = localAccountId,
             id = this.id,
             accountId = accountId,
             name = this.name,
@@ -204,8 +205,13 @@ object Mappers {
         )
     }
 
-    fun MessageListItem.toMessageEntity(folderId: String, accountId: String): MessageEntity {
+    fun MessageListItem.toMessageEntity(
+        folderId: String,
+        accountId: String,
+        localAccountId: String
+    ): MessageEntity {
         return MessageEntity(
+            localAccountId = localAccountId,
             id = this.id,
             threadId = this.threadId,
             folderId = folderId,
@@ -225,8 +231,13 @@ object Mappers {
         )
     }
 
-    fun MessageDetail.toMessageEntity(folderId: String, accountId: String): MessageEntity {
+    fun MessageDetail.toMessageEntity(
+        folderId: String,
+        accountId: String,
+        localAccountId: String
+    ): MessageEntity {
         return MessageEntity(
+            localAccountId = localAccountId,
             id = this.id,
             threadId = this.threadId,
             folderId = folderId,

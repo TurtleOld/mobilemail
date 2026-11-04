@@ -74,6 +74,7 @@ class MessageDetailViewModel(
                 val jmapClient = MailClientFactory.create(app, session.server, session.email, session.accountId)
                 repository = MailRepository(
                     jmapClient = jmapClient,
+                    localAccountId = com.mobilemail.data.local.LocalAccountIdentity.of(session.server, session.email),
                     pendingOperationDao = runCatching {
                         AppDatabase.getInstance(app).pendingOperationDao()
                     }.getOrNull()

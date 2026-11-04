@@ -6,17 +6,17 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface FolderDao {
-    @Query("SELECT * FROM folders WHERE accountId = :accountId ORDER BY name ASC")
-    fun getFoldersByAccount(accountId: String): Flow<List<FolderEntity>>
+    @Query("SELECT * FROM folders WHERE localAccountId = :localAccountId ORDER BY name ASC")
+    fun getFoldersByAccount(localAccountId: String): Flow<List<FolderEntity>>
     
-    @Query("SELECT * FROM folders WHERE accountId = :accountId")
-    suspend fun getFoldersByAccountSync(accountId: String): List<FolderEntity>
+    @Query("SELECT * FROM folders WHERE localAccountId = :localAccountId")
+    suspend fun getFoldersByAccountSync(localAccountId: String): List<FolderEntity>
     
-    @Query("SELECT * FROM folders WHERE id = :folderId AND accountId = :accountId")
-    suspend fun getFolderById(folderId: String, accountId: String): FolderEntity?
+    @Query("SELECT * FROM folders WHERE id = :folderId AND localAccountId = :localAccountId")
+    suspend fun getFolderById(folderId: String, localAccountId: String): FolderEntity?
 
-    @Query("UPDATE folders SET queryState = :queryState, syncedAt = :syncedAt WHERE id = :folderId AND accountId = :accountId")
-    suspend fun updateFolderSyncState(folderId: String, accountId: String, queryState: String?, syncedAt: Long)
+    @Query("UPDATE folders SET queryState = :queryState, syncedAt = :syncedAt WHERE id = :folderId AND localAccountId = :localAccountId")
+    suspend fun updateFolderSyncState(folderId: String, localAccountId: String, queryState: String?, syncedAt: Long)
     
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFolder(folder: FolderEntity)
@@ -30,6 +30,6 @@ interface FolderDao {
     @Delete
     suspend fun deleteFolder(folder: FolderEntity)
     
-    @Query("DELETE FROM folders WHERE accountId = :accountId")
-    suspend fun deleteFoldersByAccount(accountId: String)
+    @Query("DELETE FROM folders WHERE localAccountId = :localAccountId")
+    suspend fun deleteFoldersByAccount(localAccountId: String)
 }

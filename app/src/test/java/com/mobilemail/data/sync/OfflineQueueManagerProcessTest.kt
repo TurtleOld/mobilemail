@@ -266,6 +266,15 @@ class OfflineQueueManagerProcessTest {
             it.status == OfflineQueueManager.STATUS_PENDING || it.status == OfflineQueueManager.STATUS_FAILED
         }
 
+        override suspend fun getPendingCountForAccount(server: String, email: String): Int =
+            getAll().count { it.server == server && it.email == email && it.status in listOf("pending", "failed") }
+
+        override suspend fun getFailedCountForAccount(server: String, email: String): Int =
+            getAll().count { it.server == server && it.email == email && it.status == "failed" }
+
+        override suspend fun getPermanentFailedCountForAccount(server: String, email: String): Int =
+            getAll().count { it.server == server && it.email == email && it.status == "permanent_failed" }
+
         override suspend fun getPermanentFailedCount(): Int = operations.count {
             it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED
         }
@@ -276,26 +285,28 @@ class OfflineQueueManagerProcessTest {
 
         override suspend fun insert(operation: PendingOperationEntity): Long = error("not used")
 
-        override suspend fun deleteByAccount(accountId: String) = error("not used")
+        override suspend fun deleteByAccount(server: String, email: String) = error("not used")
 
-        override suspend fun getFailedCount(): Int = error("not used")
 
         override fun observeAll(): Flow<List<PendingOperationEntity>> = emptyFlow()
 
         override suspend fun getById(id: Long): PendingOperationEntity? = error("not used")
 
+        override suspend fun getUnknownOutcomeCountForAccount(server: String, email: String): Int =
+            getAll().count { it.server == server && it.email == email && it.status == "unknown_outcome" }
+
         override suspend fun getAll(): List<PendingOperationEntity> = operations.toList()
 
         override suspend fun getActiveReadStatusOperations(): List<PendingOperationEntity> = error("not used")
 
-        override suspend fun getFailedOperations(): List<PendingOperationEntity> = error("not used")
+        override suspend fun getFailedOperations(server: String, email: String): List<PendingOperationEntity> = error("not used")
 
         override suspend fun delete(id: Long) = error("not used")
 
         override suspend fun retryById(id: Long, updatedAt: Long) = error("not used")
 
-        override suspend fun retryAllFailed(updatedAt: Long) = error("not used")
+        override suspend fun retryAllFailed(server: String, email: String, updatedAt: Long) = error("not used")
 
-        override suspend fun clearFailed() = error("not used")
+        override suspend fun clearFailed(server: String, email: String) = error("not used")
     }
 }
