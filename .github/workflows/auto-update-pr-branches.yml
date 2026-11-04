@@ -4,6 +4,7 @@ on:
   pull_request:
     branches: [main]
     types: [closed]
+  workflow_dispatch:
 
 permissions:
   actions: write
@@ -16,7 +17,8 @@ concurrency:
 
 jobs:
   update-branches:
-    if: github.event.pull_request.merged == true
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    timeout-minutes: 20
     runs-on: ubuntu-latest
     steps:
       - name: Update open PR branches from main
@@ -24,13 +26,39 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
-          set -eu
-          for pr in $(gh pr list -R "$REPO" --base main --state open --json number,isCrossRepository --jq '.[] | select(.isCrossRepository == false) | .number'); do
-            echo "Updating PR #$pr from main"
-            if gh pr update-branch -R "$REPO" "$pr"; then
-              branch=$(gh pr view -R "$REPO" "$pr" --json headRefName --jq '.headRefName')
-              gh workflow run android-ci.yml -R "$REPO" --ref "$branch"
-            else
-              echo "PR #$pr could not be updated; skipping CI dispatch"
+          set -euo pipefail
+          retry() {
+            local attempt
+            for attempt in 1 2 3; do
+              if "$@"; then return 0; fi
+              if [ "$attempt" -lt 3 ]; then sleep "$((attempt * 2))"; fi
+            done
+            return 1
+          }
+
+          prs=$(retry gh pr list -R "$REPO" --base main --state open --limit 1000 \
+            --json number,headRefName,isCrossRepository,mergeable \
+            --jq '.[] | select(.isCrossRepository == false) | [.number, .headRefName, .mergeable] | @tsv')
+          failed=0
+          while IFS=$'\t' read -r pr branch mergeable; do
+            [ -n "$pr" ] || continue
+            if [ "$mergeable" = CONFLICTING ]; then
+              echo "::warning::PR #$pr has conflicts; resolve them before CI can allow merging"
+              echo "- PR #$pr: conflicts" >> "$GITHUB_STEP_SUMMARY"
+              continue
             fi
-          done
+            if ! retry gh pr update-branch -R "$REPO" "$pr"; then
+              echo "::error::Could not update PR #$pr"
+              echo "- PR #$pr: update failed" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+              continue
+            fi
+            if ! retry gh workflow run android-ci.yml -R "$REPO" --ref "$branch"; then
+              echo "::error::Could not dispatch Android CI for PR #$pr"
+              echo "- PR #$pr: CI dispatch failed" >> "$GITHUB_STEP_SUMMARY"
+              failed=1
+              continue
+            fi
+            echo "- PR #$pr: Android CI requested" >> "$GITHUB_STEP_SUMMARY"
+          done <<< "$prs"
+          exit "$failed"
