@@ -40,14 +40,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import android.util.Log
 import com.mobilemail.domain.model.Attachment
 import com.mobilemail.data.preferences.PreferencesManager
 import com.mobilemail.ui.common.FeatureScreenEffects
 import com.mobilemail.ui.common.rememberFeatureScreenSnackbarHostState
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import kotlinx.coroutines.delay
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 
@@ -65,12 +66,12 @@ fun NewMessageScreen(
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val draft by viewModel.draft.collectAsStateWithLifecycle()
     val snackbarHostState = rememberFeatureScreenSnackbarHostState()
-    var to by remember(initialTo) { mutableStateOf(initialTo) }
-    var subject by remember(initialSubject) { mutableStateOf(initialSubject) }
-    var body by remember(initialBody) { mutableStateOf(initialBody) }
     val context = LocalContext.current
     val preferencesManager = remember(context) { PreferencesManager(context) }
+    val scope = rememberCoroutineScope()
+    var exiting by remember { mutableStateOf(false) }
     val attachmentPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenMultipleDocuments()
     ) { uris ->
@@ -80,10 +81,9 @@ fun NewMessageScreen(
     }
 
     LaunchedEffect(server, email) {
+        viewModel.seedDraft(initialTo, initialSubject, initialBody)
         val signature = preferencesManager.getSignature(server, email).orEmpty()
-        if (signature.isNotBlank() && body.isBlank()) {
-            body = "\n\n$signature"
-        }
+        viewModel.appendSignatureIfEmpty(signature)
     }
 
     FeatureScreenEffects(
@@ -93,61 +93,40 @@ fun NewMessageScreen(
         snackbarHostState = snackbarHostState,
     )
 
-    data class DraftSnapshot(
-        val to: String,
-        val subject: String,
-        val body: String,
-        val attachmentIds: List<String>
-    )
-
-    val draftSnapshot = remember(to, subject, body, uiState.attachments) {
-        DraftSnapshot(
-            to = to,
-            subject = subject,
-            body = body,
-            attachmentIds = uiState.attachments.map { it.id }
-        )
+    LaunchedEffect(draft, uiState.isSending) {
+        if (!uiState.isSending) viewModel.autosaveDraft()
     }
-    var lastAutosavedSnapshot by remember { mutableStateOf<DraftSnapshot?>(null) }
 
-    LaunchedEffect(draftSnapshot, uiState.isSending) {
-        if (uiState.isSending) return@LaunchedEffect
-        val isEmptyDraft = draftSnapshot.to.isBlank() &&
-            draftSnapshot.subject.isBlank() &&
-            draftSnapshot.body.isBlank() &&
-            draftSnapshot.attachmentIds.isEmpty()
-        if (isEmptyDraft || draftSnapshot == lastAutosavedSnapshot) {
-            return@LaunchedEffect
+    // Сохраняем перед выходом: иначе правка, сделанная раньше задержки автосохранения, пропадает.
+    val requestExit = {
+        if (!exiting) {
+            exiting = true
+            scope.launch {
+                if (viewModel.flushDraft()) onBack() else exiting = false
+            }
         }
-
-        delay(1200)
-        viewModel.saveDraft(
-            to = draftSnapshot.to.split(",", ";").map { it.trim() },
-            subject = draftSnapshot.subject,
-            body = draftSnapshot.body
-        )
-        lastAutosavedSnapshot = draftSnapshot
     }
+    BackHandler(onBack = requestExit)
 
     NewMessageScreenContent(
         email = email,
-        to = to,
-        onToChange = { to = it },
-        subject = subject,
-        onSubjectChange = { subject = it },
-        body = body,
-        onBodyChange = { body = it },
+        to = draft.to,
+        onToChange = viewModel::updateTo,
+        subject = draft.subject,
+        onSubjectChange = viewModel::updateSubject,
+        body = draft.body,
+        onBodyChange = viewModel::updateBody,
         uiState = uiState,
         snackbarHostState = snackbarHostState,
-        onBack = onBack,
+        onBack = requestExit,
         onPickAttachments = { attachmentPicker.launch(arrayOf("*/*")) },
         onSend = {
             viewModel.sendMessage(
-                to = to.split(",", ";")
+                to = draft.to.split(",", ";")
                     .map { it.trim() }
                     .filter { it.isNotBlank() },
-                subject = subject,
-                body = body,
+                subject = draft.subject,
+                body = draft.body,
                 onSuccess = onBack
             )
         },

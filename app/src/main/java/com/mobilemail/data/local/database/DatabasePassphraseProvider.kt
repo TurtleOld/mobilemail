@@ -17,6 +17,11 @@ class DatabasePassphraseProvider(context: Context) {
         if (existing != null) {
             return Base64.decode(existing, Base64.NO_WRAP)
         }
+        // An undecryptable stored key must not be replaced: generating a new passphrase would
+        // make the existing encrypted database unrecoverable once the original key is restored.
+        check(!secureStore.contains(PASSPHRASE_KEY)) {
+            "Stored database passphrase exists but cannot be decrypted"
+        }
 
         val passphrase = ByteArray(PASSPHRASE_BYTES)
         SecureRandom().nextBytes(passphrase)

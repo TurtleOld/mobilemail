@@ -3,6 +3,7 @@ package com.mobilemail.ui.outbox
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.data.local.database.DatabaseOpenException
 import com.mobilemail.data.local.entity.PendingOperationEntity
 import com.mobilemail.data.sync.OfflineQueueManager
 import com.mobilemail.data.sync.OfflineQueueStats
@@ -21,7 +22,8 @@ data class OutboxUiState(
     val stats: OfflineQueueStats = OfflineQueueStats(0, 0, 0, 0),
     override val error: AppError? = null,
     override val notification: NotificationState = NotificationState.None,
-    val isProcessing: Boolean = false
+    val isProcessing: Boolean = false,
+    val queueUnavailableMessage: String? = null
 ) : FeatureScreenUiState
 
 class OutboxViewModel(
@@ -33,25 +35,35 @@ class OutboxViewModel(
     private val _uiState = MutableStateFlow(OutboxUiState())
     val uiState: StateFlow<OutboxUiState> = _uiState.asStateFlow()
 
+    private val isQueueUnavailable: Boolean
+        get() = _uiState.value.queueUnavailableMessage != null
+
     init {
         viewModelScope.launch {
-            OfflineQueueManager.observeAll(getApplication()).collect { operations ->
-                val accountOperations = operations.filter {
-                    it.server == server && it.email == email && it.accountId == accountId
+            try {
+                OfflineQueueManager.observeAll(getApplication()).collect { operations ->
+                    val accountOperations = operations.filter {
+                        it.server == server && it.email == email && it.accountId == accountId
+                    }
+                    val stats = OfflineQueueStats(
+                        pendingCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_PENDING },
+                        failedCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_FAILED },
+                        permanentFailedCount = accountOperations.count {
+                            it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED
+                        },
+                        totalCount = accountOperations.size
+                    )
+                    _uiState.value = _uiState.value.copy(operations = accountOperations, stats = stats)
                 }
-                val stats = OfflineQueueStats(
-                    pendingCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_PENDING },
-                    failedCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_FAILED },
-                    permanentFailedCount = accountOperations.count { it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED },
-                    totalCount = accountOperations.size
-                )
-                _uiState.value = _uiState.value.copy(operations = accountOperations, stats = stats)
+            } catch (_: DatabaseOpenException) {
+                _uiState.value = _uiState.value.copy(queueUnavailableMessage = QUEUE_UNAVAILABLE_MESSAGE)
             }
         }
     }
 
     fun retryNow() {
         viewModelScope.launch {
+            if (isQueueUnavailable) return@launch
             _uiState.value = _uiState.value.copy(isProcessing = true)
             val summary = OfflineQueueManager.processPending(getApplication())
             OfflineQueueWorker.scheduleNow(getApplication())
@@ -71,6 +83,7 @@ class OutboxViewModel(
 
     fun retryOperation(id: Long) {
         viewModelScope.launch {
+            if (isQueueUnavailable) return@launch
             OfflineQueueManager.retryOne(getApplication(), id)
             _uiState.value = _uiState.value.copy(
                 notification = NotificationState.Snackbar(
@@ -83,6 +96,7 @@ class OutboxViewModel(
 
     fun retryFailed() {
         viewModelScope.launch {
+            if (isQueueUnavailable) return@launch
             OfflineQueueManager.retryAllFailed(getApplication())
             _uiState.value = _uiState.value.copy(
                 notification = NotificationState.Snackbar(
@@ -95,6 +109,7 @@ class OutboxViewModel(
 
     fun clearFailed() {
         viewModelScope.launch {
+            if (isQueueUnavailable) return@launch
             OfflineQueueManager.clearFailed(getApplication())
             _uiState.value = _uiState.value.copy(
                 notification = NotificationState.Snackbar(
@@ -107,6 +122,7 @@ class OutboxViewModel(
 
     fun remove(id: Long) {
         viewModelScope.launch {
+            if (isQueueUnavailable) return@launch
             OfflineQueueManager.remove(getApplication(), id)
         }
     }
@@ -117,5 +133,11 @@ class OutboxViewModel(
 
     fun clearNotification() {
         _uiState.value = _uiState.value.copy(notification = NotificationState.None)
+    }
+
+    private companion object {
+        const val QUEUE_UNAVAILABLE_MESSAGE =
+            "Не удалось открыть базу данных. Очередь неотправленных писем сохранена. " +
+                "Восстановите доступ к ключу шифрования и повторите попытку."
     }
 }

@@ -1,9 +1,10 @@
 package com.mobilemail.data.repository
 
 import com.mobilemail.data.jmap.JmapApi
-import com.mobilemail.data.local.dao.MessageDao
-import com.mobilemail.data.local.entity.MessageEntity
 import com.mobilemail.data.model.Attachment
+import com.mobilemail.data.model.BodyPart
+import com.mobilemail.data.model.BodyValue
+import com.mobilemail.data.model.EmailAddress
 import com.mobilemail.data.model.EmailQueryResult
 import com.mobilemail.data.model.EmailSubmissionStatus
 import com.mobilemail.data.model.JmapAccount
@@ -11,245 +12,188 @@ import com.mobilemail.data.model.JmapEmail
 import com.mobilemail.data.model.JmapMailbox
 import com.mobilemail.data.model.JmapSession
 import com.mobilemail.data.model.PrimaryAccounts
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.IOException
-import java.util.Date
 
 class MailRepositoryTest {
 
     @Test
-    fun `empty first page clears cached folder`() = runTest {
-        val dao = InMemoryMessageDao(listOf(cachedMessage("m1"), cachedMessage("m2")))
-        val repository = MailRepository(FakeJmapApi { position -> emptyQuery(position) }, dao)
+    fun `folder page requests list fields only and body is loaded on open`() = runTest {
+        val api = FakeJmapApi(ids = listOf("m1"))
+        val repository = MailRepository(api)
 
-        val page = repository.getMessagesPage(FOLDER_ID, position = 0, limit = PAGE_SIZE, forceRefresh = true).getOrThrow()
+        val page = repository.getMessagesPage(folderId = "inbox", position = 0, limit = 50).getOrThrow()
 
-        assertTrue(page.items.isEmpty())
-        assertFalse(page.hasMore)
-        assertFalse(page.fromCache)
-        assertTrue(dao.messages.isEmpty())
+        assertEquals(listOf("m1"), page.items.map { it.id })
+        val listProperties = api.emailGetProperties.single()
+        assertTrue(listProperties.containsAll(LIST_PROPERTIES))
+        assertFalse(listProperties.any { it in BODY_PROPERTIES })
+
+        val message = repository.getMessage("m1").getOrThrow()
+
+        assertEquals("body-m1", message.body.text)
+        assertEquals(2, api.emailGetProperties.size)
+        assertTrue(api.emailGetProperties[1].containsAll(BODY_PROPERTIES))
     }
 
     @Test
-    fun `empty next page ends pagination and keeps cached pages`() = runTest {
-        val cached = listOf(cachedMessage("m1"), cachedMessage("m2"), cachedMessage("m3"))
-        val dao = InMemoryMessageDao(cached)
-        val repository = MailRepository(FakeJmapApi { position -> emptyQuery(position) }, dao)
+    fun `body cache evicts least recently used entries`() = runTest {
+        val api = FakeJmapApi()
+        val repository = MailRepository(api, bodyCacheSize = 2)
 
-        val page = repository.getMessagesPage(FOLDER_ID, position = 2, limit = PAGE_SIZE).getOrThrow()
+        repository.getMessage("m1").getOrThrow()
+        repository.getMessage("m2").getOrThrow()
+        repository.getMessage("m3").getOrThrow()
+        repository.getMessage("m2").getOrThrow()
 
-        assertTrue(page.items.isEmpty())
-        assertFalse(page.hasMore)
-        assertNull(page.nextPosition)
-        assertEquals(cached, dao.messages)
+        assertEquals(3, api.emailGetProperties.size)
+
+        repository.getMessage("m1").getOrThrow()
+
+        assertEquals(4, api.emailGetProperties.size)
     }
 
     @Test
-    fun `network error keeps cached messages available`() = runTest {
-        val dao = InMemoryMessageDao(listOf(cachedMessage("m1")))
-        val repository = MailRepository(FakeJmapApi { throw IOException("offline") }, dao)
+    fun `message opens and updates after its cache entry is evicted`() = runTest {
+        val api = FakeJmapApi()
+        val repository = MailRepository(api, bodyCacheSize = 1)
 
-        val page = repository.getMessagesPage(FOLDER_ID, position = 0, limit = PAGE_SIZE, forceRefresh = true).getOrThrow()
+        repository.getMessage("m1").getOrThrow()
+        repository.getMessage("m2").getOrThrow()
 
-        assertEquals(1, page.items.size)
-        assertTrue(page.fromCache)
-        assertEquals(1, dao.messages.size)
-    }
+        repository.updateMessageReadStatus("m1", isUnread = false)
+        val reopened = repository.getMessage("m1").getOrThrow()
 
-    private fun emptyQuery(position: Int) = EmailQueryResult(
-        ids = emptyList(),
-        position = position,
-        total = 0,
-        queryState = "query-state"
-    )
-
-    private fun cachedMessage(id: String) = MessageEntity(
-        id = id,
-        threadId = "thread-$id",
-        folderId = FOLDER_ID,
-        accountId = ACCOUNT_ID,
-        fromName = "Sender",
-        fromEmail = "sender@example.test",
-        subject = "Subject $id",
-        snippet = "Snippet",
-        date = Date(1_700_000_000_000),
-        isUnread = false,
-        isStarred = false,
-        isImportant = false,
-        hasAttachments = false,
-        size = 10,
-        textBody = null,
-        htmlBody = null,
-        syncedAt = System.currentTimeMillis()
-    )
-
-    private class FakeJmapApi(
-        private val onQuery: (Int) -> EmailQueryResult
-    ) : JmapApi {
-        override suspend fun getSession() = JmapSession(
-            apiUrl = "https://example.test/api",
-            downloadUrl = "https://example.test/download",
-            uploadUrl = "https://example.test/upload",
-            accounts = mapOf(ACCOUNT_ID to JmapAccount(id = ACCOUNT_ID, name = "Test", isPersonal = true, isReadOnly = false)),
-            primaryAccounts = PrimaryAccounts(mail = ACCOUNT_ID)
-        )
-
-        override suspend fun getMailboxes(accountId: String?) = emptyList<JmapMailbox>()
-
-        override suspend fun queryEmails(
-            mailboxId: String?,
-            accountId: String?,
-            position: Int,
-            limit: Int,
-            filter: Map<String, Any>?,
-            searchText: String?
-        ) = onQuery(position)
-
-        override suspend fun getEmails(ids: List<String>, accountId: String?, properties: List<String>?) =
-            emptyList<JmapEmail>()
-
-        override suspend fun queryAndGetEmails(
-            mailboxId: String?,
-            accountId: String?,
-            position: Int,
-            limit: Int,
-            filter: Map<String, Any>?,
-            searchText: String?,
-            properties: List<String>?
-        ) = onQuery(position) to emptyList<JmapEmail>()
-
-        override suspend fun updateEmailKeywords(emailId: String, keywords: Map<String, Boolean>, accountId: String?) =
-            error("not used")
-
-        override suspend fun deleteEmail(emailId: String, accountId: String?) = error("not used")
-
-        override suspend fun moveEmail(emailId: String, fromMailboxId: String, toMailboxId: String, accountId: String?) =
-            error("not used")
-
-        override suspend fun downloadAttachment(blobId: String, accountId: String?) = error("not used")
-
-        override suspend fun uploadAttachment(data: ByteArray, mimeType: String, filename: String, accountId: String?) =
-            error("not used")
-
-        override suspend fun sendEmail(
-            from: String,
-            to: List<String>,
-            subject: String,
-            body: String,
-            attachments: List<Attachment>,
-            draftId: String?,
-            accountId: String?
-        ) = error("not used")
-
-        override suspend fun getEmailSubmission(submissionId: String, accountId: String?) = error("not used")
-
-        override suspend fun saveDraft(
-            from: String,
-            to: List<String>,
-            subject: String,
-            body: String,
-            attachments: List<Attachment>,
-            draftId: String?,
-            accountId: String?
-        ) = error("not used")
-    }
-
-    private class InMemoryMessageDao(initial: List<MessageEntity>) : MessageDao {
-        val messages = initial.toMutableList()
-
-        override fun getMessagesByFolder(folderId: String, accountId: String): Flow<List<MessageEntity>> =
-            flowOf(messages.filter { it.folderId == folderId && it.accountId == accountId })
-
-        override suspend fun getMessagesByFolderPaged(
-            folderId: String,
-            accountId: String,
-            limit: Int,
-            offset: Int
-        ): List<MessageEntity> = messages
-            .filter { it.folderId == folderId && it.accountId == accountId }
-            .sortedByDescending { it.date }
-            .drop(offset)
-            .take(limit)
-
-        override suspend fun getMessageCountByFolder(folderId: String, accountId: String): Int =
-            messages.count { it.folderId == folderId && it.accountId == accountId }
-
-        override suspend fun getLatestSyncedAtByFolder(folderId: String, accountId: String): Long? = messages
-            .filter { it.folderId == folderId && it.accountId == accountId }
-            .maxOfOrNull { it.syncedAt }
-
-        override suspend fun getMessageById(messageId: String): MessageEntity? =
-            messages.firstOrNull { it.id == messageId }
-
-        override suspend fun insertMessage(message: MessageEntity) {
-            messages.removeAll { it.id == message.id }
-            messages.add(message)
-        }
-
-        override suspend fun insertMessages(messages: List<MessageEntity>) = messages.forEach { insertMessage(it) }
-
-        override suspend fun updateMessage(message: MessageEntity) = insertMessage(message)
-
-        override suspend fun deleteMessage(message: MessageEntity) {
-            messages.removeAll { it.id == message.id }
-        }
-
-        override suspend fun deleteMessagesByFolder(folderId: String, accountId: String) {
-            messages.removeAll { it.folderId == folderId && it.accountId == accountId }
-        }
-
-        override suspend fun deleteMessagesByAccount(accountId: String) {
-            messages.removeAll { it.accountId == accountId }
-        }
-
-        override suspend fun updateReadStatus(messageId: String, isUnread: Boolean) {
-            val index = messages.indexOfFirst { it.id == messageId }
-            if (index >= 0) messages[index] = messages[index].copy(isUnread = isUnread)
-        }
-
-        override suspend fun updateStarredStatus(messageId: String, isStarred: Boolean) {
-            val index = messages.indexOfFirst { it.id == messageId }
-            if (index >= 0) messages[index] = messages[index].copy(isStarred = isStarred)
-        }
-
-        override suspend fun searchMessagesFts(
-            accountId: String,
-            matchQuery: String,
-            folderId: String?,
-            senderLike: String?,
-            unreadOnly: Boolean,
-            hasAttachments: Boolean,
-            starredOnly: Boolean,
-            importantOnly: Boolean,
-            dateFromMillis: Long?,
-            limit: Int,
-            offset: Int
-        ) = error("not used")
-
-        override suspend fun searchMessagesFiltered(
-            accountId: String,
-            folderId: String?,
-            senderLike: String?,
-            unreadOnly: Boolean,
-            hasAttachments: Boolean,
-            starredOnly: Boolean,
-            importantOnly: Boolean,
-            dateFromMillis: Long?,
-            limit: Int,
-            offset: Int
-        ) = error("not used")
+        assertEquals("m1", reopened.id)
+        assertEquals(3, api.emailGetProperties.size)
     }
 
     private companion object {
-        const val ACCOUNT_ID = "account-1"
-        const val FOLDER_ID = "folder-inbox"
-        const val PAGE_SIZE = 50
+        val LIST_PROPERTIES = listOf(
+            "id", "threadId", "from", "subject", "receivedAt",
+            "preview", "hasAttachment", "size", "keywords"
+        )
+        val BODY_PROPERTIES = listOf("bodyStructure", "bodyValues", "textBody", "htmlBody")
+    }
+}
+
+private class FakeJmapApi(
+    private val ids: List<String> = emptyList()
+) : JmapApi {
+    val emailGetProperties = mutableListOf<List<String>>()
+
+    private val session = JmapSession(
+        apiUrl = "https://example.test/jmap",
+        downloadUrl = "",
+        uploadUrl = "",
+        accounts = mapOf("acc1" to JmapAccount(id = "acc1", name = "Account", isPersonal = true, isReadOnly = false)),
+        primaryAccounts = PrimaryAccounts(mail = "acc1")
+    )
+
+    override suspend fun getSession(): JmapSession = session
+
+    override suspend fun getMailboxes(accountId: String?): List<JmapMailbox> = emptyList()
+
+    override suspend fun queryEmails(
+        mailboxId: String?,
+        accountId: String?,
+        position: Int,
+        limit: Int,
+        filter: Map<String, Any>?,
+        searchText: String?
+    ): EmailQueryResult = EmailQueryResult(ids = ids, position = position)
+
+    override suspend fun getEmails(
+        ids: List<String>,
+        accountId: String?,
+        properties: List<String>?
+    ): List<JmapEmail> {
+        emailGetProperties += properties.orEmpty()
+        val includeBody = properties == null || properties.any { it in BODY_PROPERTY_NAMES }
+        return ids.map { id ->
+            JmapEmail(
+                id = id,
+                threadId = "thread-$id",
+                mailboxIds = mapOf("inbox" to true),
+                keywords = mapOf("\$seen" to true),
+                size = 10,
+                receivedAt = "2024-01-01T00:00:00Z",
+                hasAttachment = false,
+                preview = "preview-$id",
+                subject = "Subject $id",
+                from = listOf(EmailAddress(email = "sender@example.com")),
+                to = listOf(EmailAddress(email = "me@example.com")),
+                bodyStructure = if (includeBody) JSONObject() else null,
+                bodyValues = if (includeBody) mapOf("1" to BodyValue(value = "body-$id")) else null,
+                textBody = if (includeBody) listOf(BodyPart(partId = "1", type = "text/plain")) else null
+            )
+        }
+    }
+
+    override suspend fun queryAndGetEmails(
+        mailboxId: String?,
+        accountId: String?,
+        position: Int,
+        limit: Int,
+        filter: Map<String, Any>?,
+        searchText: String?,
+        properties: List<String>?
+    ): Pair<EmailQueryResult, List<JmapEmail>> = error("not used")
+
+    override suspend fun updateEmailKeywords(
+        emailId: String,
+        keywords: Map<String, Boolean>,
+        accountId: String?
+    ): Boolean = error("not used")
+
+    override suspend fun deleteEmail(emailId: String, accountId: String?): Boolean = error("not used")
+
+    override suspend fun moveEmail(
+        emailId: String,
+        fromMailboxId: String,
+        toMailboxId: String,
+        accountId: String?
+    ): Boolean = error("not used")
+
+    override suspend fun downloadAttachment(blobId: String, accountId: String?): ByteArray = error("not used")
+
+    override suspend fun uploadAttachment(
+        data: ByteArray,
+        mimeType: String,
+        filename: String,
+        accountId: String?
+    ): Attachment = error("not used")
+
+    override suspend fun sendEmail(
+        from: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<Attachment>,
+        draftId: String?,
+        accountId: String?
+    ): String = error("not used")
+
+    override suspend fun getEmailSubmission(
+        submissionId: String,
+        accountId: String?
+    ): EmailSubmissionStatus = error("not used")
+
+    override suspend fun saveDraft(
+        from: String,
+        to: List<String>,
+        subject: String,
+        body: String,
+        attachments: List<Attachment>,
+        draftId: String?,
+        accountId: String?
+    ): String = error("not used")
+
+    private companion object {
+        val BODY_PROPERTY_NAMES = setOf("bodyStructure", "bodyValues", "textBody", "htmlBody")
     }
 }

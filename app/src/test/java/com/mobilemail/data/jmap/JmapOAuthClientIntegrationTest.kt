@@ -530,6 +530,54 @@ class JmapOAuthClientIntegrationTest {
         }
     }
 
+    @Test
+    fun `email get requests body values only when body properties are asked for`() = runTest {
+        val server = MockWebServer()
+        server.start()
+        server.enqueue(MockResponse().setResponseCode(200).setBody(sessionResponse(server)))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(emailGetResponse))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(emailGetResponse))
+        try {
+            val tokenAccess = FakeTokenStoreAccess(
+                StoredToken(
+                    accessToken = "old_access",
+                    tokenType = "Bearer",
+                    expiresAt = System.currentTimeMillis() + 60_000,
+                    refreshToken = "old_refresh"
+                )
+            )
+            val client = JmapOAuthClient(
+                baseUrl = server.url("/").toString(),
+                email = "user@example.com",
+                accountId = "acc1",
+                tokenStoreAccess = tokenAccess,
+                metadata = metadata(server),
+                clientId = "mobilemail-test"
+            )
+
+            client.getEmails(
+                ids = listOf("email1"),
+                accountId = "acc1",
+                properties = listOf("id", "threadId", "from", "subject", "receivedAt", "preview", "hasAttachment", "size", "keywords")
+            )
+            client.getEmails(ids = listOf("email1"), accountId = "acc1")
+
+            server.takeRequest() // session request
+            val listParams = emailGetParams(server.takeRequest().body.readUtf8())
+            assertFalse(listParams.has("fetchTextBodyValues"))
+            assertFalse(listParams.has("fetchHTMLBodyValues"))
+
+            val detailParams = emailGetParams(server.takeRequest().body.readUtf8())
+            assertTrue(detailParams.getBoolean("fetchTextBodyValues"))
+            assertTrue(detailParams.getBoolean("fetchHTMLBodyValues"))
+        } finally {
+            server.shutdown()
+        }
+    }
+
+    private fun emailGetParams(body: String): JSONObject =
+        JSONObject(body).getJSONArray("methodCalls").getJSONArray(0).getJSONObject(1)
+
     private fun JmapOAuthClient.withReadTimeout(millis: Long) {
         val field = JmapOAuthClient::class.java.getDeclaredField("client")
         field.isAccessible = true
@@ -551,6 +599,14 @@ class JmapOAuthClientIntegrationTest {
             scopesSupported = null
         )
     }
+
+    private val emailGetResponse = """
+        {
+          "methodResponses": [
+            ["Email/get", {"list":[{"id":"email1","threadId":"thread1","mailboxIds":{"inbox":true},"size":10,"receivedAt":"2024-01-01T00:00:00Z","subject":"Subject"}]}, "0"]
+          ]
+        }
+    """.trimIndent()
 
     private fun sessionResponse(server: MockWebServer): String {
         return """
