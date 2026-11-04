@@ -67,7 +67,7 @@ object Mappers {
 
     fun JmapEmail.toMessageDetail(
         parseAttachments: (Any?) -> List<Attachment>,
-        cachedReadStatus: Boolean? = null
+        pendingUnread: Boolean? = null
     ): MessageDetail {
         val cleanFrom = cleanAddress(from?.firstOrNull())
         val attachments = if (bodyStructure != null) {
@@ -93,7 +93,7 @@ object Mappers {
             body = MessageBody(text = textBody, html = htmlBody),
             attachments = attachments,
             flags = MessageFlags(
-                unread = cachedReadStatus ?: isUnreadFromServer,
+                unread = pendingUnread ?: isUnreadFromServer,
                 starred = isStarred,
                 important = isImportant,
                 hasAttachments = hasAttachment == true || attachments.isNotEmpty()

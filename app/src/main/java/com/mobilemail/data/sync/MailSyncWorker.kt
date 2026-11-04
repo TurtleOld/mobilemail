@@ -53,7 +53,8 @@ class MailSyncWorker(
             val repository = MailRepository(
                 jmapClient = client,
                 messageDao = database.messageDao(),
-                folderDao = database.folderDao()
+                folderDao = database.folderDao(),
+                pendingOperationDao = database.pendingOperationDao()
             )
             val inbox = repository.getFolders()
                 .getOrThrow()

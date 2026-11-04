@@ -11,6 +11,7 @@ import com.mobilemail.domain.model.toData
 import com.mobilemail.data.repository.ComposeRepository
 import com.mobilemail.data.sync.OfflineAttachmentStorage
 import com.mobilemail.data.sync.OfflineQueueManager
+import com.mobilemail.data.sync.QueuedAttachmentCleanup
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
 import com.mobilemail.ui.common.FeatureScreenUiState
@@ -43,6 +44,7 @@ class ComposeViewModel(
 ) : AndroidViewModel(application) {
 
     private var repository: ComposeRepository? = null
+    private val attachmentStore by lazy { OfflineAttachmentStorage.forContext(getApplication()) }
 
     init {
         viewModelScope.launch {
@@ -55,11 +57,26 @@ class ComposeViewModel(
             }
         }
     }
-    companion object {
-        private const val MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024L
-    }
     private val _uiState = MutableStateFlow(ComposeUiState())
     val uiState: StateFlow<ComposeUiState> = _uiState
+
+    private val draftEditor = ComposeDraftEditor(saveDraft = ::saveDraftToServer)
+    val draft: StateFlow<ComposeDraft> = draftEditor.draft
+
+    fun seedDraft(to: String, subject: String, body: String) = draftEditor.seed(to, subject, body)
+
+    fun appendSignatureIfEmpty(signature: String) = draftEditor.appendSignatureIfEmpty(signature)
+
+    fun updateTo(value: String) = draftEditor.updateTo(value)
+
+    fun updateSubject(value: String) = draftEditor.updateSubject(value)
+
+    fun updateBody(value: String) = draftEditor.updateBody(value)
+
+    suspend fun autosaveDraft(): Boolean = draftEditor.autosave()
+
+    /** Сохраняет черновик перед выходом; `false` — запись не подтверждена, текст остаётся в редакторе. */
+    suspend fun flushDraft(): Boolean = draftEditor.flush()
 
     fun sendMessage(
         to: List<String>,
@@ -143,6 +160,8 @@ class ComposeViewModel(
             },
             onSuccess = { submissionId ->
                 Log.d("ComposeViewModel", "EmailSubmission создан, submissionId=$submissionId")
+                // Подтверждённая отправка — единственный момент, когда копии точно больше не нужны.
+                QueuedAttachmentCleanup.release(getApplication(), resolvedAttachments.mapNotNull { it.localFilePath })
                 _uiState.value = _uiState.value.copy(
                     isSending = false,
                     attachments = emptyList(),
@@ -275,15 +294,9 @@ class ComposeViewModel(
                 } else null
             }
 
-        if (size != null && size > MAX_ATTACHMENT_SIZE_BYTES) {
-            require(false) { "Размер вложения больше 10 МБ" }
-        }
-
         val type = resolver.getType(uri) ?: "application/octet-stream"
-        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: error("Не удалось прочитать файл")
-        require(bytes.size <= MAX_ATTACHMENT_SIZE_BYTES) { "Размер вложения больше 10 МБ" }
-        val localPath = OfflineAttachmentStorage.persist(getApplication(), name, bytes)
+        val bytes = readAttachmentBytes(declaredSize = size) { resolver.openInputStream(uri) }
+        val localPath = attachmentStore.persist(accountId, name, bytes)
         return Quadruple(name, type, bytes, localPath)
     }
 
@@ -332,6 +345,8 @@ class ComposeViewModel(
                 )
             )
         } else {
+            // Вложение не попало в письмо и очередь, поэтому копия ему больше не нужна.
+            attachmentStore.delete(localPath)
             _uiState.value = _uiState.value.copy(
                 notification = NotificationState.Snackbar(
                     message = "Не удалось загрузить вложение: ${ErrorMapper.mapException(e).getUserMessage()}",
@@ -342,35 +357,37 @@ class ComposeViewModel(
     }
 
     fun removeAttachment(attachment: Attachment) {
-        OfflineAttachmentStorage.delete(attachment.localFilePath)
+        attachmentStore.delete(attachment.localFilePath)
         _uiState.value = _uiState.value.copy(
             attachments = _uiState.value.attachments.filterNot { it.id == attachment.id }
         )
     }
 
-    fun saveDraft(to: List<String>, subject: String, body: String) {
-        val trimmedSubject = subject.trim()
-        val trimmedBody = body.trim()
-        if (trimmedSubject.isBlank() && trimmedBody.isBlank() && to.all { it.isBlank() }) {
-            return
-        }
-
+    private suspend fun saveDraftToServer(draft: ComposeDraft): Boolean {
+        val trimmedSubject = draft.subject.trim()
+        val trimmedBody = draft.body.trim()
+        val recipients = draft.to.split(",", ";").map { it.trim() }.filter { it.isNotBlank() }
         Log.d(
             "ComposeViewModel",
-            "Сохранение черновика: toCount=${to.count { it.isNotBlank() }}, " +
+            "Сохранение черновика: toCount=${recipients.size}, " +
                 "subject=${trimmedSubject.length}ch, body=${trimmedBody.length}ch, " +
                 "attachments=${_uiState.value.attachments.size}, draftId=${_uiState.value.draftId}"
         )
 
-        viewModelScope.launch {
-            val repo = repository ?: run {
-                _uiState.value = _uiState.value.copy(isSavingDraft = false)
-                return@launch
-            }
-            _uiState.value = _uiState.value.copy(isSavingDraft = true)
+        val repo = repository ?: run {
+            _uiState.value = _uiState.value.copy(
+                notification = NotificationState.Snackbar(
+                    message = "Клиент ещё не готов, попробуйте снова",
+                    duration = SnackbarDuration.Short
+                )
+            )
+            return false
+        }
+        _uiState.value = _uiState.value.copy(isSavingDraft = true)
+        return try {
             repo.saveDraft(
                 from = email,
-                to = to.map { it.trim() }.filter { it.isNotBlank() },
+                to = recipients,
                 subject = trimmedSubject,
                 body = trimmedBody,
                 attachments = _uiState.value.attachments.filter { it.isUploaded },
@@ -378,15 +395,21 @@ class ComposeViewModel(
             ).fold(
                 onError = { e ->
                     Log.e("ComposeViewModel", "Ошибка сохранения черновика", e)
-                    _uiState.value = _uiState.value.copy(isSavingDraft = false)
+                    _uiState.value = _uiState.value.copy(
+                        notification = NotificationState.Snackbar(
+                            message = "Не удалось сохранить черновик: ${ErrorMapper.mapException(e).getUserMessage()}",
+                            duration = SnackbarDuration.Long
+                        )
+                    )
+                    false
                 },
                 onSuccess = { newDraftId ->
-                    _uiState.value = _uiState.value.copy(
-                        isSavingDraft = false,
-                        draftId = newDraftId
-                    )
+                    _uiState.value = _uiState.value.copy(draftId = newDraftId)
+                    true
                 }
             )
+        } finally {
+            _uiState.value = _uiState.value.copy(isSavingDraft = false)
         }
     }
 
