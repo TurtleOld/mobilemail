@@ -1,0 +1,3 @@
+# Historical docs example: only a JWT header followed by literal "..."; no payload or signature.
+5e2564765a6ac31502e24317b58947d7990e23d1:docs/authentication/oauth-device-flow.md:curl-auth-header:183
+5e2564765a6ac31502e24317b58947d7990e23d1:docs/authentication/oauth-device-flow.md:generic-api-key:160
