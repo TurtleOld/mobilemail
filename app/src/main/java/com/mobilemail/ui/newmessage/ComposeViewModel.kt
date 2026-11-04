@@ -57,9 +57,6 @@ class ComposeViewModel(
             }
         }
     }
-    companion object {
-        private const val MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024L
-    }
     private val _uiState = MutableStateFlow(ComposeUiState())
     val uiState: StateFlow<ComposeUiState> = _uiState
 
@@ -297,14 +294,8 @@ class ComposeViewModel(
                 } else null
             }
 
-        if (size != null && size > MAX_ATTACHMENT_SIZE_BYTES) {
-            require(false) { "Размер вложения больше 10 МБ" }
-        }
-
         val type = resolver.getType(uri) ?: "application/octet-stream"
-        val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
-            ?: error("Не удалось прочитать файл")
-        require(bytes.size <= MAX_ATTACHMENT_SIZE_BYTES) { "Размер вложения больше 10 МБ" }
+        val bytes = readAttachmentBytes(declaredSize = size) { resolver.openInputStream(uri) }
         val localPath = attachmentStore.persist(accountId, name, bytes)
         return Quadruple(name, type, bytes, localPath)
     }
