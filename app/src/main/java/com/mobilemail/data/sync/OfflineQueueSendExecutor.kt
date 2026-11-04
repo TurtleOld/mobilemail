@@ -54,7 +54,6 @@ internal object OfflineQueueSendExecutor {
         ).fold(
             onError = { Result.Error(it) },
             onSuccess = {
-                sourceAttachments.forEach { OfflineAttachmentStorage.delete(it.localFilePath) }
                 Result.Success(Unit)
             }
         )

@@ -14,6 +14,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.io.IOException
 import java.io.FileNotFoundException
 
 class OfflineQueueManagerProcessTest {
@@ -136,6 +137,40 @@ class OfflineQueueManagerProcessTest {
         assertEquals(OfflineQueueManager.STATUS_FAILED, dao.operation(6)?.status)
     }
 
+    @Test
+    fun `successful operation releases its attachments after its row is gone`() = runTest {
+        val send = operation(id = 1, type = OfflineQueueManager.TYPE_SEND, payload = sendPayload("/tmp/attachment.bin"))
+        val dao = FakePendingOperationDao(listOf(send))
+        val released = mutableListOf<Long>()
+
+        OfflineQueueManager.processOperations(
+            dao = dao,
+            limit = 25,
+            releaseAttachments = { pending ->
+                assertNull(dao.operation(pending.id))
+                released += pending.id
+            }
+        ) { _, _ -> Result.Success(Unit) }
+
+        assertEquals(listOf(1L), released)
+    }
+
+    @Test
+    fun `failed operation keeps its attachments`() = runTest {
+        val send = operation(id = 1, type = OfflineQueueManager.TYPE_SEND, payload = sendPayload("/tmp/attachment.bin"))
+        val dao = FakePendingOperationDao(listOf(send))
+        val released = mutableListOf<Long>()
+
+        OfflineQueueManager.processOperations(
+            dao = dao,
+            limit = 25,
+            releaseAttachments = { pending -> released += pending.id }
+        ) { _, _ -> Result.Error(IOException("network is down")) }
+
+        assertEquals(emptyList<Long>(), released)
+        assertEquals(OfflineQueueManager.STATUS_FAILED, dao.operation(1)?.status)
+    }
+
     private fun operation(
         id: Long,
         type: String,
@@ -248,6 +283,10 @@ class OfflineQueueManagerProcessTest {
         override fun observeAll(): Flow<List<PendingOperationEntity>> = emptyFlow()
 
         override suspend fun getById(id: Long): PendingOperationEntity? = error("not used")
+
+        override suspend fun getAll(): List<PendingOperationEntity> = operations.toList()
+
+        override suspend fun getActiveReadStatusOperations(): List<PendingOperationEntity> = error("not used")
 
         override suspend fun getFailedOperations(): List<PendingOperationEntity> = error("not used")
 

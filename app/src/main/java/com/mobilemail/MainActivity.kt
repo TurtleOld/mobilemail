@@ -27,6 +27,7 @@ import com.mobilemail.domain.usecase.ResolveMessagesViewModelContextUseCase
 import com.mobilemail.domain.usecase.ResolvePushNavigationUseCase
 import com.mobilemail.domain.usecase.ResolveValidSessionUseCase
 import com.mobilemail.notifications.NtfyAccountPushTopicsAdapter
+import com.mobilemail.ui.common.DatabaseRecoveryScreen
 import com.mobilemail.ui.navigation.AppNavigationDependencies
 import com.mobilemail.ui.navigation.AppNavigationHost
 import com.mobilemail.ui.navigation.AppRoutes
@@ -39,9 +40,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 
 class MainActivity : FragmentActivity() {
-    private val database by lazy {
-        AppDatabase.getInstance(applicationContext)
-    }
+    private var database: AppDatabase? = null
+    private var databaseError by mutableStateOf<Throwable?>(null)
     private val preferencesManager by lazy { PreferencesManager(applicationContext) }
     private val tokenStore by lazy { TokenStore(applicationContext) }
     private val pinManager by lazy { PinManager(applicationContext) }
@@ -58,7 +58,7 @@ class MainActivity : FragmentActivity() {
 
     private val navigationDependencies by lazy {
         AppNavigationDependencies(
-            database = database,
+            database = requireNotNull(database),
             preferencesManager = preferencesManager,
             tokenStore = tokenStore,
             activityScope = activityScope,
@@ -91,28 +91,43 @@ class MainActivity : FragmentActivity() {
         scheduleAutoLock()
         navigationIntent = intent
         publishPushNavigationFromIntentUseCase(intent)
+        openDatabase()
         setContent {
             MobileMailTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    val startDestination = if (isPinLocked) AppRoutes.PinLock else AppRoutes.Login
-                    AppNavigationHost(
-                        dependencies = navigationDependencies,
-                        startDestination = startDestination,
-                        intent = navigationIntent,
-                        isPinLocked = isPinLocked,
-                        onPinUnlocked = {
-                            isPinLocked = false
-                            installCoordinator.onAppForegrounded(activityScope, unlocked = true)
-                            lastUserInteractionAtMillis = SystemClock.elapsedRealtime()
-                            scheduleAutoLock()
-                        },
-                    )
+                    val error = databaseError
+                    if (error != null) {
+                        DatabaseRecoveryScreen(error = error, onRetry = ::openDatabase)
+                    } else {
+                        val startDestination = if (isPinLocked) AppRoutes.PinLock else AppRoutes.Login
+                        AppNavigationHost(
+                            dependencies = navigationDependencies,
+                            startDestination = startDestination,
+                            intent = navigationIntent,
+                            isPinLocked = isPinLocked,
+                            onPinUnlocked = {
+                                isPinLocked = false
+                                installCoordinator.onAppForegrounded(activityScope, unlocked = true)
+                                lastUserInteractionAtMillis = SystemClock.elapsedRealtime()
+                                scheduleAutoLock()
+                            },
+                        )
+                    }
                 }
             }
         }
+    }
+
+    private fun openDatabase() {
+        runCatching { AppDatabase.getInstance(applicationContext) }
+            .onSuccess { opened ->
+                database = opened
+                databaseError = null
+            }
+            .onFailure { error -> databaseError = error }
     }
 
     override fun onResume() {

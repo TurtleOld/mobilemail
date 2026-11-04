@@ -217,9 +217,12 @@ object OfflineQueueManager {
 
     suspend fun processPending(application: Application, limit: Int = 25): OfflineQueueSummary = mutex.withLock {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        processOperations(dao, limit) { operation, onBeforeSubmission ->
-            executeOperation(application, operation, onBeforeSubmission)
-        }
+        QueuedAttachmentCleanup.releaseLegacy(application)
+        processOperations(
+            dao = dao,
+            limit = limit,
+            releaseAttachments = { operation -> QueuedAttachmentCleanup.releaseForOperations(application, listOf(operation)) }
+        ) { operation, onBeforeSubmission -> executeOperation(application, operation, onBeforeSubmission) }
     }
 
     /**
@@ -231,6 +234,7 @@ object OfflineQueueManager {
     internal suspend fun processOperations(
         dao: PendingOperationDao,
         limit: Int,
+        releaseAttachments: suspend (PendingOperationEntity) -> Unit = {},
         execute: suspend (PendingOperationEntity, suspend () -> Unit) -> Result<Unit>
     ): OfflineQueueSummary {
         // No worker is running while the mutex is held, so any 'running' row was left by a killed process.
@@ -271,6 +275,8 @@ object OfflineQueueManager {
             when (result) {
                 is Result.Success -> {
                     dao.deleteById(operation.id)
+                    // Копии освобождаются после удаления строки, чтобы она не считалась их потребителем.
+                    releaseAttachments(operation)
                     processedCount++
                 }
                 is Result.Error -> {
@@ -328,8 +334,9 @@ object OfflineQueueManager {
 
     suspend fun remove(application: Application, id: Long) {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        cleanupOperationFiles(dao.getById(id))
+        val operation = dao.getById(id)
         dao.delete(id)
+        QueuedAttachmentCleanup.releaseForOperations(application, listOfNotNull(operation))
     }
 
     suspend fun retryOne(application: Application, id: Long) {
@@ -344,8 +351,9 @@ object OfflineQueueManager {
 
     suspend fun clearFailed(application: Application) {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        dao.getFailedOperations().forEach { cleanupOperationFiles(it) }
+        val operations = dao.getFailedOperations()
         dao.clearFailed()
+        QueuedAttachmentCleanup.releaseForOperations(application, operations)
     }
 
     fun shouldQueue(error: Throwable): Boolean {
@@ -420,6 +428,18 @@ object OfflineQueueManager {
             TYPE_DELETE -> executeDelete(client, operation.payload)
             TYPE_MOVE -> executeMove(client, operation.payload)
             TYPE_MARK_READ -> executeMarkRead(client, operation.payload)
+                .also { result ->
+                    if (result is Result.Success) {
+                        // Keep the cache in step with a status the server has just accepted.
+                        runCatching {
+                            val json = JSONObject(operation.payload)
+                            AppDatabase.getInstance(application).messageDao().updateReadStatus(
+                                messageId = json.getString("messageId"),
+                                isUnread = !json.getBoolean("isRead")
+                            )
+                        }
+                    }
+                }
             TYPE_TOGGLE_STAR -> executeToggleStar(client, operation.payload)
             else -> Result.Error(IllegalArgumentException("Unsupported queue op: ${operation.type}"))
         }
@@ -478,17 +498,6 @@ object OfflineQueueManager {
             current = current.cause ?: return current
         }
         return current
-    }
-
-    private fun cleanupOperationFiles(operation: PendingOperationEntity?) {
-        if (operation == null || operation.type != TYPE_SEND) return
-        runCatching {
-            OfflineQueueSendExecutor.attachments(operation.payload).forEach { attachment ->
-                if (!attachment.isUploaded) {
-                    OfflineAttachmentStorage.delete(attachment.localFilePath)
-                }
-            }
-        }
     }
 
     private fun maxAttemptsFor(type: String): Int = when (type) {
