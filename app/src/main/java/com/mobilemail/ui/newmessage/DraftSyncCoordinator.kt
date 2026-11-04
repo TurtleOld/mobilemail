@@ -59,6 +59,17 @@ class DraftSyncCoordinator(
         scope.launch { drain() }
     }
 
+    /** Сохранение при выходе подтверждается только после ответа сервера. */
+    suspend fun save(snapshot: DraftSnapshot): Boolean = mutex.withLock {
+        if (sent || snapshot == persisted) return@withLock true
+        _isSaving.value = true
+        try {
+            persist(snapshot).isSuccess
+        } finally {
+            _isSaving.value = pending.value != null
+        }
+    }
+
     /** Дожидается текущего сохранения и отправляет последний снимок с актуальным draftId. */
     suspend fun send(snapshot: DraftSnapshot): Result<String> = mutex.withLock {
         pending.value = null
@@ -97,9 +108,9 @@ class DraftSyncCoordinator(
         }
     }
 
-    private suspend fun persist(snapshot: DraftSnapshot) {
+    private suspend fun persist(snapshot: DraftSnapshot): Result<String> {
         _isSaving.value = true
-        saveDraft(snapshot, draftId).onSuccess { newDraftId ->
+        return saveDraft(snapshot, draftId).onSuccess { newDraftId ->
             draftId = newDraftId
             persisted = snapshot
         }

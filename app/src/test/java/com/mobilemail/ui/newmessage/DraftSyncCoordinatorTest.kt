@@ -32,6 +32,29 @@ class DraftSyncCoordinatorTest {
     }
 
     @Test
+    fun `editor flush waits for confirmation and send uses the saved draft id`() = runTest {
+        val editorSnapshot = DraftSnapshot(subject = "editor")
+        var sentDraftId: String? = null
+        val coordinator = DraftSyncCoordinator(
+            scope = backgroundScope,
+            saveDraft = { _, _ -> delay(SAVE_DELAY_MS); Result.Success("editor-id") },
+            sendMessage = { _, id -> sentDraftId = id; Result.Success("submission") }
+        )
+        val saved = async { coordinator.save(editorSnapshot) }
+        runCurrent()
+        assertFalse(saved.isCompleted)
+        val sent = async { coordinator.send(editorSnapshot) }
+        runCurrent()
+        assertFalse(sent.isCompleted)
+        advanceTimeBy(STEP_MS)
+        runCurrent()
+        assertTrue(saved.await())
+        assertTrue(sent.await().isSuccess)
+        assertEquals("editor-id", sentDraftId)
+        assertFalse(coordinator.isSaving.value)
+    }
+
+    @Test
     fun `second autosave waits for the first and persists the newest snapshot`() = runTest {
         val saves = mutableListOf<RecordedCall>()
         var active = 0

@@ -16,6 +16,7 @@ import com.mobilemail.domain.model.MessageListItem
 import com.mobilemail.data.repository.MessageActionsRepository
 import com.mobilemail.data.repository.MailRepository
 import com.mobilemail.data.sync.OfflineQueueManager
+import com.mobilemail.data.sync.PendingReadStatusQueue
 import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.SnackbarDuration
 import com.mobilemail.ui.common.AppError
@@ -112,7 +113,8 @@ class MessagesViewModel(
                 repository = MailRepository(
                     jmapClient = jmapClient,
                     messageDao = database?.messageDao(),
-                    folderDao = database?.folderDao()
+                    folderDao = database?.folderDao(),
+                    pendingOperationDao = database?.pendingOperationDao()
                 )
                 messageActionsRepository = MessageActionsRepository(jmapClient)
             } catch (e: Exception) {
@@ -220,8 +222,11 @@ class MessagesViewModel(
     }
     
     fun refresh() {
+        // Optimistic read-status overrides are only meant to bridge the gap until fresh data
+        // arrives; a refresh must show the server state (or queued intents from the repository).
         _uiState.value = _uiState.value.copy(
-            hiddenMessageIds = emptySet()
+            hiddenMessageIds = emptySet(),
+            readStatusOverrides = emptyMap()
         )
         pagingRefreshTrigger.value += 1
         refreshFoldersPreservingSelection()
@@ -249,7 +254,6 @@ class MessagesViewModel(
         val wasUnread = oldMessage?.flags?.unread == true
         
         viewModelScope.launch {
-            repository?.updateMessageReadStatus(messageId, isUnread)
             syncReadStatus(messageId, isUnread)
         }
 
@@ -307,11 +311,19 @@ class MessagesViewModel(
             onError = { e ->
                 android.util.Log.e("MessagesViewModel", "Не удалось синхронизировать статус прочитанности на сервере", e)
                 if (OfflineQueueManager.shouldQueue(e)) {
+                    // The queued intent keeps overriding the server value until it settles.
                     OfflineQueueManager.enqueueMarkRead(app, server, email, accountId, messageId, !isUnread)
                     refreshQueueStats()
+                } else {
+                    // The server refused the change: drop the optimistic value and show server state.
+                    _uiState.value = _uiState.value.copy(
+                        readStatusOverrides = _uiState.value.readStatusOverrides - messageId
+                    )
                 }
             },
-            onSuccess = {}
+            onSuccess = {
+                repository?.updateMessageReadStatus(messageId, isUnread)
+            }
         )
     }
 
@@ -672,13 +684,17 @@ class MessagesViewModel(
     private fun observeQueueStats() {
         viewModelScope.launch {
             OfflineQueueManager.observeAll(app).collect { operations ->
-                _uiState.value = _uiState.value.copy(
+                val currentState = _uiState.value
+                val rejectedReadStatusIds = PendingReadStatusQueue.permanentlyFailedMessageIds(operations)
+                _uiState.value = currentState.copy(
                     pendingQueueCount = operations.count {
                         it.status == OfflineQueueManager.STATUS_PENDING || it.status == OfflineQueueManager.STATUS_FAILED
                     },
                     queueAttentionCount = operations.count {
                         it.status == OfflineQueueManager.STATUS_PERMANENT_FAILED
-                    }
+                    },
+                    // A rejected intent no longer overrides the server value.
+                    readStatusOverrides = currentState.readStatusOverrides - rejectedReadStatusIds
                 )
             }
         }

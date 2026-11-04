@@ -40,11 +40,21 @@ interface PendingOperationDao {
     @Query("SELECT * FROM pending_operations ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<PendingOperationEntity>>
 
+    @Query("SELECT * FROM pending_operations")
+    suspend fun getAll(): List<PendingOperationEntity>
+
     @Query("SELECT * FROM pending_operations WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): PendingOperationEntity?
 
     @Query("SELECT * FROM pending_operations WHERE status IN ('failed', 'permanent_failed')")
     suspend fun getFailedOperations(): List<PendingOperationEntity>
+
+    @Query(
+        "SELECT * FROM pending_operations " +
+            "WHERE type = 'mark_read' AND status IN ('pending', 'failed', 'running') " +
+            "ORDER BY createdAt ASC"
+    )
+    suspend fun getActiveReadStatusOperations(): List<PendingOperationEntity>
 
     @Query("DELETE FROM pending_operations WHERE id = :id")
     suspend fun delete(id: Long)

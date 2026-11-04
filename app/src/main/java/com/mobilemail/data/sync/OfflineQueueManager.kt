@@ -198,12 +198,18 @@ object OfflineQueueManager {
 
     suspend fun processPending(application: Application, limit: Int = 25): OfflineQueueSummary = mutex.withLock {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        processOperations(dao, limit) { operation -> executeOperation(application, operation) }
+        QueuedAttachmentCleanup.releaseLegacy(application)
+        processOperations(
+            dao = dao,
+            limit = limit,
+            releaseAttachments = { operation -> QueuedAttachmentCleanup.releaseForOperations(application, listOf(operation)) }
+        ) { operation -> executeOperation(application, operation) }
     }
 
     internal suspend fun processOperations(
         dao: PendingOperationDao,
         limit: Int,
+        releaseAttachments: suspend (PendingOperationEntity) -> Unit = {},
         execute: suspend (PendingOperationEntity) -> Result<Unit>
     ): OfflineQueueSummary {
         // No worker is running while the mutex is held, so any 'running' row was left by a killed process.
@@ -232,6 +238,8 @@ object OfflineQueueManager {
             when (result) {
                 is Result.Success -> {
                     dao.deleteById(operation.id)
+                    // Копии освобождаются после удаления строки, чтобы она не считалась их потребителем.
+                    releaseAttachments(operation)
                     processedCount++
                 }
                 is Result.Error -> {
@@ -286,8 +294,9 @@ object OfflineQueueManager {
 
     suspend fun remove(application: Application, id: Long) {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        cleanupOperationFiles(dao.getById(id))
+        val operation = dao.getById(id)
         dao.delete(id)
+        QueuedAttachmentCleanup.releaseForOperations(application, listOfNotNull(operation))
     }
 
     suspend fun retryOne(application: Application, id: Long) {
@@ -302,8 +311,9 @@ object OfflineQueueManager {
 
     suspend fun clearFailed(application: Application) {
         val dao = AppDatabase.getInstance(application).pendingOperationDao()
-        dao.getFailedOperations().forEach { cleanupOperationFiles(it) }
+        val operations = dao.getFailedOperations()
         dao.clearFailed()
+        QueuedAttachmentCleanup.releaseForOperations(application, operations)
     }
 
     fun shouldQueue(error: Throwable): Boolean {
@@ -353,6 +363,18 @@ object OfflineQueueManager {
             TYPE_DELETE -> executeDelete(client, operation.payload)
             TYPE_MOVE -> executeMove(client, operation.payload)
             TYPE_MARK_READ -> executeMarkRead(client, operation.payload)
+                .also { result ->
+                    if (result is Result.Success) {
+                        // Keep the cache in step with a status the server has just accepted.
+                        runCatching {
+                            val json = JSONObject(operation.payload)
+                            AppDatabase.getInstance(application).messageDao().updateReadStatus(
+                                messageId = json.getString("messageId"),
+                                isUnread = !json.getBoolean("isRead")
+                            )
+                        }
+                    }
+                }
             TYPE_TOGGLE_STAR -> executeToggleStar(client, operation.payload)
             else -> Result.Error(IllegalArgumentException("Unsupported queue op: ${operation.type}"))
         }
@@ -388,10 +410,7 @@ object OfflineQueueManager {
             draftId = json.optString("draftId").takeIf { it.isNotBlank() && it != "null" }
         ).fold(
             onError = { Result.Error(it) },
-            onSuccess = {
-                sourceAttachments.forEach { OfflineAttachmentStorage.delete(it.localFilePath) }
-                Result.Success(Unit)
-            }
+            onSuccess = { Result.Success(Unit) }
         )
     }
 
@@ -442,49 +461,12 @@ object OfflineQueueManager {
         )
     }
 
-    private fun JSONArray.toStringList(): List<String> {
-        return buildList {
-            for (index in 0 until length()) add(getString(index))
-        }
-    }
-
-    private fun JSONArray.toAttachmentList(): List<Attachment> {
-        return buildList {
-            for (index in 0 until length()) {
-                val item = getJSONObject(index)
-                add(
-                    Attachment(
-                        id = item.getString("id"),
-                        filename = item.getString("filename"),
-                        mime = item.getString("mime"),
-                        size = item.getLong("size"),
-                        localFilePath = item.optString("localFilePath").takeIf { it.isNotBlank() && it != "null" },
-                        isUploaded = item.optBoolean("isUploaded", true)
-                    )
-                )
-            }
-        }
-    }
-
     private fun rootCause(error: Throwable): Throwable {
         var current = error
         repeat(12) {
             current = current.cause ?: return current
         }
         return current
-    }
-
-    private fun cleanupOperationFiles(operation: PendingOperationEntity?) {
-        if (operation == null || operation.type != TYPE_SEND) return
-        runCatching {
-            val attachments = JSONObject(operation.payload).optJSONArray("attachments") ?: return
-            val parsed = attachments.toAttachmentList()
-            parsed.forEach { attachment ->
-                if (!attachment.isUploaded) {
-                    OfflineAttachmentStorage.delete(attachment.localFilePath)
-                }
-            }
-        }
     }
 
     private fun maxAttemptsFor(type: String): Int = when (type) {
