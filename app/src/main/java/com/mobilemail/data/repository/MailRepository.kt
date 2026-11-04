@@ -35,10 +35,19 @@ data class MessagePage(
 class MailRepository(
     private val jmapClient: JmapApi,
     private val messageDao: MessageDao? = null,
-    private val folderDao: FolderDao? = null
+    private val folderDao: FolderDao? = null,
+    bodyCacheSize: Int = DEFAULT_BODY_CACHE_SIZE
 ) : IMailRepository {
     private val client = jmapClient
-    private val messageCache = mutableMapOf<String, MessageDetail>()
+
+    /**
+     * LRU-кэш открытых писем. Ограничен [bodyCacheSize], чтобы прокрутка и открытие
+     * большого числа писем не удерживали все тела в памяти.
+     */
+    private val messageCache = object : LinkedHashMap<String, MessageDetail>(bodyCacheSize, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, MessageDetail>?): Boolean =
+            size > bodyCacheSize
+    }
     private val cacheTtlMillis = 2 * 60 * 1000L
 
 
@@ -100,11 +109,10 @@ class MailRepository(
             }
 
             val emails = fetchEmailDetails(folderId, accountId, queryResult.ids)
-            cacheEmailDetails(emails)
             val result = mapEmailsToListItems(emails)
             persistEmailsToRoom(result, folderId, accountId, queryResult.queryState)
 
-            Log.d("MailRepository", "Обработано писем: ${result.size}, закэшировано: ${messageCache.size}")
+            Log.d("MailRepository", "Обработано писем: ${result.size}")
             MessagePage(
                 items = result.map { it.toDomain() },
                 nextPosition = (position + result.size).takeIf { result.size >= limit },
@@ -176,38 +184,19 @@ class MailRepository(
     }
 
     private suspend fun fetchEmailDetails(@Suppress("UNUSED_PARAMETER") folderId: String, accountId: String, ids: List<String>) = run {
-        Log.d("MailRepository", "Загрузка полных данных для всех писем")
+        Log.d("MailRepository", "Загрузка полей списка для писем")
         client.getEmails(
             ids = ids,
             accountId = accountId,
             properties = listOf(
-                "id", "threadId", "mailboxIds", "from", "to", "cc", "bcc", "subject",
-                "receivedAt", "preview", "hasAttachment",
-                "size", "keywords", "bodyStructure", "bodyValues", "textBody", "htmlBody"
+                "id", "threadId", "from", "subject", "receivedAt",
+                "preview", "hasAttachment", "size", "keywords"
             )
         ).also { Log.d("MailRepository", "Получено писем для обработки: ${it.size}") }
     }
 
-    private fun cacheEmailDetails(emails: List<com.mobilemail.data.model.JmapEmail>) {
-        emails.forEach { email ->
-            val messageDetail = convertEmailToMessageDetail(email)
-            if (messageDetail != null) {
-                messageCache[email.id] = messageDetail
-            }
-        }
-    }
-
-    private fun mapEmailsToListItems(emails: List<com.mobilemail.data.model.JmapEmail>): List<MessageListItem> {
-        return emails.map { email ->
-            val item = email.toMessageListItem(::parseAttachments)
-            val cachedIsUnread = messageCache[email.id]?.flags?.unread
-            if (cachedIsUnread != null) {
-                item.copy(flags = item.flags.copy(unread = cachedIsUnread))
-            } else {
-                item
-            }
-        }
-    }
+    private fun mapEmailsToListItems(emails: List<com.mobilemail.data.model.JmapEmail>): List<MessageListItem> =
+        emails.map { it.toMessageListItem(::parseAttachments) }
 
     private suspend fun persistEmailsToRoom(
         result: List<MessageListItem>,
@@ -238,19 +227,17 @@ class MailRepository(
         }
     }
 
-    private fun convertEmailToMessageDetail(email: com.mobilemail.data.model.JmapEmail): MessageDetail? {
-        return try {
-            email.toMessageDetail(::parseAttachments)
-        } catch (e: Exception) {
-            Log.e("MailRepository", "Ошибка конвертации письма ${email.id}", e)
-            null
-        }
+    private fun cachedMessage(messageId: String): MessageDetail? =
+        synchronized(messageCache) { messageCache[messageId] }
+
+    private fun cacheMessage(message: MessageDetail) {
+        synchronized(messageCache) { messageCache[message.id] = message }
     }
 
     private suspend fun getMessageData(messageId: String): Result<MessageDetail> = runCatchingSuspend {
         Log.d("MailRepository", "Загрузка письма: messageId=$messageId")
 
-        messageCache[messageId]?.let {
+        cachedMessage(messageId)?.let {
             Log.d("MailRepository", "Письмо найдено в памяти кэше")
             return@runCatchingSuspend it
         }
@@ -263,7 +250,7 @@ class MailRepository(
         val email = fetchSingleEmail(messageId, accountId)
         val messageDetail = buildMessageDetail(email, cachedReadStatus)
 
-        messageCache[email.id] = messageDetail
+        cacheMessage(messageDetail)
         messageDetail
     }.onError { e ->
         Log.e("MailRepository", "Ошибка загрузки письма messageId=$messageId", e)
@@ -310,11 +297,10 @@ class MailRepository(
     override suspend fun updateMessageReadStatus(messageId: String, isUnread: Boolean) {
         Log.d("MailRepository", "Обновление статуса прочитанности в кэше: messageId=$messageId, isUnread=$isUnread")
 
-        messageCache[messageId]?.let { message ->
-            val updatedMessage = message.copy(
-                flags = message.flags.copy(unread = isUnread)
+        cachedMessage(messageId)?.let { message ->
+            cacheMessage(
+                message.copy(flags = message.flags.copy(unread = isUnread))
             )
-            messageCache[messageId] = updatedMessage
             Log.d("MailRepository", "Статус обновлен в памяти кэше")
         }
 
@@ -364,4 +350,8 @@ class MailRepository(
 
     override suspend fun getMessage(messageId: String): Result<DomainMessageDetail> =
         getMessageData(messageId).map { it.toDomain() }
+
+    private companion object {
+        const val DEFAULT_BODY_CACHE_SIZE = 16
+    }
 }
