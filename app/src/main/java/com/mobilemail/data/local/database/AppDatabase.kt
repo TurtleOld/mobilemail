@@ -17,6 +17,7 @@ import com.mobilemail.data.local.entity.MessageEntity
 import com.mobilemail.data.local.entity.MessageFtsEntity
 import com.mobilemail.data.local.entity.PendingOperationEntity
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
+import java.io.File
 
 @Database(
     entities = [MessageEntity::class, MessageFtsEntity::class, FolderEntity::class, PendingOperationEntity::class],
@@ -92,12 +93,33 @@ abstract class AppDatabase : RoomDatabase() {
         }
 
         private fun buildEncryptedDatabase(context: Context): AppDatabase {
-            return runCatching {
+            val databaseFile = context.getDatabasePath(DATABASE_NAME)
+            return openExistingDatabase(databaseFile) {
                 createEncryptedDatabase(context).also { it.openHelper.writableDatabase }
-            }.getOrElse { error ->
-                if (!isWrongPassphraseError(error)) throw error
-                context.deleteDatabase(DATABASE_NAME)
-                createEncryptedDatabase(context).also { it.openHelper.writableDatabase }
+            }
+        }
+
+        /**
+         * Opens the database without deleting it when opening fails.
+         *
+         * A wrong passphrase is reported as "file is not a database". Deleting the file in that
+         * case would also destroy the pending operations queue stored in the same database, so the
+         * existing file is always preserved and the failure is surfaced to the caller instead.
+         *
+         * @param databaseFile Database file that must survive any open failure.
+         * @param open Opens the database and verifies that it is usable.
+         * @return Opened database returned by [open].
+         * @throws DatabaseOpenException When [databaseFile] cannot be opened. The file is untouched.
+         */
+        internal fun <T> openExistingDatabase(databaseFile: File, open: () -> T): T {
+            return try {
+                open()
+            } catch (error: Throwable) {
+                throw DatabaseOpenException(
+                    databaseFile = databaseFile,
+                    isWrongPassphrase = isWrongPassphraseError(error),
+                    cause = error
+                )
             }
         }
 
