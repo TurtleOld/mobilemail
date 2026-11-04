@@ -46,6 +46,7 @@ class JmapOAuthClient(
     companion object {
         private val clientCache = mutableMapOf<String, JmapOAuthClient>()
         private val lock = Any()
+        private val BODY_PROPERTIES = setOf("bodyStructure", "bodyValues", "textBody", "htmlBody")
 
         fun getOrCreate(
             serverUrl: String,
@@ -322,15 +323,15 @@ class JmapOAuthClient(
             "textBody", "htmlBody"
         )
 
+        val requestedProperties = properties ?: defaultProperties
         val idsArray = JSONArray().apply { ids.forEach { put(it) } }
-        val propertiesArray = JSONArray().apply { (properties ?: defaultProperties).forEach { put(it) } }
+        val propertiesArray = JSONArray().apply { requestedProperties.forEach { put(it) } }
 
         val getParams = JSONObject().apply {
             put("accountId", targetAccountId)
             put("ids", idsArray)
             put("properties", propertiesArray)
-            put("fetchTextBodyValues", true)
-            put("fetchHTMLBodyValues", true)
+            withBodyFetchOptions(requestedProperties)
         }
 
         val methodCallArray = JSONArray().apply {
@@ -422,7 +423,8 @@ class JmapOAuthClient(
             "from", "to", "cc", "bcc", "bodyStructure", "bodyValues",
             "textBody", "htmlBody"
         )
-        val propertiesArray = JSONArray().apply { (properties ?: defaultProperties).forEach { put(it) } }
+        val requestedProperties = properties ?: defaultProperties
+        val propertiesArray = JSONArray().apply { requestedProperties.forEach { put(it) } }
         val params = JSONObject().apply {
             put("accountId", accountId)
             put("#ids", JSONObject().apply {
@@ -431,10 +433,15 @@ class JmapOAuthClient(
                 put("path", "/ids")
             })
             put("properties", propertiesArray)
-            put("fetchTextBodyValues", true)
-            put("fetchHTMLBodyValues", true)
+            withBodyFetchOptions(requestedProperties)
         }
         return JSONArray().apply { put("Email/get"); put(params); put("g0") }
+    }
+
+    private fun JSONObject.withBodyFetchOptions(properties: List<String>) {
+        if (properties.none { it in BODY_PROPERTIES }) return
+        put("fetchTextBodyValues", true)
+        put("fetchHTMLBodyValues", true)
     }
 
     private fun parseQueryResponse(data: JSONObject): EmailQueryResult {
