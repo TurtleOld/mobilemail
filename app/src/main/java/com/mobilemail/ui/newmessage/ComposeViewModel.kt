@@ -4,6 +4,7 @@ import android.app.Application
 import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.mobilemail.domain.common.Result
 import com.mobilemail.domain.common.fold
 import com.mobilemail.data.jmap.MailClientFactory
 import com.mobilemail.domain.model.Attachment
@@ -11,6 +12,7 @@ import com.mobilemail.domain.model.toData
 import com.mobilemail.data.repository.ComposeRepository
 import com.mobilemail.data.sync.OfflineAttachmentStorage
 import com.mobilemail.data.sync.OfflineQueueManager
+import com.mobilemail.domain.repository.IComposeRepository
 import com.mobilemail.data.sync.QueuedAttachmentCleanup
 import com.mobilemail.ui.common.AppError
 import com.mobilemail.ui.common.ErrorMapper
@@ -19,6 +21,7 @@ import com.mobilemail.ui.common.NotificationState
 import com.mobilemail.ui.common.SnackbarDuration
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import android.content.ContentResolver
@@ -31,7 +34,6 @@ data class ComposeUiState(
     val isSending: Boolean = false,
     val isSavingDraft: Boolean = false,
     val attachments: List<Attachment> = emptyList(),
-    val draftId: String? = null,
     override val error: AppError? = null,
     override val notification: NotificationState = NotificationState.None
 ) : FeatureScreenUiState
@@ -43,10 +45,24 @@ class ComposeViewModel(
     private val accountId: String
 ) : AndroidViewModel(application) {
 
-    private var repository: ComposeRepository? = null
+    private val _uiState = MutableStateFlow(ComposeUiState())
+    val uiState: StateFlow<ComposeUiState> = _uiState
+
+    private var repository: IComposeRepository? = null
+
+    private val draftSync = DraftSyncCoordinator(
+        scope = viewModelScope,
+        saveDraft = ::saveDraftRemotely,
+        sendMessage = ::sendRemotely
+    )
     private val attachmentStore by lazy { OfflineAttachmentStorage.forContext(getApplication()) }
 
     init {
+        viewModelScope.launch {
+            draftSync.isSaving.collect { saving ->
+                _uiState.value = _uiState.value.copy(isSavingDraft = saving)
+            }
+        }
         viewModelScope.launch {
             try {
                 val jmapClient = MailClientFactory.create(getApplication(), server, email, accountId)
@@ -57,8 +73,6 @@ class ComposeViewModel(
             }
         }
     }
-    private val _uiState = MutableStateFlow(ComposeUiState())
-    val uiState: StateFlow<ComposeUiState> = _uiState
 
     private val draftEditor = ComposeDraftEditor(saveDraft = ::saveDraftToServer)
     val draft: StateFlow<ComposeDraft> = draftEditor.draft
@@ -91,13 +105,13 @@ class ComposeViewModel(
             "ComposeViewModel",
             "Отправка письма: toCount=${recipients.size}, subject=${trimmedSubject.length}ch, " +
                 "body=${trimmedBody.length}ch, attachments=${_uiState.value.attachments.size}, " +
-                "draftId=${_uiState.value.draftId}"
+                "draftId=${draftSync.draftId}"
         )
 
         if (!validateSendInputs(recipients, trimmedSubject, trimmedBody)) return
 
         viewModelScope.launch {
-            val repo = repository ?: run {
+            if (repository == null) {
                 _uiState.value = _uiState.value.copy(
                     notification = NotificationState.Snackbar(
                         message = "Клиент ещё не готов, попробуйте снова",
@@ -107,12 +121,18 @@ class ComposeViewModel(
                 return@launch
             }
             _uiState.value = _uiState.value.copy(isSending = true)
-            val resolvedAttachments = resolveAttachmentsForSend(_uiState.value.attachments, repo)
+            val resolvedAttachments = resolveAttachmentsForSend(_uiState.value.attachments)
             if (resolvedAttachments == null) {
                 _uiState.value = _uiState.value.copy(isSending = false)
                 return@launch
             }
-            dispatchSend(recipients, trimmedSubject, trimmedBody, resolvedAttachments, repo, onSuccess)
+            val snapshot = DraftSnapshot(
+                to = recipients,
+                subject = trimmedSubject,
+                body = trimmedBody,
+                attachments = resolvedAttachments
+            )
+            dispatchSend(snapshot, onSuccess)
         }
     }
 
@@ -138,51 +158,33 @@ class ComposeViewModel(
         return true
     }
 
-    private suspend fun dispatchSend(
-        recipients: List<String>,
-        trimmedSubject: String,
-        trimmedBody: String,
-        resolvedAttachments: List<Attachment>,
-        repo: ComposeRepository,
-        onSuccess: () -> Unit
-    ) {
-        repo.sendMessage(
-            from = email,
-            to = recipients,
-            subject = trimmedSubject,
-            body = trimmedBody,
-            attachments = resolvedAttachments,
-            draftId = _uiState.value.draftId
-        ).fold(
+    private suspend fun dispatchSend(snapshot: DraftSnapshot, onSuccess: () -> Unit) {
+        draftSync.send(snapshot).fold(
             onError = { e ->
                 Log.e("ComposeViewModel", "Ошибка отправки письма", e)
-                handleSendError(e, recipients, trimmedSubject, trimmedBody, resolvedAttachments, onSuccess)
+                handleSendError(e, snapshot, onSuccess)
             },
             onSuccess = { submissionId ->
                 Log.d("ComposeViewModel", "EmailSubmission создан, submissionId=$submissionId")
                 // Подтверждённая отправка — единственный момент, когда копии точно больше не нужны.
-                QueuedAttachmentCleanup.release(getApplication(), resolvedAttachments.mapNotNull { it.localFilePath })
+                QueuedAttachmentCleanup.release(getApplication(), snapshot.attachments.mapNotNull { it.localFilePath })
                 _uiState.value = _uiState.value.copy(
                     isSending = false,
                     attachments = emptyList(),
-                    draftId = null,
                     notification = NotificationState.Snackbar(
                         message = "Письмо отправлено (submissionId=$submissionId). Проверяем доставку...",
                         duration = SnackbarDuration.Short
                     )
                 )
                 onSuccess()
-                viewModelScope.launch { pollSubmissionStatus(submissionId, repo) }
+                viewModelScope.launch { pollSubmissionStatus(submissionId) }
             }
         )
     }
 
     private suspend fun handleSendError(
         e: Throwable,
-        recipients: List<String>,
-        trimmedSubject: String,
-        trimmedBody: String,
-        resolvedAttachments: List<Attachment>,
+        snapshot: DraftSnapshot,
         onSuccess: () -> Unit
     ) {
         if (OfflineQueueManager.shouldQueue(e)) {
@@ -192,16 +194,15 @@ class ComposeViewModel(
                     server = server,
                     email = email,
                     accountId = accountId,
-                    to = recipients,
-                    subject = trimmedSubject,
-                    body = trimmedBody,
-                    attachments = resolvedAttachments.map { it.toData() },
-                    draftId = _uiState.value.draftId
+                    to = snapshot.to,
+                    subject = snapshot.subject,
+                    body = snapshot.body,
+                    attachments = snapshot.attachments.map { it.toData() },
+                    draftId = draftSync.draftId
                 )
                 _uiState.value = _uiState.value.copy(
                     isSending = false,
                     attachments = emptyList(),
-                    draftId = null,
                     notification = NotificationState.Snackbar(
                         message = "Нет сети. Письмо поставлено в очередь на отправку.",
                         duration = SnackbarDuration.Long
@@ -220,7 +221,8 @@ class ComposeViewModel(
         }
     }
 
-    private suspend fun pollSubmissionStatus(submissionId: String, repo: ComposeRepository) {
+    private suspend fun pollSubmissionStatus(submissionId: String) {
+        val repo = repository ?: return
         // Пробуем 12 раз с интервалом 5 сек (≈ 1 минута)
         repeat(12) { attempt ->
             if (!viewModelScope.isActive) return
@@ -300,7 +302,7 @@ class ComposeViewModel(
         return Quadruple(name, type, bytes, localPath)
     }
 
-    private suspend fun uploadAttachmentFile(name: String, type: String, bytes: ByteArray, localPath: String?, repo: ComposeRepository?) {
+    private suspend fun uploadAttachmentFile(name: String, type: String, bytes: ByteArray, localPath: String?, repo: IComposeRepository?) {
         _uiState.value = _uiState.value.copy(
             notification = NotificationState.Snackbar(
                 message = "Загрузка вложения: $name",
@@ -363,54 +365,71 @@ class ComposeViewModel(
         )
     }
 
-    private suspend fun saveDraftToServer(draft: ComposeDraft): Boolean {
-        val trimmedSubject = draft.subject.trim()
-        val trimmedBody = draft.body.trim()
-        val recipients = draft.to.split(",", ";").map { it.trim() }.filter { it.isNotBlank() }
+    /**
+     * Ставит черновик в очередь автосохранения. Сохранения и отправка одного письма
+     * выполняются последовательно: правки, пришедшие во время сохранения, сохраняются
+     * последним снимком.
+     */
+    fun saveDraft(to: List<String>, subject: String, body: String) {
+        val snapshot = DraftSnapshot(
+            to = to.map { it.trim() }.filter { it.isNotBlank() },
+            subject = subject.trim(),
+            body = body.trim(),
+            attachments = _uiState.value.attachments.filter { it.isUploaded }
+        )
+        if (snapshot.isEmpty) return
+
         Log.d(
             "ComposeViewModel",
-            "Сохранение черновика: toCount=${recipients.size}, " +
-                "subject=${trimmedSubject.length}ch, body=${trimmedBody.length}ch, " +
-                "attachments=${_uiState.value.attachments.size}, draftId=${_uiState.value.draftId}"
+            "Сохранение черновика: toCount=${snapshot.to.size}, " +
+                "subject=${snapshot.subject.length}ch, body=${snapshot.body.length}ch, " +
+                "attachments=${snapshot.attachments.size}, draftId=${draftSync.draftId}"
         )
 
-        val repo = repository ?: run {
+        draftSync.requestSave(snapshot)
+    }
+
+    private suspend fun saveDraftRemotely(snapshot: DraftSnapshot, draftId: String?): Result<String> {
+        val repo = repository ?: return Result.Error(IllegalStateException("Клиент ещё не готов"))
+        return repo.saveDraft(
+            from = email,
+            to = snapshot.to,
+            subject = snapshot.subject,
+            body = snapshot.body,
+            attachments = snapshot.attachments,
+            draftId = draftId
+        )
+    }
+
+    private suspend fun sendRemotely(snapshot: DraftSnapshot, draftId: String?): Result<String> {
+        val repo = repository ?: return Result.Error(IllegalStateException("Клиент ещё не готов"))
+        return repo.sendMessage(
+            from = email,
+            to = snapshot.to,
+            subject = snapshot.subject,
+            body = snapshot.body,
+            attachments = snapshot.attachments,
+            draftId = draftId
+        )
+    }
+
+    private suspend fun saveDraftToServer(draft: ComposeDraft): Boolean {
+        val snapshot = DraftSnapshot(
+            to = draft.to.split(",", ";").map { it.trim() }.filter { it.isNotBlank() },
+            subject = draft.subject.trim(),
+            body = draft.body.trim(),
+            attachments = _uiState.value.attachments.filter { it.isUploaded }
+        )
+        val saved = draftSync.save(snapshot)
+        if (!saved) {
             _uiState.value = _uiState.value.copy(
                 notification = NotificationState.Snackbar(
-                    message = "Клиент ещё не готов, попробуйте снова",
-                    duration = SnackbarDuration.Short
+                    message = "Не удалось сохранить черновик, попробуйте снова",
+                    duration = SnackbarDuration.Long
                 )
             )
-            return false
         }
-        _uiState.value = _uiState.value.copy(isSavingDraft = true)
-        return try {
-            repo.saveDraft(
-                from = email,
-                to = recipients,
-                subject = trimmedSubject,
-                body = trimmedBody,
-                attachments = _uiState.value.attachments.filter { it.isUploaded },
-                draftId = _uiState.value.draftId
-            ).fold(
-                onError = { e ->
-                    Log.e("ComposeViewModel", "Ошибка сохранения черновика", e)
-                    _uiState.value = _uiState.value.copy(
-                        notification = NotificationState.Snackbar(
-                            message = "Не удалось сохранить черновик: ${ErrorMapper.mapException(e).getUserMessage()}",
-                            duration = SnackbarDuration.Long
-                        )
-                    )
-                    false
-                },
-                onSuccess = { newDraftId ->
-                    _uiState.value = _uiState.value.copy(draftId = newDraftId)
-                    true
-                }
-            )
-        } finally {
-            _uiState.value = _uiState.value.copy(isSavingDraft = false)
-        }
+        return saved
     }
 
     fun clearError() {
@@ -435,7 +454,8 @@ class ComposeViewModel(
         return null
     }
 
-    private suspend fun resolveAttachmentsForSend(attachments: List<Attachment>, repo: ComposeRepository): List<Attachment>? {
+    private suspend fun resolveAttachmentsForSend(attachments: List<Attachment>): List<Attachment>? {
+        val repo = repository ?: return null
         val resolved = mutableListOf<Attachment>()
         for (attachment in attachments) {
             if (attachment.isUploaded) {
